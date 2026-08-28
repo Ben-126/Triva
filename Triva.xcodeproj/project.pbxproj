@@ -6,6 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		E0E86AE43040E08B001915D6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = E0E86AE33040E08B001915D6 /* MLXLLM */; };
+		E0E86AE63040E08B001915D6 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = E0E86AE53040E08B001915D6 /* MLXLMCommon */; };
+		E0E86AE93040E1A2001915D6 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = E0E86AE83040E1A2001915D6 /* HuggingFace */; };
+		E0E86AEC3040E1D9001915D6 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = E0E86AEB3040E1D9001915D6 /* Tokenizers */; };
+		E0E86AEF3040E363001915D6 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = E0E86AEE3040E363001915D6 /* MLXHuggingFace */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		E06FD8F0303FB7B700B887F2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +60,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E0E86AEF3040E363001915D6 /* MLXHuggingFace in Frameworks */,
+				E0E86AEC3040E1D9001915D6 /* Tokenizers in Frameworks */,
+				E0E86AE63040E08B001915D6 /* MLXLMCommon in Frameworks */,
+				E0E86AE43040E08B001915D6 /* MLXLLM in Frameworks */,
+				E0E86AE93040E1A2001915D6 /* HuggingFace in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +91,7 @@
 				E06FD8E2303FB7B400B887F2 /* Triva */,
 				E06FD8F2303FB7B700B887F2 /* TrivaTests */,
 				E06FD8FC303FB7B700B887F2 /* TrivaUITests */,
+				E0E86AED3040E363001915D6 /* Frameworks */,
 				E06FD8E1303FB7B400B887F2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,6 +104,13 @@
 				E06FD8F9303FB7B700B887F2 /* TrivaUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		E0E86AED3040E363001915D6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -112,6 +133,11 @@
 			);
 			name = Triva;
 			packageProductDependencies = (
+				E0E86AE33040E08B001915D6 /* MLXLLM */,
+				E0E86AE53040E08B001915D6 /* MLXLMCommon */,
+				E0E86AE83040E1A2001915D6 /* HuggingFace */,
+				E0E86AEB3040E1D9001915D6 /* Tokenizers */,
+				E0E86AEE3040E363001915D6 /* MLXHuggingFace */,
 			);
 			productName = Triva;
 			productReference = E06FD8E0303FB7B400B887F2 /* Triva.app */;
@@ -195,6 +221,11 @@
 			);
 			mainGroup = E06FD8D7303FB7B400B887F2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E0E86AE23040E08B001915D6 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				E0E86AE73040E1A2001915D6 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				E0E86AEA3040E1D9001915D6 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E06FD8E1303FB7B400B887F2 /* Products */;
 			projectDirPath = "";
@@ -391,6 +422,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -433,6 +465,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -605,6 +638,61 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E0E86AE23040E08B001915D6 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.31.4;
+			};
+		};
+		E0E86AE73040E1A2001915D6 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+		E0E86AEA3040E1D9001915D6 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E0E86AE33040E08B001915D6 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E0E86AE23040E08B001915D6 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		E0E86AE53040E08B001915D6 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E0E86AE23040E08B001915D6 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		E0E86AE83040E1A2001915D6 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E0E86AE73040E1A2001915D6 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		E0E86AEB3040E1D9001915D6 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E0E86AEA3040E1D9001915D6 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		E0E86AEE3040E363001915D6 /* MLXHuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E0E86AE23040E08B001915D6 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXHuggingFace;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E06FD8D8303FB7B400B887F2 /* Project object */;
 }
