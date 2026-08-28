@@ -1,0 +1,13 @@
+{
+  "_comment": "Liste d'instances SearXNG publiques, dans l'ordre de priorité d'essai par FailoverManager. À revalider régulièrement : voir searx.space pour la liste à jour. Constat du 2026-08-27 : la majorité des instances publiques bloquent désormais les requêtes format=json derrière un challenge anti-bot (Anubis) ou un rate-limit agressif – seule search.mectov.my.id a répondu en JSON valide lors des tests. Les autres sont conservées comme filet de secours (uptime/qualité correcte côté searx.space) au cas où leur protection anti-bot serait assouplie.",
+  "instances": [
+    "https://search.mectov.my.id",
+    "https://baresearch.org",
+    "https://opnxng.com",
+    "https://priv.au",
+    "https://searx.tiekoetter.com",
+    "https://libresearch.space",
+    "https://etsi.me",
+    "https://searx.be"
+  ]
+}

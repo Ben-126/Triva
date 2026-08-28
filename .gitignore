@@ -30,6 +30,3 @@ graphify-out/
 
 # config locale Claude Code (spécifique à la machine)
 .claude/
-
-# instances SearXNG (propres à chaque utilisateur, contient des instances perso)
-Triva/Resources/searxng-instances.json

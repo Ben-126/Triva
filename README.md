@@ -48,10 +48,8 @@ xcodebuild test -scheme Triva -destination "platform=macOS"
 
 ## Configuration locale requise
 
-Certains fichiers ne sont pas versionnés (voir `.gitignore`) car spécifiques à chaque machine ou utilisateur :
-
-- **`Triva/Resources/searxng-instances.json`** — liste des instances SearXNG à utiliser. À créer localement (voir [searx.space](https://searx.space) pour des instances publiques à jour).
-- **`.claude/`** — configuration locale de l'outillage de développement.
+- **`Triva/Resources/searxng-instances.json`** — liste d'instances SearXNG publiques versionnée dans le repo. Si tu as ta propre instance, ajoute-la localement en tête de liste (ne la commite pas). À revalider régulièrement, voir [searx.space](https://searx.space).
+- **`.claude/`** — configuration locale de l'outillage de développement, non versionnée (voir `.gitignore`).
 
 ## Devices de test
 
