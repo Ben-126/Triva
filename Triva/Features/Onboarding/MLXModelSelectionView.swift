@@ -30,7 +30,7 @@ struct MLXModelSelectionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 32) {
                 switch coordinator.phase {
                 case .idle:
                     choosingContent
@@ -44,7 +44,9 @@ struct MLXModelSelectionView: View {
                     failedContent(description: description)
                 }
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+            .padding(.bottom, 40)
         }
         .sheet(isPresented: $showingFullCatalog) {
             fullCatalogSheet
@@ -55,19 +57,25 @@ struct MLXModelSelectionView: View {
 
     @ViewBuilder
     private var choosingContent: some View {
-        Text("Choisis ton modèle local")
-            .font(.title2.bold())
-        Text("Basé sur la puissance de ton appareil. Tu pourras en changer à tout moment.")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Choisis ton modèle local")
+                .font(.system(size: 28, weight: .semibold))
+            Text("Basé sur la puissance de ton appareil. Tu pourras en changer à tout moment.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
 
         if let recommendation {
-            if let fasterLessPerformant = recommendation.fasterLessPerformant {
-                modelCard(fasterLessPerformant, badge: "Plus rapide")
-            }
-            modelCard(recommendation.recommended, badge: "Recommandé")
-            if let morePerformantSlower = recommendation.morePerformantSlower {
-                modelCard(morePerformantSlower, badge: "Plus performant")
+            GlassEffectContainer(spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let fasterLessPerformant = recommendation.fasterLessPerformant {
+                        modelCard(fasterLessPerformant, badge: "Plus rapide")
+                    }
+                    modelCard(recommendation.recommended, badge: "Recommandé")
+                    if let morePerformantSlower = recommendation.morePerformantSlower {
+                        modelCard(morePerformantSlower, badge: "Plus performant")
+                    }
+                }
             }
         } else {
             Text("Aucun modèle disponible pour le moment.")
@@ -77,7 +85,7 @@ struct MLXModelSelectionView: View {
         Button("Voir tous les modèles") {
             showingFullCatalog = true
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
         .frame(maxWidth: .infinity)
     }
 
@@ -87,14 +95,14 @@ struct MLXModelSelectionView: View {
             coordinator.select(entry)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
+                HStack(spacing: 8) {
                     Text(entry.displayName).font(.headline)
                     Text(badge)
                         .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tint)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor, in: Capsule())
-                        .foregroundStyle(.white)
+                        .padding(.vertical, 4)
+                        .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
                     Spacer()
                     Text(Self.formattedSize(entry.downloadSizeBytes))
                         .font(.caption)
@@ -105,9 +113,9 @@ struct MLXModelSelectionView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
             }
-            .padding()
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
         }
         .buttonStyle(.plain)
     }
@@ -117,21 +125,26 @@ struct MLXModelSelectionView: View {
     @ViewBuilder
     private func downloadingContent(fractionCompleted: Double) -> some View {
         if let entry = coordinator.selectedEntry {
-            Text("Téléchargement de \(entry.displayName)")
-                .font(.title2.bold())
-            Text("\(Self.formattedSize(entry.downloadSizeBytes)) • Wi-Fi requis")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Téléchargement de \(entry.displayName)")
+                    .font(.system(size: 28, weight: .semibold))
+                Text("\(Self.formattedSize(entry.downloadSizeBytes)) • Wi-Fi requis")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
-            ProgressView(value: fractionCompleted)
-            Text("\(Int(fractionCompleted * 100)) %")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                ProgressView(value: fractionCompleted)
+                    .tint(.accentColor)
+                Text("\(Int(fractionCompleted * 100)) %")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Button("Annuler", role: .destructive) {
                 coordinator.cancelDownload()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
         }
     }
 
@@ -140,22 +153,28 @@ struct MLXModelSelectionView: View {
     @ViewBuilder
     private var trialContent: some View {
         if let entry = coordinator.selectedEntry {
-            Text("Mode essai — \(entry.displayName)")
-                .font(.title2.bold())
-            Text("Pose quelques questions de démo avant de valider ce modèle par défaut.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Mode essai — \(entry.displayName)")
+                    .font(.system(size: 28, weight: .semibold))
+                Text("Pose quelques questions de démo avant de valider ce modèle par défaut.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
-            ForEach(Array(coordinator.trialAnswers.enumerated()), id: \.offset) { index, answer in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(MLXModelSelectionCoordinator.trialQuestions[index])
-                        .font(.subheadline.weight(.semibold))
-                    Text(answer)
-                        .font(.body)
+            GlassEffectContainer(spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(coordinator.trialAnswers.enumerated()), id: \.offset) { index, answer in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(MLXModelSelectionCoordinator.trialQuestions[index])
+                                .font(.subheadline.weight(.semibold))
+                            Text(answer)
+                                .font(.body)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                    }
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
             }
 
             if let nextQuestion = coordinator.nextTrialQuestion {
@@ -170,7 +189,7 @@ struct MLXModelSelectionView: View {
                         Text("Poser cette question")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .disabled(coordinator.isGeneratingTrialAnswer)
             }
 
@@ -178,14 +197,14 @@ struct MLXModelSelectionView: View {
                 Button("Valider comme modèle par défaut") {
                     coordinator.validateAsDefault()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .frame(maxWidth: .infinity)
             }
 
             Button("Choisir un autre modèle") {
                 coordinator.chooseAnotherModel()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
         }
     }
 
@@ -194,24 +213,28 @@ struct MLXModelSelectionView: View {
     @ViewBuilder
     private var readyContent: some View {
         if let entry = coordinator.selectedEntry {
-            Text("\(entry.displayName) est prêt")
-                .font(.title2.bold())
-            Text("Ce modèle est maintenant ton choix par défaut.")
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(entry.displayName) est prêt")
+                    .font(.system(size: 28, weight: .semibold))
+                Text("Ce modèle est maintenant ton choix par défaut.")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
     @ViewBuilder
     private func failedContent(description: String) -> some View {
-        Text("Le téléchargement a échoué")
-            .font(.title2.bold())
-        Text(description)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Le téléchargement a échoué")
+                .font(.system(size: 28, weight: .semibold))
+            Text(description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
         Button("Choisir un autre modèle") {
             coordinator.chooseAnotherModel()
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.glassProminent)
     }
 
     // MARK: - Liste complète

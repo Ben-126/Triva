@@ -31,12 +31,20 @@ private struct EngineStatusView: View {
     @State private var validatedMLXModel: MLXModelCatalogEntry?
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Moteur sélectionné")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text(label(for: selectedEngine))
-                .font(.title2.bold())
+        VStack(alignment: .leading, spacing: 32) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(selectedEngine.privacyBadge.text, systemImage: selectedEngine.privacyBadge.icon)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.tint)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
+
+                Text(selectedEngine.privacyBadge.caption)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 4)
+            }
 
             if selectedEngine == .appleIntelligence {
                 appleIntelligenceTestSection
@@ -47,9 +55,11 @@ private struct EngineStatusView: View {
             }
 
             Button("Changer de moteur", action: onChangeEngine)
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
         }
-        .padding()
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 40)
         .sheet(isPresented: $showingMLXSelection) {
             MLXModelSelectionView { chosen in
                 validatedMLXModel = chosen
@@ -62,17 +72,18 @@ private struct EngineStatusView: View {
     private var mlxTestSection: some View {
         if let validatedMLXModel {
             Text("Modèle actif : \(validatedMLXModel.displayName)")
-                .padding()
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
             Button("Changer de modèle MLX") {
                 showingMLXSelection = true
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
         } else {
             Button("Choisir un modèle MLX") {
                 showingMLXSelection = true
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
         }
     }
 
@@ -82,7 +93,7 @@ private struct EngineStatusView: View {
             Label("Indisponible : \(String(describing: error))", systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
         } else {
-            VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 Button {
                     Task { await testGeneration() }
                 } label: {
@@ -92,15 +103,16 @@ private struct EngineStatusView: View {
                         Text("Tester une génération")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .disabled(isTesting)
 
                 if let appleIntelligenceResult {
                     switch appleIntelligenceResult {
                     case .success(let text):
                         Text(text)
-                            .padding()
-                            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 20))
                     case .failure(let error):
                         Text("Erreur : \(String(describing: error))")
                             .foregroundStyle(.red)
@@ -120,14 +132,6 @@ private struct EngineStatusView: View {
             appleIntelligenceResult = .failure(error)
         } catch {
             appleIntelligenceResult = .failure(.generationFailed(description: String(describing: error)))
-        }
-    }
-
-    private func label(for option: AIEngineOption) -> String {
-        switch option {
-        case .appleIntelligence: "Apple Intelligence"
-        case .mlxLocal: "Modèle local (MLX)"
-        case .cloudBYOK: "Clé API personnelle"
         }
     }
 }

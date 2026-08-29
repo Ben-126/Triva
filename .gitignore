@@ -30,3 +30,6 @@ graphify-out/
 
 # config locale Claude Code (spécifique à la machine)
 .claude/
+
+# essais de direction artistique (jetables, pas destinés au repo)
+Triva/DesignExploration/

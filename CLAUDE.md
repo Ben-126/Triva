@@ -75,6 +75,18 @@ La feuille de route détaillée est dans **`plan_a_suivre_ios.md`**, situé dans
 
 ---
 
+## Direction artistique (DA)
+
+La DA de Triva est validée et décrite intégralement dans **`DESIGN.md`** (racine du
+repo) : couleurs, typographie, espacement, règles Liquid Glass, badge moteur IA.
+
+**Avant d'écrire ou de modifier une vue SwiftUI, toujours lire `DESIGN.md`** et
+vérifier que le code produit y est conforme. L'implémentation de référence est
+`Triva/DesignSystem/TrivaHomeReferenceView.swift` — en cas de doute, elle fait foi.
+Les skills `swiftui-design-principles` et `liquid-glass-design` complètent ces règles.
+
+---
+
 ## Suivi automatique du plan
 
 Quand on me demande de traiter une tâche numérotée du plan (ex : "fais le 0.5"), je dois **automatiquement**, sans qu'on ait besoin de le redemander à chaque fois :

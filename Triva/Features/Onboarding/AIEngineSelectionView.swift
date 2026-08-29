@@ -29,37 +29,44 @@ struct AIEngineSelectionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Choisis ton moteur IA")
-                    .font(.title2.bold())
-                Text("Tu pourras en changer à tout moment depuis les Réglages.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 32) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Choisis ton moteur IA")
+                        .font(.system(size: 28, weight: .semibold))
+                    Text("Tu pourras en changer à tout moment depuis les Réglages.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
 
-                engineCard(
-                    option: .appleIntelligence,
-                    title: "Apple Intelligence",
-                    subtitle: "Gratuit, sur l'appareil. Nécessite un iPhone/Mac compatible avec Apple Intelligence activé."
-                )
-                engineCard(
-                    option: .mlxLocal,
-                    title: "Modèle local (MLX)",
-                    subtitle: "Gratuit, sur l'appareil. Un modèle adapté à la puissance de ton appareil te sera proposé au choix (0.5)."
-                )
-                engineCard(
-                    option: .cloudBYOK,
-                    title: "Clé API personnelle",
-                    subtitle: "Le plus puissant. Payant selon le fournisseur choisi, ta clé reste uniquement sur cet appareil."
-                )
+                GlassEffectContainer(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        engineCard(
+                            option: .appleIntelligence,
+                            title: "Apple Intelligence",
+                            subtitle: "Gratuit, sur l'appareil. Nécessite un iPhone/Mac compatible avec Apple Intelligence activé."
+                        )
+                        engineCard(
+                            option: .mlxLocal,
+                            title: "Modèle local (MLX)",
+                            subtitle: "Gratuit, sur l'appareil. Un modèle adapté à la puissance de ton appareil te sera proposé au choix (0.5)."
+                        )
+                        engineCard(
+                            option: .cloudBYOK,
+                            title: "Clé API personnelle",
+                            subtitle: "Le plus puissant. Payant selon le fournisseur choisi, ta clé reste uniquement sur cet appareil."
+                        )
+                    }
+                }
 
                 Button("Continuer") {
                     onConfirm(selection)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 8)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+            .padding(.bottom, 40)
         }
     }
 
@@ -72,15 +79,15 @@ struct AIEngineSelectionView: View {
             selection = option
         } label: {
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
+                HStack(spacing: 8) {
                     Text(title).font(.headline)
                     if isRecommended {
                         Text("Recommandé")
                             .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tint)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.accentColor, in: Capsule())
-                            .foregroundStyle(.white)
+                            .padding(.vertical, 4)
+                            .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
                     }
                     Spacer()
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -91,12 +98,11 @@ struct AIEngineSelectionView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
             }
-            .padding()
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.accentColor : .clear, lineWidth: 2)
+            .glassEffect(
+                isSelected ? .regular.tint(.accentColor.opacity(0.12)).interactive() : .regular.interactive(),
+                in: .rect(cornerRadius: 20)
             )
         }
         .buttonStyle(.plain)
