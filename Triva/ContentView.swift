@@ -31,35 +31,38 @@ private struct EngineStatusView: View {
     @State private var validatedMLXModel: MLXModelCatalogEntry?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 32) {
-            VStack(alignment: .leading, spacing: 6) {
-                Label(selectedEngine.privacyBadge.text, systemImage: selectedEngine.privacyBadge.icon)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.tint)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 32) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(selectedEngine.privacyBadge.text, systemImage: selectedEngine.privacyBadge.icon)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
 
-                Text(selectedEngine.privacyBadge.caption)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 4)
+                    Text(selectedEngine.privacyBadge.caption)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 4)
+                }
+
+                if selectedEngine == .appleIntelligence {
+                    appleIntelligenceTestSection
+                }
+
+                if selectedEngine == .mlxLocal {
+                    mlxTestSection
+                }
+
+                Button("Changer de moteur", action: onChangeEngine)
+                    .buttonStyle(.glass)
             }
-
-            if selectedEngine == .appleIntelligence {
-                appleIntelligenceTestSection
-            }
-
-            if selectedEngine == .mlxLocal {
-                mlxTestSection
-            }
-
-            Button("Changer de moteur", action: onChangeEngine)
-                .buttonStyle(.glass)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+            .padding(.bottom, 40)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 24)
-        .padding(.bottom, 40)
         .sheet(isPresented: $showingMLXSelection) {
             MLXModelSelectionView { chosen in
                 validatedMLXModel = chosen
@@ -138,4 +141,12 @@ private struct EngineStatusView: View {
 
 #Preview {
     ContentView()
+}
+
+#Preview("Statut — Apple Intelligence") {
+    EngineStatusView(selectedEngine: .appleIntelligence, onChangeEngine: {})
+}
+
+#Preview("Statut — MLX local") {
+    EngineStatusView(selectedEngine: .mlxLocal, onChangeEngine: {})
 }
