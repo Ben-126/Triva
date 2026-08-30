@@ -22,7 +22,11 @@ Ben, non négociable — à vérifier sur chaque écran avant de le considérer 
 
 Signaux à bannir systématiquement :
 
-- Dégradés de fond décoratifs, glow, "aurora background"
+- Dégradés de fond décoratifs, glow, "aurora background", tout effet fait par
+  superposition en transparence (`opacity < 1`) — un reflet/détail clair est
+  permis (ex. le logo) mais toujours en couleur pleine et opaque, jamais en
+  calque semi-transparent (sa couleur ne doit pas changer selon ce qu'il y a
+  derrière)
 - Emoji dans l'UI (icônes SF Symbols uniquement, voir plus bas)
 - Cartes à coins arrondis + liseré coloré sur le bord gauche (le cliché "AI dashboard")
 - Polices surexploitées par les générateurs IA (Inter, Roboto, Arial, Fraunces) — cette

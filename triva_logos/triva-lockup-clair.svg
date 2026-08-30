@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="160" viewBox="0 0 640 160">
+
+  <g transform="translate(32 32) scale(0.6)"><circle cx="66" cy="66" r="47" fill="none" stroke="#007AFF" stroke-width="14"></circle><rect x="112" y="96" width="16" height="52" rx="8" fill="#007AFF" transform="rotate(-45 120 122)"></rect><rect x="126" y="118" width="22" height="14" rx="7" fill="#007AFF" transform="rotate(-45 120 122)"></rect><rect x="126" y="134" width="16" height="14" rx="7" fill="#007AFF" transform="rotate(-45 120 122)"></rect><path d="M32 66 A34 34 0 0 1 40.5 43.6" fill="none" stroke="#7FB8FF" stroke-width="5" stroke-linecap="round"></path><rect x="115" y="104" width="4" height="32" rx="2" fill="#7FB8FF" transform="rotate(-45 120 122)"></rect></g>
+  <text x="150" y="107" font-family="Jost, 'Helvetica Neue', sans-serif" font-weight="400" font-size="76" letter-spacing="1.5" fill="#1C1C1E">Triva</text>
+</svg>
