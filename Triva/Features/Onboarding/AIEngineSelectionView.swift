@@ -30,13 +30,7 @@ struct AIEngineSelectionView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Choisis ton moteur IA")
-                        .font(.system(size: 28, weight: .semibold))
-                    Text("Tu pourras en changer à tout moment depuis les Réglages.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                header
 
                 GlassEffectContainer(spacing: 12) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -67,6 +61,23 @@ struct AIEngineSelectionView: View {
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Image("TrivaLockup")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 32)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Choisis ton moteur IA")
+                    .font(.system(size: 28, weight: .semibold))
+                Text("Tu pourras en changer à tout moment depuis les Réglages.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

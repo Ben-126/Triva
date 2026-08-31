@@ -1,0 +1,27 @@
+{
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name-specializations": [
+            {
+              "value": "triva-appicon-clair.svg"
+            },
+            {
+              "appearance": "dark",
+              "value": "triva-appicon-sombre.svg"
+            },
+            {
+              "appearance": "tinted",
+              "value": "triva-appicon-teinte.svg"
+            }
+          ],
+          "name": "artwork"
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}
