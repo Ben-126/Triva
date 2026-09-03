@@ -63,7 +63,14 @@ final class MLXModelSelectionCoordinator {
             do {
                 try await provider.prepare { progress in
                     Task { @MainActor in
-                        self?.phase = .downloading(fractionCompleted: progress.fractionCompleted)
+                        // Un `prepare()` annulé continue de télécharger en
+                        // tâche de fond côté module mlx-swift-lm (voir le
+                        // commentaire de `MLXProvider.cancel()`) et peut donc
+                        // encore appeler ce callback après coup — sans cette
+                        // garde, la barre de progression réapparaîtrait après
+                        // que l'utilisateur l'a fermée.
+                        guard let self, self.selectedEntry == entry else { return }
+                        self.phase = .downloading(fractionCompleted: progress.fractionCompleted)
                     }
                 }
                 guard let self, !Task.isCancelled else { return }
@@ -78,6 +85,7 @@ final class MLXModelSelectionCoordinator {
 
     func cancelDownload() {
         downloadTask?.cancel()
+        abandonProvider()
         reset()
     }
 
@@ -102,7 +110,18 @@ final class MLXModelSelectionCoordinator {
 
     func chooseAnotherModel() {
         downloadTask?.cancel()
+        abandonProvider()
         reset()
+    }
+
+    /// Évince le modèle du cache partagé de `MLXLanguageModel` avant de
+    /// lâcher la référence au provider — best-effort, n'arrête pas un
+    /// téléchargement déjà en cours (voir `MLXProvider.cancel()`), mais évite
+    /// qu'un résultat obtenu après annulation reste mis en cache.
+    private func abandonProvider() {
+        Task { [provider] in
+            await provider?.cancel()
+        }
     }
 
     private func reset() {

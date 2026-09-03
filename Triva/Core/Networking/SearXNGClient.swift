@@ -18,7 +18,7 @@ enum SearXNGClientError: Error, Sendable, Equatable {
 
 /// Abstraction du client SearXNG, pour permettre le mock dans les tests
 /// de `FailoverManager` sans appel réseau réel.
-protocol SearXNGSearching: Sendable {
+nonisolated protocol SearXNGSearching: Sendable {
     func search(
         query: String,
         options: SearXNGSearchOptions,

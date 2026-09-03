@@ -1,6 +1,15 @@
 {
-  "originHash" : "8aebe60701480b3697b56810d08d2dda6a403b33f7b097a6030dff45c345b04f",
+  "originHash" : "fc62586f98830a6943f9ed32cea20877cee2289221bc7711cdad9bde1b3dbdd9",
   "pins" : [
+    {
+      "identity" : "claudeforfoundationmodels",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/anthropics/ClaudeForFoundationModels",
+      "state" : {
+        "branch" : "main",
+        "revision" : "fd965bfb9f2d871e4345ecd65557d01f51588ccf"
+      }
+    },
     {
       "identity" : "eventsource",
       "kind" : "remoteSourceControl",
@@ -24,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ml-explore/mlx-swift-lm",
       "state" : {
-        "revision" : "bd4b7434e6bdb588c7ef55706ff8904cb7fd4c57",
-        "version" : "3.31.4"
+        "branch" : "main",
+        "revision" : "37688d2cf7d3906e08c74479c9d9949ce6b81136"
       }
     },
     {

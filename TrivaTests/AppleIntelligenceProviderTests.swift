@@ -34,4 +34,17 @@ struct AppleIntelligenceProviderTests {
         let error = AppleIntelligenceProvider.mapAvailability(.unavailable(.modelNotReady))
         #expect(error == .modelNotReady)
     }
+
+    /// `SystemLanguageModel` conforme nativement au protocole `LanguageModel`
+    /// de Foundation Models (voir `extension SystemLanguageModel : LanguageModel`
+    /// dans le SDK) : `AppleIntelligenceProvider` utilise donc déjà le mécanisme
+    /// officiel via `LanguageModelSession(model:)`, sans wrapper supplémentaire.
+    /// Cette contrainte générique fait échouer la compilation si ce n'est plus
+    /// le cas, garantissant que les autres providers (Cloud BYOK, MLX) pourront
+    /// s'aligner sur le même contrat.
+    @Test("SystemLanguageModel conforme au protocole LanguageModel")
+    func systemLanguageModelConformsToLanguageModel() {
+        func accepts<M: LanguageModel>(_ model: M) {}
+        accepts(SystemLanguageModel.default)
+    }
 }
