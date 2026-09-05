@@ -4,6 +4,8 @@
 
 **Triva** (nom validé par Ben le 2026-08-27 — voir section *Nom de l'app*) est une app native multiplateforme **iOS/iPadOS/macOS**, en **SwiftUI**, un seul projet Xcode.
 
+**Cible plateforme obligatoire : iOS 27, iPadOS 27 et macOS 27 uniquement.** Pas de compatibilité descendante (OS26 et antérieur abandonnée) : ne jamais écrire de code de repli, de polyfill ou de `#available` visant des versions antérieures à 27.
+
 C'est la contrepartie native du projet web **Perplexica_ameliorer** (chemin : `~/Claude_code/Perplexica_ameliorer`), lui-même un fork amélioré de Perplexica renommé **"Vane"**.
 
 La feuille de route détaillée est dans **`plan_a_suivre_ios.md`**, situé dans `Perplexica_ameliorer`. **Toujours s'y référer avant de commencer une tâche.**
