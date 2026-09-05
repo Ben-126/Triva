@@ -1,5 +1,5 @@
 //
-//  APIKeysView.swift
+//  ProviderAPIKeyEntryView.swift
 //  Triva
 //
 //  Created by ben podrojsky on 03/09/2026.
@@ -7,17 +7,19 @@
 
 import SwiftUI
 
-/// Écran de saisie de la clé API BYOK (0.6) — un seul fournisseur pour
-/// l'instant (Claude, voir `CloudBYOKProviderKind`). La clé est validée par
-/// un vrai appel au fournisseur avant d'être enregistrée en Keychain, et
-/// n'est jamais réaffichée en clair une fois stockée. Réutilisable de façon
-/// autonome, comme `AIEngineSelectionView` (0.3) — l'écran Réglages qui
-/// l'accueillera reste le scope de 1.15.
-struct APIKeysView: View {
+/// Écran de saisie de la clé API d'**un** fournisseur BYOK (0.6, élargi à
+/// tout preset de `CloudProviderCatalog` + Claude + "Personnalisé" — voir
+/// `BYOKProvidersView`, qui liste tous les fournisseurs et pousse cette vue
+/// pour celui choisi). La clé est validée par un vrai appel au fournisseur
+/// avant d'être enregistrée en Keychain, et n'est jamais réaffichée en clair
+/// une fois stockée.
+struct ProviderAPIKeyEntryView: View {
+    let providerDisplayName: String
     @State private var viewModel: APIKeysViewModel
     @State private var rawKey: String = ""
 
-    init(viewModel: APIKeysViewModel = APIKeysViewModel()) {
+    init(providerDisplayName: String, viewModel: APIKeysViewModel) {
+        self.providerDisplayName = providerDisplayName
         _viewModel = State(initialValue: viewModel)
     }
 
@@ -46,13 +48,14 @@ struct APIKeysView: View {
             .padding(.top, 24)
             .padding(.bottom, 40)
         }
+        .navigationTitle(providerDisplayName)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Clé API personnelle")
+            Text(providerDisplayName)
                 .font(.system(size: 28, weight: .semibold))
-            Text("Envoyée directement à Claude — jamais à un serveur Triva.")
+            Text("Envoyée directement à \(providerDisplayName) — jamais à un serveur Triva.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -60,7 +63,7 @@ struct APIKeysView: View {
 
     private var entryField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SecureField("Clé API Claude", text: $rawKey)
+            SecureField("Clé API \(providerDisplayName)", text: $rawKey)
                 .padding(16)
                 .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
@@ -103,5 +106,7 @@ struct APIKeysView: View {
 }
 
 #Preview {
-    APIKeysView()
+    NavigationStack {
+        ProviderAPIKeyEntryView(providerDisplayName: "Claude", viewModel: APIKeysViewModel())
+    }
 }
