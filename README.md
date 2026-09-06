@@ -1,63 +1,53 @@
 # Triva
 
-App native **iOS / iPadOS / macOS** en **SwiftUI** (un seul projet Xcode), contrepartie native du projet web **Perplexica_ameliorer** (fork amélioré de Perplexica, renommé **Vane**).
+Triva est un moteur de recherche IA **privé et natif** pour iPhone, iPad et Mac. Pas de compte, pas de serveur : tout tourne sur ton appareil ou passe directement par les fournisseurs que **toi** tu choisis.
 
-## Règle fondamentale — zéro backend
+> ⚠️ **Projet en développement actif.** Triva n'est pas encore disponible sur l'App Store et l'expérience de recherche (le cœur de l'app) n'est pas encore fonctionnelle. Les écrans de configuration décrits ci-dessous, eux, sont utilisables dès aujourd'hui.
 
-- Aucun serveur, ni chez le développeur ni chez l'utilisateur.
-- Toute la logique (classification, recherche, scraping, scoring, failover réseau) est réécrite **nativement en Swift**.
-- Le code TypeScript de Vane sert uniquement de référence de lecture pour porter la logique — il n'est jamais exécuté par l'app.
+## Pourquoi Triva
 
-## BYOK partout
+La plupart des assistants de recherche IA passent par le serveur d'une entreprise, qui voit tes questions. Triva fait l'inverse :
 
-Ni compte utilisateur, ni authentification. Chaque clé est optionnelle et stockée uniquement en **Keychain local**.
+- **Aucun compte, aucune authentification.** Tu ouvres l'app et tu l'utilises.
+- **Aucun serveur intermédiaire.** Ni chez le développeur, ni ailleurs — la recherche et la génération de réponse se font directement entre ton appareil et les services que tu as choisis.
+- **Tu choisis qui traite tes données**, écran par écran, moteur par moteur.
 
-### 3 options IA
-1. **Apple Intelligence** (Foundation Models) — gratuit, sur l'appareil
-2. **MLX local**, en 2 tailles, téléchargement à la demande + mode essai — gratuit, sur l'appareil
-3. **Clé API personnelle** (BYOK cloud) — payant selon le fournisseur
+## Comment ça marche
+
+### Moteur IA — 3 choix, au choix
+
+1. **Apple Intelligence** — gratuit, tourne entièrement sur l'appareil (nécessite un iPhone/iPad/Mac compatible).
+2. **Modèle MLX local** — un modèle IA téléchargé une fois puis exécuté hors-ligne sur l'appareil, en 2 tailles selon la puissance de ton matériel. Un mode d'essai permet de le tester avant de le télécharger en entier.
+3. **Ta propre clé API** (BYOK — *Bring Your Own Key*) — connecte le fournisseur cloud de ton choix (OpenAI, Anthropic, ou tout service compatible) avec ta propre clé. Facturé directement par le fournisseur, jamais par Triva.
+
+Ta clé API n'est **jamais envoyée nulle part par Triva** : elle est stockée uniquement dans le Trousseau (Keychain) de ton appareil.
 
 ### Recherche
-- Liste d'instances **SearXNG publiques**, avec bascule automatique (failover)
-- Option BYOK recherche (Brave / Tavily / Google Programmable Search)
+
+Triva interroge des instances **SearXNG publiques** (un moteur de recherche open-source qui n'espionne pas), avec bascule automatique si une instance est indisponible. Tu peux aussi connecter ta propre clé Brave, Tavily ou Google Programmable Search pour des résultats plus fiables.
 
 ### Widgets
-- Uniquement ceux sans clé API (météo Open-Meteo, calculatrice)
 
-## Structure du projet
+Uniquement des widgets qui ne demandent aucune clé API ni compte (météo, calculatrice) — pas de service tiers caché derrière une fonctionnalité en apparence gratuite.
 
-```
-Triva/
-├── Core/
-│   ├── AI/            Sélection et intégration des fournisseurs IA (Apple Intelligence, MLX)
-│   └── Networking/     Client SearXNG, failover entre instances
-├── Features/
-│   └── Onboarding/     Sélection du moteur IA et des modèles MLX
-└── Resources/          Données embarquées (modèles MLX, instances SearXNG)
+## Où en est le projet
 
-TrivaTests/              Tests unitaires (Swift Testing)
-```
+Triva se construit par étapes. Aujourd'hui, sont déjà en place :
 
-## Tests
+- L'écran de choix du moteur IA (Apple Intelligence / MLX / BYOK cloud)
+- Le téléchargement et la sélection des modèles MLX
+- La configuration BYOK avec un catalogue multi-fournisseurs (OpenAI, Anthropic, et fournisseurs compatibles personnalisés)
 
-Le projet utilise **Swift Testing**. Les tests unitaires accompagnent toute logique métier pure (scoring, classification, failover réseau).
+Reste à venir avant une première expérience complète : le pipeline recherche → réponse, puis l'écran de conversation lui-même.
 
-```bash
-xcodebuild test -scheme Triva -destination "platform=macOS"
-```
+## Configuration requise
 
-## Configuration locale requise
+- iPhone, iPad ou Mac sous **iOS 27 / iPadOS 27 / macOS 27**
+- Pour Apple Intelligence : un appareil compatible Apple Intelligence
+- Aucune autre inscription ni configuration serveur
 
-- **`Triva/Resources/searxng-instances.json`** — liste d'instances SearXNG publiques versionnée dans le repo. Si tu as ta propre instance, ajoute-la localement en tête de liste (ne la commite pas). À revalider régulièrement, voir [searx.space](https://searx.space).
-- **`.claude/`** — configuration locale de l'outillage de développement, non versionnée (voir `.gitignore`).
+## Confidentialité
 
-## Devices de test
-
-- iPhone compatible Apple Intelligence
-- Mac Apple Silicon
-
-Le simulateur ne permet pas de tester Apple Intelligence ni les performances réelles de MLX.
-
-## Priorité
-
-Faire les choses proprement dès le départ plutôt que vite.
+- Aucune télémétrie, aucun tracking
+- Aucune donnée envoyée à un serveur intermédiaire
+- Les clés API restent en local, dans le Trousseau de ton appareil
