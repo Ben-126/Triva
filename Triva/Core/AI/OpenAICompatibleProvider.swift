@@ -27,7 +27,10 @@ enum OpenAICompatibleProviderError: Error, Sendable, Equatable {
 struct OpenAICompatibleProvider: AIGenerating {
     let account: String
     private let baseURL: URL
-    private let model: String
+    /// Non-`private` pour permettre à `CloudProviderSelectionResolverTests` (0.6
+    /// élargi) de vérifier que le modèle résolu vient bien de la sélection de
+    /// l'utilisateur, pas de `preset.defaultModel`.
+    let model: String
     private let keyStore: any APIKeyStoring
     private let client: any OpenAICompatibleRequesting
 

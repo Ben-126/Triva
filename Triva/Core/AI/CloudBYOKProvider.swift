@@ -31,7 +31,10 @@ enum CloudBYOKError: Error, Sendable, Equatable {
 struct CloudBYOKProvider: AIGenerating {
     private let keyStore: any APIKeyStoring
     private let account: String
-    private let model: ClaudeModel
+    /// Non-`private` uniquement pour permettre à `CloudProviderSelectionResolverTests`
+    /// (0.6 élargi) de vérifier que le modèle résolu correspond bien à la sélection de
+    /// l'utilisateur — même pattern que `OpenAICompatibleProvider.account`/`.model`.
+    let model: ClaudeModel
 
     init(
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),

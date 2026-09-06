@@ -17,11 +17,13 @@ import Foundation
 final class CustomProviderStore {
     private static let storageKey = "byok.customProviders"
     private let userDefaults: UserDefaults
+    private let selectionStore: CloudProviderSelectionStore
 
     private(set) var customPresets: [CloudProviderPreset] = []
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = .standard, selectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore()) {
         self.userDefaults = userDefaults
+        self.selectionStore = selectionStore
         load()
     }
 
@@ -38,9 +40,17 @@ final class CustomProviderStore {
         return preset
     }
 
+    /// Supprime le fournisseur personnalisé `id`. S'il était le fournisseur
+    /// BYOK actuellement sélectionné (`CloudProviderSelectionStore`), la
+    /// sélection est aussi effacée — sinon elle resterait orpheline
+    /// indéfiniment, sans preset pour la résoudre.
     func remove(id: String) {
         customPresets.removeAll { $0.id == id }
         persist()
+
+        if selectionStore.selection?.providerID == id {
+            selectionStore.selection = nil
+        }
     }
 
     private func load() {

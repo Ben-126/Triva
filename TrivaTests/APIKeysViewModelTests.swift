@@ -6,6 +6,7 @@
 //
 
 import Testing
+import Foundation
 @testable import Triva
 
 /// Faux magasin de clés, pour tester `APIKeysViewModel` sans toucher au vrai
@@ -51,11 +52,18 @@ private final class MockAPIKeyValidator: APIKeyValidating, @unchecked Sendable {
 
 @Suite("APIKeysViewModel")
 struct APIKeysViewModelTests {
+    /// `UserDefaults` isolé par test — jamais `.standard`, pour ne pas
+    /// toucher une vraie sélection persistée sur la machine qui exécute les
+    /// tests (`deleteStoredKey()` peut l'effacer, voir tests dédiés plus bas).
+    private func uniqueSelectionStore() -> CloudProviderSelectionStore {
+        CloudProviderSelectionStore(userDefaults: UserDefaults(suiteName: "test.apiKeysVM.\(UUID().uuidString)")!)
+    }
+
     @Test("Sauvegarde une clé valide et met à jour l'état")
     func saveValidKeySucceeds() async {
         let keyStore = MockAPIKeyStore()
         let validator = MockAPIKeyValidator()
-        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: validator)
+        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: validator, selectionStore: uniqueSelectionStore())
 
         await viewModel.save(rawKey: "sk-ant-test")
 
@@ -69,7 +77,7 @@ struct APIKeysViewModelTests {
     func saveInvalidKeyDoesNotStore() async {
         let keyStore = MockAPIKeyStore()
         let validator = MockAPIKeyValidator(shouldThrow: true)
-        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: validator)
+        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: validator, selectionStore: uniqueSelectionStore())
 
         await viewModel.save(rawKey: "sk-ant-bad")
 
@@ -85,7 +93,7 @@ struct APIKeysViewModelTests {
     func saveEmptyKeyFailsLocally() async {
         let keyStore = MockAPIKeyStore()
         let validator = MockAPIKeyValidator()
-        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: validator)
+        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: validator, selectionStore: uniqueSelectionStore())
 
         await viewModel.save(rawKey: "   ")
 
@@ -101,7 +109,7 @@ struct APIKeysViewModelTests {
     func deleteRemovesStoredKey() {
         let keyStore = MockAPIKeyStore()
         keyStore.storedKey = "sk-ant-existing"
-        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: MockAPIKeyValidator())
+        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: MockAPIKeyValidator(), selectionStore: uniqueSelectionStore())
         #expect(viewModel.hasStoredKey)
 
         viewModel.deleteStoredKey()
@@ -116,8 +124,44 @@ struct APIKeysViewModelTests {
         let keyStore = MockAPIKeyStore()
         keyStore.storedKey = "sk-ant-existing"
 
-        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: MockAPIKeyValidator())
+        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: MockAPIKeyValidator(), selectionStore: uniqueSelectionStore())
 
         #expect(viewModel.hasStoredKey)
+    }
+
+    @Test("Supprimer la clé du fournisseur actuellement sélectionné efface aussi la sélection")
+    func deletingKeyOfSelectedProviderClearsSelection() {
+        let keyStore = MockAPIKeyStore()
+        keyStore.storedKey = "sk-ant-existing"
+        let selectionStore = uniqueSelectionStore()
+        selectionStore.selection = CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5")
+        let viewModel = APIKeysViewModel(
+            keyStore: keyStore,
+            validator: MockAPIKeyValidator(),
+            account: "claude",
+            selectionStore: selectionStore
+        )
+
+        viewModel.deleteStoredKey()
+
+        #expect(selectionStore.selection == nil)
+    }
+
+    @Test("Supprimer la clé d'un fournisseur non sélectionné laisse la sélection intacte")
+    func deletingKeyOfOtherProviderKeepsSelection() {
+        let keyStore = MockAPIKeyStore()
+        keyStore.storedKey = "sk-groq-existing"
+        let selectionStore = uniqueSelectionStore()
+        selectionStore.selection = CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5")
+        let viewModel = APIKeysViewModel(
+            keyStore: keyStore,
+            validator: MockAPIKeyValidator(),
+            account: "groq",
+            selectionStore: selectionStore
+        )
+
+        viewModel.deleteStoredKey()
+
+        #expect(selectionStore.selection == CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5"))
     }
 }

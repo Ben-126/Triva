@@ -25,15 +25,18 @@ final class APIKeysViewModel {
     private let keyStore: any APIKeyStoring
     private let validator: any APIKeyValidating
     private let account: String
+    private let selectionStore: CloudProviderSelectionStore
 
     init(
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
         validator: any APIKeyValidating = ClaudeAPIKeyValidator(),
-        account: String = CloudBYOKProviderKind.claude.rawValue
+        account: String = CloudBYOKProviderKind.claude.rawValue,
+        selectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore()
     ) {
         self.keyStore = keyStore
         self.validator = validator
         self.account = account
+        self.selectionStore = selectionStore
         hasStoredKey = ((try? keyStore.apiKey(account: account)) ?? nil)?.isEmpty == false
     }
 
@@ -57,9 +60,17 @@ final class APIKeysViewModel {
         }
     }
 
+    /// Supprime la clé Keychain de ce fournisseur. Si ce fournisseur était le
+    /// fournisseur BYOK actuellement sélectionné (`CloudProviderSelectionStore`),
+    /// la sélection est aussi effacée — sinon elle resterait orpheline
+    /// indéfiniment, sans clé pour la résoudre.
     func deleteStoredKey() {
         try? keyStore.deleteAPIKey(account: account)
         hasStoredKey = false
         state = .idle
+
+        if selectionStore.selection?.providerID == account {
+            selectionStore.selection = nil
+        }
     }
 }
