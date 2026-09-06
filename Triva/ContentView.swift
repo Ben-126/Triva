@@ -29,6 +29,7 @@ private struct EngineStatusView: View {
     @State private var isTesting = false
     @State private var showingMLXSelection = false
     @State private var validatedMLXModel: MLXModelCatalogEntry?
+    @State private var mlxSelectionStore = MLXModelSelectionStore()
 
     var body: some View {
         ScrollView {
@@ -66,9 +67,22 @@ private struct EngineStatusView: View {
         .sheet(isPresented: $showingMLXSelection) {
             MLXModelSelectionView { chosen in
                 validatedMLXModel = chosen
+                mlxSelectionStore.selectedModelID = chosen.id
                 showingMLXSelection = false
             }
         }
+        .onAppear { rehydrateValidatedMLXModel() }
+    }
+
+    /// Retrouve le modèle MLX précédemment validé (0.5) à partir de son id
+    /// persisté (`MLXModelSelectionStore`) — sinon cet écran perdrait le
+    /// choix de l'utilisateur à chaque relance de l'app, ce que ni
+    /// `MLXModelSelectionCoordinator` ni cet écran temporaire ne
+    /// persistaient jusqu'ici.
+    private func rehydrateValidatedMLXModel() {
+        guard validatedMLXModel == nil, let id = mlxSelectionStore.selectedModelID else { return }
+        guard let catalog = try? MLXModelCatalog.load() else { return }
+        validatedMLXModel = catalog.first { $0.id == id }
     }
 
     @ViewBuilder

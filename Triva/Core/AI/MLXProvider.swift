@@ -72,7 +72,10 @@ actor MLXProvider: AIGenerating {
         let makeSession: @Sendable () -> LanguageModelSession
     }
 
-    private let entry: MLXModelCatalogEntry
+    /// Non-`private` uniquement pour permettre à `MLXModelSelectionResolverTests`
+    /// de vérifier que le provider résolu correspond bien à l'entrée attendue —
+    /// même pattern que `CloudBYOKProvider.model`/`OpenAICompatibleProvider.model`.
+    let entry: MLXModelCatalogEntry
     private var loaded: LoadedModel?
     /// Levier d'éviction du modèle *en cours de construction*, posé dès que
     /// `MLXLanguageModel` existe — donc AVANT `preload()`, pas après. Voir
