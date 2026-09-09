@@ -123,6 +123,34 @@ actor MLXProvider: AIGenerating {
         }
     }
 
+    /// Vrai streaming token-par-token, même principe qu'
+    /// `AppleIntelligenceProvider.streamGenerate(prompt:)`. `nonisolated` est
+    /// nécessaire ici : `AIGenerating.streamGenerate` n'est pas `async`, donc
+    /// un appelant hors de l'acteur doit pouvoir l'appeler sans `await` — la
+    /// lecture de `loaded` (état isolé à l'acteur) se fait alors via un
+    /// `await self.loaded` explicite à l'intérieur de la tâche, avant tout
+    /// streaming réel, exactement comme le `guard let loaded` de `generate()`.
+    nonisolated func streamGenerate(prompt: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                guard let loaded = await self.loaded else {
+                    continuation.finish(throwing: MLXProviderError.modelNotLoaded)
+                    return
+                }
+
+                do {
+                    for try await snapshot in loaded.makeSession().streamResponse(to: prompt) {
+                        continuation.yield(snapshot.content)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: MLXProviderError.generationFailed(description: String(describing: error)))
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     /// À appeler quand l'utilisateur annule un téléchargement ou abandonne ce
     /// provider (voir `MLXModelSelectionCoordinator.cancelDownload()` /
     /// `.chooseAnotherModel()`).

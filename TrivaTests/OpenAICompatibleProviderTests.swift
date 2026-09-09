@@ -109,4 +109,41 @@ struct OpenAICompatibleProviderTests {
         let provider = OpenAICompatibleProvider(preset: preset)
         #expect(provider.account == "groq")
     }
+
+    /// `OpenAICompatibleProvider` n'implémente pas `streamGenerate(prompt:)` —
+    /// il hérite tel quel de l'implémentation par défaut du protocole
+    /// `AIGenerating` (0.8) : un seul yield contenant le texte complet de
+    /// `generate(prompt:)`, puis fin normale du flux.
+    @Test("streamGenerate() par défaut produit un seul yield avec le texte complet")
+    func streamGenerateDefaultProducesSingleYieldWithFullText() async throws {
+        let provider = OpenAICompatibleProvider(
+            preset: preset,
+            keyStore: MockAPIKeyStore(storedKey: "sk-test"),
+            client: MockOpenAICompatibleClient(response: "Réponse complète")
+        )
+
+        var received: [String] = []
+        for try await chunk in provider.streamGenerate(prompt: "Bonjour") {
+            received.append(chunk)
+        }
+
+        #expect(received == ["Réponse complète"])
+    }
+
+    @Test("streamGenerate() par défaut propage l'erreur de generate() sans yield")
+    func streamGenerateDefaultPropagatesGenerateError() async throws {
+        let provider = OpenAICompatibleProvider(
+            preset: preset,
+            keyStore: MockAPIKeyStore(storedKey: nil),
+            client: MockOpenAICompatibleClient()
+        )
+
+        var received: [String] = []
+        await #expect(throws: OpenAICompatibleProviderError.missingAPIKey) {
+            for try await chunk in provider.streamGenerate(prompt: "Bonjour") {
+                received.append(chunk)
+            }
+        }
+        #expect(received.isEmpty)
+    }
 }

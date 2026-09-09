@@ -16,6 +16,16 @@ struct SearchOrchestratorResult: Sendable, Equatable {
     let sources: [SearXNGSearchResult]
 }
 
+/// Résultat du pipeline en streaming (0.8) : les sources sont déjà connues
+/// (la recherche est terminée et awaited) au moment où l'appelant les reçoit,
+/// seul le texte de réponse arrive progressivement via `textStream`.
+/// `Equatable` non conformé volontairement : un `AsyncThrowingStream` ne l'est
+/// pas.
+struct StreamingAnswer: Sendable {
+    let sources: [SearXNGSearchResult]
+    let textStream: AsyncThrowingStream<String, Error>
+}
+
 /// Pipeline recherche -> génération **minimal** (0.7) : requête -> recherche
 /// SearXNG (via `FailoverManager`, déjà résilient aux instances en panne) ->
 /// contexte simple à partir des N premiers résultats -> appel au provider IA
@@ -47,6 +57,18 @@ struct SearchOrchestrator: Sendable {
         let prompt = Self.buildPrompt(query: query, sources: sources)
         let answer = try await aiProvider.generate(prompt: prompt)
         return SearchOrchestratorResult(answer: answer, sources: sources)
+    }
+
+    /// Même pipeline que `answer(query:)` jusqu'à la construction du prompt
+    /// (recherche et prompt sont awaited ici, pas dans le flux renvoyé) ; seule
+    /// la génération elle-même est déléguée à `aiProvider.streamGenerate(prompt:)`
+    /// pour un affichage progressif côté UI (0.8).
+    func streamAnswer(query: String) async throws -> StreamingAnswer {
+        let response = try await failoverManager.search(query: query)
+        let sources = Array(response.results.prefix(maxResultsUsedForContext))
+        let prompt = Self.buildPrompt(query: query, sources: sources)
+        let textStream = aiProvider.streamGenerate(prompt: prompt)
+        return StreamingAnswer(sources: sources, textStream: textStream)
     }
 
     /// Construction du prompt isolée dans une fonction pure et testable

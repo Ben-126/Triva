@@ -59,4 +59,43 @@ struct CloudBYOKProviderTests {
         #expect(CloudBYOKProviderKind.claude.rawValue == "claude")
         #expect(CloudBYOKProviderKind.allCases == [.claude])
     }
+
+    @Test("streamGenerate() finish immédiatement avec missingAPIKey quand aucune clé n'est stockée, sans yield")
+    func streamGenerateFinishesImmediatelyWhenNoKeyStored() async throws {
+        let provider = CloudBYOKProvider(keyStore: MockAPIKeyStore(storedKey: nil))
+
+        var received: [String] = []
+        await #expect(throws: CloudBYOKError.missingAPIKey) {
+            for try await chunk in provider.streamGenerate(prompt: "Bonjour") {
+                received.append(chunk)
+            }
+        }
+        #expect(received.isEmpty)
+    }
+
+    @Test("streamGenerate() finish immédiatement avec missingAPIKey quand la clé stockée est vide, sans yield")
+    func streamGenerateFinishesImmediatelyWhenKeyIsEmpty() async throws {
+        let provider = CloudBYOKProvider(keyStore: MockAPIKeyStore(storedKey: ""))
+
+        var received: [String] = []
+        await #expect(throws: CloudBYOKError.missingAPIKey) {
+            for try await chunk in provider.streamGenerate(prompt: "Bonjour") {
+                received.append(chunk)
+            }
+        }
+        #expect(received.isEmpty)
+    }
+
+    @Test("streamGenerate() finish avec generationFailed quand le Keychain renvoie une erreur")
+    func streamGenerateFinishesWithGenerationFailedWhenKeyStoreThrows() async throws {
+        let provider = CloudBYOKProvider(keyStore: MockAPIKeyStore(readError: StubError()))
+
+        var received: [String] = []
+        await #expect(throws: CloudBYOKError.self) {
+            for try await chunk in provider.streamGenerate(prompt: "Bonjour") {
+                received.append(chunk)
+            }
+        }
+        #expect(received.isEmpty)
+    }
 }

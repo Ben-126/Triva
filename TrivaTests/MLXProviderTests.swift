@@ -79,6 +79,24 @@ struct MLXProviderTests {
         }
     }
 
+    @Test("streamGenerate() finish immédiatement avec modelNotLoaded tant que prepare() n'a pas été appelé, sans yield")
+    func streamGenerateFinishesImmediatelyBeforePrepare() async throws {
+        let entry = Self.makeEntry(
+            id: "qwen3-0_6b-4bit",
+            huggingFaceRepo: "mlx-community/Qwen3-0.6B-4bit",
+            registryKey: "qwen3_0_6b_4bit"
+        )
+        let provider = MLXProvider(entry: entry)
+
+        var received: [String] = []
+        await #expect(throws: MLXProviderError.modelNotLoaded) {
+            for try await chunk in provider.streamGenerate(prompt: "test") {
+                received.append(chunk)
+            }
+        }
+        #expect(received.isEmpty)
+    }
+
     private static func makeEntry(
         id: String,
         huggingFaceRepo: String,

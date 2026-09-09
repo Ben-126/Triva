@@ -17,18 +17,14 @@ struct ContentView: View {
     }
 }
 
-/// Écran temporaire de V0 : affiche le moteur choisi et permet de tester une
-/// vraie génération Apple Intelligence sur l'appareil, pour valider 0.4 en
-/// conditions réelles (l'outil de snippet Xcode n'y arrive pas de façon fiable).
-/// Contient aussi, depuis 0.7, un test du pipeline recherche -> génération
-/// complet (`SearchTestSection`) pour les 3 moteurs IA, sur le même principe.
-/// Sera remplacé par le vrai chat (0.8).
+/// Affiche le moteur IA choisi (badge + légende de confidentialité,
+/// DESIGN.md) et l'écran de chat réel (`ChatView`, 0.8) pour ce moteur. Gère
+/// aussi tout ce qui est spécifique à la sélection du moteur : choix/
+/// changement de modèle MLX, indisponibilité d'Apple Intelligence.
 private struct EngineStatusView: View {
     let selectedEngine: AIEngineOption
     let onChangeEngine: () -> Void
 
-    @State private var appleIntelligenceResult: Result<String, AppleIntelligenceError>?
-    @State private var isTesting = false
     @State private var showingMLXSelection = false
     @State private var validatedMLXModel: MLXModelCatalogEntry?
     @State private var mlxSelectionStore = MLXModelSelectionStore()
@@ -36,19 +32,68 @@ private struct EngineStatusView: View {
     @State private var customProviderStore = CustomProviderStore()
     /// Provider IA déjà résolu (et, pour MLX, déjà préparé) pour la sélection
     /// actuelle — évite de recréer un `MLXProvider` et de refaire un
-    /// `prepare()` coûteux (voir son commentaire de tête) à chaque recherche
-    /// de `SearchTestSection`. Invalidé explicitement quand la sélection
-    /// change (nouveau modèle MLX choisi).
+    /// `prepare()` coûteux (voir son commentaire de tête) à chaque échange du
+    /// chat. Invalidé explicitement quand la sélection change (nouveau
+    /// modèle MLX choisi).
     @State private var preparedProvider: (any AIGenerating)?
     /// `FailoverManager` unique pour la durée de vie de cet écran, comme
     /// `mlxSelectionStore`/`cloudSelectionStore` — recréer un
-    /// `FailoverManager` à chaque recherche annulerait son cache de dernière
+    /// `FailoverManager` à chaque échange annulerait son cache de dernière
     /// instance SearXNG fonctionnelle (voir son commentaire de tête).
     @State private var failoverManager: FailoverManager?
+    /// Un seul `ChatViewModel` pour la durée de vie de cet écran — recréé
+    /// systématiquement à chaque re-render, il perdrait le fil de
+    /// conversation en cours à chaque rafraîchissement de `body`. Même
+    /// principe de cache que `preparedProvider`/`failoverManager`.
+    @State private var chatViewModel: ChatViewModel?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+
+            if selectedEngine == .mlxLocal, validatedMLXModel == nil {
+                Button("Choisir un modèle MLX") {
+                    showingMLXSelection = true
+                }
+                .buttonStyle(.glassProminent)
+                .padding(.horizontal, 20)
+            } else if selectedEngine == .appleIntelligence, let error = AppleIntelligenceProvider().availabilityError {
+                Label("Indisponible : \(String(describing: error))", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 20)
+            } else if let chatViewModel {
+                ChatView(viewModel: chatViewModel)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 24)
+        .sheet(isPresented: $showingMLXSelection) {
+            MLXModelSelectionView { chosen in
+                validatedMLXModel = chosen
+                mlxSelectionStore.selectedModelID = chosen.id
+                // Un autre modèle a été choisi : le provider déjà préparé (si
+                // il y en avait un) ne correspond plus à la sélection.
+                preparedProvider = nil
+                showingMLXSelection = false
+            }
+        }
+        .onAppear {
+            rehydrateValidatedMLXModel()
+            ensureChatViewModel()
+        }
+    }
+
+    /// Badge moteur IA + légende de confidentialité, et pour MLX local le
+    /// modèle actif avec un bouton pour en changer — la seule partie de cet
+    /// écran qui ne fait pas partie du chat lui-même. Tous les éléments de
+    /// verre de ce bloc (badge, carte "Modèle actif", bouton "Changer de
+    /// modèle MLX", bouton "Changer de moteur") partagent un seul
+    /// `GlassEffectContainer` commun (DESIGN.md : "toujours envelopper des
+    /// éléments de verre frères dans un `GlassEffectContainer`") — jamais de
+    /// container imbriqué dans un autre.
+    private var header: some View {
+        GlassEffectContainer(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     Label(selectedEngine.privacyBadge.text, systemImage: selectedEngine.privacyBadge.icon)
                         .font(.footnote.weight(.medium))
@@ -63,37 +108,24 @@ private struct EngineStatusView: View {
                         .padding(.leading, 4)
                 }
 
-                if selectedEngine == .appleIntelligence {
-                    appleIntelligenceTestSection
-                }
-
-                if selectedEngine == .mlxLocal {
-                    mlxTestSection
-                }
-
-                if selectedEngine == .cloudBYOK {
-                    cloudBYOKTestSection
+                if selectedEngine == .mlxLocal, let validatedMLXModel {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Modèle actif : \(validatedMLXModel.displayName)")
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                        Button("Changer de modèle MLX") {
+                            showingMLXSelection = true
+                        }
+                        .buttonStyle(.glass)
+                    }
                 }
 
                 Button("Changer de moteur", action: onChangeEngine)
                     .buttonStyle(.glass)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 40)
         }
-        .sheet(isPresented: $showingMLXSelection) {
-            MLXModelSelectionView { chosen in
-                validatedMLXModel = chosen
-                mlxSelectionStore.selectedModelID = chosen.id
-                // Un autre modèle a été choisi : le provider déjà préparé (si
-                // il y en avait un) ne correspond plus à la sélection.
-                preparedProvider = nil
-                showingMLXSelection = false
-            }
-        }
-        .onAppear { rehydrateValidatedMLXModel() }
+        .padding(.horizontal, 20)
     }
 
     /// Retrouve le modèle MLX précédemment validé (0.5) à partir de son id
@@ -150,197 +182,22 @@ private struct EngineStatusView: View {
         return manager
     }
 
-    @ViewBuilder
-    private var mlxTestSection: some View {
-        if let validatedMLXModel {
-            // Un seul `GlassEffectContainer` partagé pour tous les éléments de
-            // verre frères de ce groupe (voir DESIGN.md) plutôt que de les
-            // laisser hors container à côté du container interne de
-            // `SearchTestSection`.
-            GlassEffectContainer(spacing: 12) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Modèle actif : \(validatedMLXModel.displayName)")
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
-                    Button("Changer de modèle MLX") {
-                        showingMLXSelection = true
-                    }
-                    .buttonStyle(.glass)
-
-                    SearchTestSection(resolveProvider: resolveActiveProvider, resolveFailoverManager: resolveFailoverManager)
-                }
-            }
-        } else {
-            Button("Choisir un modèle MLX") {
-                showingMLXSelection = true
-            }
-            .buttonStyle(.glassProminent)
-        }
-    }
-
-    @ViewBuilder
-    private var appleIntelligenceTestSection: some View {
-        if let error = AppleIntelligenceProvider().availabilityError {
-            Label("Indisponible : \(String(describing: error))", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-        } else {
-            // Même principe que `mlxTestSection` : un seul container partagé
-            // pour ce groupe de verre plutôt que deux containers côte à côte.
-            GlassEffectContainer(spacing: 12) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Button {
-                        Task { await testGeneration() }
-                    } label: {
-                        if isTesting {
-                            ProgressView()
-                        } else {
-                            Text("Tester une génération")
-                        }
-                    }
-                    // Action secondaire : la recherche ci-dessous est
-                    // désormais le test principal de cette section — une
-                    // seule action `.glassProminent` par écran (DESIGN.md).
-                    .buttonStyle(.glass)
-                    .disabled(isTesting)
-
-                    if let appleIntelligenceResult {
-                        switch appleIntelligenceResult {
-                        case .success(let text):
-                            Text(text)
-                                .padding(16)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .glassEffect(.regular, in: .rect(cornerRadius: 20))
-                        case .failure(let error):
-                            Text("Erreur : \(String(describing: error))")
-                                .foregroundStyle(.red)
-                        }
-                    }
-
-                    SearchTestSection(resolveProvider: resolveActiveProvider, resolveFailoverManager: resolveFailoverManager)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var cloudBYOKTestSection: some View {
-        GlassEffectContainer(spacing: 12) {
-            SearchTestSection(resolveProvider: resolveActiveProvider, resolveFailoverManager: resolveFailoverManager)
-        }
-    }
-
-    private func testGeneration() async {
-        isTesting = true
-        defer { isTesting = false }
-        do {
-            let text = try await AppleIntelligenceProvider().generate(prompt: "Dis bonjour en une phrase courte.")
-            appleIntelligenceResult = .success(text)
-        } catch let error as AppleIntelligenceError {
-            appleIntelligenceResult = .failure(error)
-        } catch {
-            appleIntelligenceResult = .failure(.generationFailed(description: String(describing: error)))
-        }
-    }
-}
-
-/// Test bout-en-bout du pipeline recherche -> génération minimal (0.7),
-/// commun aux 3 moteurs IA — seule la façon de résoudre le provider change
-/// d'un moteur à l'autre (`resolveProvider`, fourni par l'appelant). Reste
-/// volontairement bricolé (pas de scoring de sources, pas de citations,
-/// liste de sources en simple titre + lien) : ce n'est pas l'UI de chat
-/// finale (0.8).
-private struct SearchTestSection: View {
-    let resolveProvider: () async throws -> any AIGenerating
-    /// Fourni par l'écran parent (`EngineStatusView`) plutôt que créé ici, pour
-    /// que le cache de dernière instance SearXNG fonctionnelle de
-    /// `FailoverManager` survive à plusieurs recherches successives.
-    let resolveFailoverManager: () throws -> FailoverManager
-
-    @State private var query = ""
-    @State private var isSearching = false
-    @State private var result: SearchOrchestratorResult?
-    @State private var errorDescription: String?
-
-    /// Ne s'enveloppe plus dans son propre `GlassEffectContainer` : c'est
-    /// désormais l'appelant qui fournit un container partagé englobant cette
-    /// section et ses éventuels frères de verre (voir DESIGN.md).
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("TESTER UNE RECHERCHE")
-                .font(.system(size: 11, weight: .medium))
-                .tracking(1.5)
-                .foregroundStyle(.tertiary)
-
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.tint)
-                TextField("Pose ta question…", text: $query)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
-
-            Button {
-                Task { await search() }
-            } label: {
-                if isSearching {
-                    ProgressView()
-                } else {
-                    Text("Rechercher")
-                }
-            }
-            .buttonStyle(.glassProminent)
-            .disabled(isSearching || query.isEmpty)
-
-            if let errorDescription {
-                Text("Erreur : \(errorDescription)")
-                    .foregroundStyle(.red)
-            }
-
-            if let result {
-                resultSection(result)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func resultSection(_ result: SearchOrchestratorResult) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(result.answer)
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .glassEffect(.regular, in: .rect(cornerRadius: 20))
-
-            if !result.sources.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(result.sources) { source in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(source.title)
-                                .font(.footnote.weight(.medium))
-                            Text(source.url)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func search() async {
-        isSearching = true
-        errorDescription = nil
-        result = nil
-        defer { isSearching = false }
-        do {
-            let aiProvider = try await resolveProvider()
-            let failoverManager = try resolveFailoverManager()
-            let orchestrator = SearchOrchestrator(failoverManager: failoverManager, aiProvider: aiProvider)
-            result = try await orchestrator.answer(query: query)
-        } catch {
-            errorDescription = String(describing: error)
-        }
+    /// Crée le `ChatViewModel` de cet écran au besoin et le met en cache
+    /// (comme `preparedProvider`/`failoverManager`) — jamais recréé à chaque
+    /// re-render de `body`, ce qui perdrait le fil de conversation en cours.
+    /// Appelée depuis `.onAppear`, jamais depuis `body`, pour ne pas écrire
+    /// dans `@State` pendant l'évaluation de la vue (SwiftUI l'interdit :
+    /// "Modifying state during view update"). Ses closures de résolution
+    /// pointent vers `resolveActiveProvider`/`resolveFailoverManager`
+    /// ci-dessus : elles restent valables même après un changement de modèle
+    /// MLX (`preparedProvider` est alors invalidé, mais pas ce
+    /// `ChatViewModel`).
+    private func ensureChatViewModel() {
+        guard chatViewModel == nil else { return }
+        chatViewModel = ChatViewModel(
+            resolveProvider: resolveActiveProvider,
+            resolveFailoverManager: resolveFailoverManager
+        )
     }
 }
 

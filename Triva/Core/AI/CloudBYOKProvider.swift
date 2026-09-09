@@ -65,6 +65,40 @@ struct CloudBYOKProvider: AIGenerating {
         }
     }
 
+    /// Vrai streaming token-par-token, même principe qu'
+    /// `AppleIntelligenceProvider.streamGenerate(prompt:)`. La clé API est lue
+    /// AVANT toute construction de session (comme `readAPIKey()` dans
+    /// `generate()`) : si absente, le flux `finish()` immédiatement avec
+    /// l'erreur, sans jamais construire de `ClaudeLanguageModel`.
+    func streamGenerate(prompt: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let apiKey: String
+            do {
+                apiKey = try readAPIKey()
+            } catch {
+                continuation.finish(throwing: error)
+                return
+            }
+
+            let languageModel = ClaudeLanguageModel(name: model, auth: .apiKey(apiKey))
+            let task = Task {
+                do {
+                    try await languageModel.authenticateIfNeeded()
+                    let session = LanguageModelSession(model: languageModel)
+                    for try await snapshot in session.streamResponse(to: prompt) {
+                        continuation.yield(snapshot.content)
+                    }
+                    continuation.finish()
+                } catch let error as CloudBYOKError {
+                    continuation.finish(throwing: error)
+                } catch {
+                    continuation.finish(throwing: CloudBYOKError.generationFailed(description: String(describing: error)))
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     /// Logique pure isolée du Keychain réel via `APIKeyStoring`, pour rester
     /// testable sans vraie clé API.
     private func readAPIKey() throws -> String {

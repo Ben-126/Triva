@@ -47,4 +47,30 @@ struct AppleIntelligenceProviderTests {
         func accepts<M: LanguageModel>(_ model: M) {}
         accepts(SystemLanguageModel.default)
     }
+
+    /// Même limite que `ActiveAIProviderResolverTests.appleIntelligenceUnavailable` :
+    /// pas de seam pour forcer `SystemLanguageModel.availability` à
+    /// `.unavailable` depuis un test — on vérifie donc le guard de
+    /// `streamGenerate(prompt:)` conditionnellement à l'état réel de la
+    /// machine de test, et on signale explicitement (sévérité `.warning`)
+    /// quand la branche n'est pas exercée plutôt que de la sauter en silence.
+    @Test("streamGenerate() finish immédiatement avec l'erreur mappée quand Apple Intelligence est indisponible, sans yield")
+    func streamGenerateFinishesImmediatelyWhenUnavailable() async throws {
+        let provider = AppleIntelligenceProvider()
+        guard let expectedError = provider.availabilityError else {
+            Issue.record(
+                "Apple Intelligence est disponible sur cette machine : la branche streamGenerateFinishesImmediatelyWhenUnavailable n'est pas exercée par ce test.",
+                severity: .warning
+            )
+            return
+        }
+
+        var received: [String] = []
+        await #expect(throws: expectedError) {
+            for try await chunk in provider.streamGenerate(prompt: "Bonjour") {
+                received.append(chunk)
+            }
+        }
+        #expect(received.isEmpty)
+    }
 }
