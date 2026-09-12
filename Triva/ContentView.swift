@@ -51,16 +51,16 @@ private struct EngineStatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            if selectedEngine == .mlxLocal, validatedMLXModel == nil {
-                Button("Choisir un modèle MLX") {
-                    showingMLXSelection = true
-                }
-                .buttonStyle(.glassProminent)
-                .padding(.horizontal, 20)
-            } else if selectedEngine == .appleIntelligence, let error = AppleIntelligenceProvider().availabilityError {
+            if selectedEngine == .appleIntelligence, let error = AppleIntelligenceProvider().availabilityError {
                 Label("Indisponible : \(String(describing: error))", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 20)
+            } else if selectedEngine == .mlxLocal, validatedMLXModel == nil {
+                // Le CTA "Choisir un modèle MLX" vit désormais dans `header`
+                // (voir son commentaire), AVANT "Changer de moteur" — rien à
+                // afficher ici tant qu'aucun modèle n'est validé : le chat ne
+                // peut de toute façon pas être utilisé sans modèle.
+                EmptyView()
             } else if let chatViewModel {
                 ChatView(viewModel: chatViewModel)
             }
@@ -83,14 +83,22 @@ private struct EngineStatusView: View {
         }
     }
 
-    /// Badge moteur IA + légende de confidentialité, et pour MLX local le
-    /// modèle actif avec un bouton pour en changer — la seule partie de cet
-    /// écran qui ne fait pas partie du chat lui-même. Tous les éléments de
-    /// verre de ce bloc (badge, carte "Modèle actif", bouton "Changer de
-    /// modèle MLX", bouton "Changer de moteur") partagent un seul
-    /// `GlassEffectContainer` commun (DESIGN.md : "toujours envelopper des
-    /// éléments de verre frères dans un `GlassEffectContainer`") — jamais de
-    /// container imbriqué dans un autre.
+    /// Badge moteur IA + légende de confidentialité, et pour MLX local le CTA
+    /// de choix de modèle (ou le modèle actif + bouton pour en changer) — la
+    /// seule partie de cet écran qui ne fait pas partie du chat lui-même.
+    /// Tous les éléments de verre de ce bloc (badge, CTA "Choisir un modèle
+    /// MLX", carte "Modèle actif", bouton "Changer de modèle MLX", bouton
+    /// "Changer de moteur") partagent un seul `GlassEffectContainer` commun
+    /// (DESIGN.md : "toujours envelopper des éléments de verre frères dans un
+    /// `GlassEffectContainer`") — jamais de container imbriqué dans un autre.
+    ///
+    /// Ordre volontaire : le CTA "Choisir un modèle MLX" (`.glassProminent`,
+    /// l'action OBLIGATOIRE sans laquelle le chat est inutilisable) est
+    /// TOUJOURS rendu avant "Changer de moteur" (`.glass`, une simple
+    /// échappatoire secondaire) — DESIGN.md réserve `.glassProminent` à
+    /// l'action principale d'un écran, ce que contredirait le fait de la
+    /// faire suivre visuellement une action secondaire en scannant l'écran de
+    /// haut en bas.
     private var header: some View {
         GlassEffectContainer(spacing: 12) {
             VStack(alignment: .leading, spacing: 12) {
@@ -106,6 +114,13 @@ private struct EngineStatusView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 4)
+                }
+
+                if selectedEngine == .mlxLocal, validatedMLXModel == nil {
+                    Button("Choisir un modèle MLX") {
+                        showingMLXSelection = true
+                    }
+                    .buttonStyle(.glassProminent)
                 }
 
                 if selectedEngine == .mlxLocal, let validatedMLXModel {

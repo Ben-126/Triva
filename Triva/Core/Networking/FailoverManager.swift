@@ -36,11 +36,24 @@ actor FailoverManager {
         }
 
         for instance in orderedByCache() {
+            try Task.checkCancellation()
             do {
                 let response = try await client.search(query: query, options: options, instance: instance)
                 cachedInstance = instance
                 return response
             } catch {
+                // Une Task annulée pendant `client.search(...)` (ex.
+                // `URLError.cancelled` propagé depuis `URLSession`) n'est PAS
+                // un vrai échec d'instance : la rethrow immédiatement plutôt
+                // que de continuer à tester les instances restantes (réseau/
+                // batterie gaspillés pour des recherches dont plus personne
+                // n'a besoin), et surtout SANS toucher `cachedInstance` — la
+                // dernière instance connue pour fonctionner reste valable,
+                // cette annulation n'a rien à voir avec sa disponibilité
+                // réelle.
+                if Task.isCancelled {
+                    throw error
+                }
                 continue
             }
         }

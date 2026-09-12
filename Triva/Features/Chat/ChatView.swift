@@ -26,6 +26,12 @@ struct ChatView: View {
     /// alors que `ChatViewModel.send(query:)` réagit correctement à
     /// l'annulation de cette `Task` (voir son commentaire de tête).
     @State private var sendTask: Task<Void, Never>?
+    /// Suit si l'utilisateur est actuellement ancré en bas de la liste — voir
+    /// `messagesList`/`onScrollGeometryChange` : tant que c'est vrai, chaque
+    /// nouveau morceau de texte streamé réancre le scroll en bas ; dès que
+    /// l'utilisateur remonte manuellement pendant un streaming, ça devient
+    /// faux et le scroll automatique s'arrête jusqu'au prochain envoi.
+    @State private var isPinnedToBottom = true
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @FocusState private var isDraftFocused: Bool
 
@@ -51,16 +57,19 @@ struct ChatView: View {
         }
     }
 
+    /// Ancre fixe placée après le dernier message ET le bandeau d'erreur (s'il
+    /// y en a un) : le scroll automatique cible TOUJOURS cette ancre plutôt
+    /// que l'id du dernier message, pour que le bandeau d'erreur — quand il
+    /// apparaît juste après un échec, donc juste après le dernier message
+    /// assistant — soit systématiquement révélé par le scroll au lieu de
+    /// rester au-dessus de la zone visible (le bandeau était auparavant en
+    /// TÊTE de liste, hors du chemin du scroll qui, lui, ancre en bas).
+    private static let bottomAnchorID = "chat-bottom-anchor"
+
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let errorDescription = viewModel.errorDescription {
-                        Label("Erreur : \(errorDescription)", systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
                     GlassEffectContainer(spacing: 16) {
                         VStack(alignment: .leading, spacing: 16) {
                             ForEach(viewModel.messages) { message in
@@ -69,6 +78,18 @@ struct ChatView: View {
                             }
                         }
                     }
+
+                    if let errorDescription = viewModel.errorDescription {
+                        Label("Erreur : \(errorDescription)", systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityElement(children: .combine)
+                    }
+
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.bottomAnchorID)
+                        .accessibilityHidden(true)
                 }
                 .frame(maxWidth: contentMaxWidth)
                 .frame(maxWidth: .infinity)
@@ -76,20 +97,49 @@ struct ChatView: View {
                 .padding(.top, 24)
                 .padding(.bottom, 20)
             }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                let distanceFromBottom = geometry.contentSize.height
+                    - geometry.contentOffset.y
+                    - geometry.containerSize.height
+                return distanceFromBottom < 80
+            } action: { _, isNearBottom in
+                isPinnedToBottom = isNearBottom
+            }
             .onChange(of: viewModel.messages.count) {
-                scrollToLastMessage(proxy: proxy)
+                // Un nouvel échange (nouvelle question envoyée) reprend
+                // toujours le suivi automatique, même si l'utilisateur avait
+                // remonté pour relire une réponse précédente.
+                isPinnedToBottom = true
+                scrollToBottom(proxy: proxy)
             }
             .onChange(of: viewModel.messages.last?.text) {
-                scrollToLastMessage(proxy: proxy)
+                // Pendant le streaming d'une réponse longue, ne réancre PAS le
+                // scroll si l'utilisateur a délibérément remonté pour relire
+                // le début — sinon chaque token reçu annulerait son geste.
+                guard isPinnedToBottom else { return }
+                scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: viewModel.errorDescription) { _, newValue in
+                scrollToBottom(proxy: proxy)
+                if let newValue {
+                    announce(error: newValue)
+                }
             }
         }
     }
 
-    private func scrollToLastMessage(proxy: ScrollViewProxy) {
-        guard let lastID = viewModel.messages.last?.id else { return }
+    private func scrollToBottom(proxy: ScrollViewProxy) {
         withAnimation {
-            proxy.scrollTo(lastID, anchor: .bottom)
+            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
         }
+    }
+
+    /// Annonce l'échec à VoiceOver dès qu'il survient : sans ceci, un
+    /// utilisateur VoiceOver n'a aucun moyen de savoir qu'une erreur vient de
+    /// s'afficher (le bandeau est un `Label` statique, pas un élément qui
+    /// prend le focus tout seul).
+    private func announce(error description: String) {
+        AccessibilityNotification.Announcement("Erreur : \(description)").post()
     }
 
     private var composer: some View {
@@ -103,12 +153,23 @@ struct ChatView: View {
                     .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
 
                 Button {
-                    send()
+                    if viewModel.isGenerating {
+                        // Affordance d'annulation : sans elle, une génération
+                        // qui ne répond plus (ex. connexion BYOK qui pend)
+                        // tourne jusqu'au timeout réseau par défaut, sans
+                        // aucun moyen de l'arrêter autrement qu'en quittant
+                        // l'écran (ce qui annule aussi via `.onDisappear`,
+                        // mais fait perdre l'écran).
+                        sendTask?.cancel()
+                    } else {
+                        send()
+                    }
                 } label: {
-                    Image(systemName: "arrow.up")
+                    Image(systemName: viewModel.isGenerating ? "stop.fill" : "arrow.up")
                 }
                 .buttonStyle(.glassProminent)
-                .disabled(isSendDisabled)
+                .disabled(viewModel.isGenerating ? false : isSendDisabled)
+                .accessibilityLabel(viewModel.isGenerating ? "Arrêter la génération" : "Envoyer")
             }
             .frame(maxWidth: contentMaxWidth)
             .frame(maxWidth: .infinity)
@@ -213,4 +274,38 @@ private func previewViewModel(response: String, sources: [SearXNGSearchResult]) 
     )
     return ChatView(viewModel: viewModel)
         .task { await viewModel.send(query: "Compare deux produits.") }
+}
+
+/// `FailoverManager` factice qui réussit une première fois, puis échoue
+/// systématiquement ensuite (aucune instance configurée à partir du 2e appel)
+/// — jamais vu par le processus de previews normal jusqu'ici (finding 16 de la
+/// revue 0.8) : sert à vérifier à quoi ressemble réellement le bandeau
+/// d'erreur quand un échange précédent existe déjà dans la liste (police,
+/// alignement, cohabitation avec le scroll auto-ancré en bas).
+private final class FlakyFailoverManagerFactory: @unchecked Sendable {
+    private var callCount = 0
+
+    func make() -> FailoverManager {
+        defer { callCount += 1 }
+        if callCount == 0 {
+            return FailoverManager(
+                client: PreviewSearXNGClient(results: PreviewSearXNGClient.sampleResults),
+                instances: [PreviewSearXNGClient.instance]
+            )
+        }
+        return FailoverManager(client: PreviewSearXNGClient(results: []), instances: [])
+    }
+}
+
+#Preview("Erreur — après un échange déjà réussi") {
+    let factory = FlakyFailoverManagerFactory()
+    let viewModel = ChatViewModel(
+        resolveProvider: { PreviewAIProvider(response: "Voici une première réponse, qui réussit.") },
+        resolveFailoverManager: factory.make
+    )
+    return ChatView(viewModel: viewModel)
+        .task {
+            await viewModel.send(query: "Première question, qui réussit.")
+            await viewModel.send(query: "Deuxième question, qui échoue.")
+        }
 }

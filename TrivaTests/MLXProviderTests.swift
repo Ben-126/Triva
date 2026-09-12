@@ -79,6 +79,20 @@ struct MLXProviderTests {
         }
     }
 
+    @Test("prepare() échoue immédiatement avec simulatorUnsupported sur le Simulateur — jamais de crash MLX (SIGABRT) faute de vrai GPU Metal (voir le rapport de crash de la revue 0.8)")
+    func prepareFailsImmediatelyOnSimulator() async throws {
+        let entry = Self.makeEntry(
+            id: "qwen3-0_6b-4bit",
+            huggingFaceRepo: "mlx-community/Qwen3-0.6B-4bit",
+            registryKey: "qwen3_0_6b_4bit"
+        )
+        let provider = MLXProvider(entry: entry)
+
+        await #expect(throws: MLXProviderError.simulatorUnsupported) {
+            try await provider.prepare()
+        }
+    }
+
     @Test("streamGenerate() finish immédiatement avec modelNotLoaded tant que prepare() n'a pas été appelé, sans yield")
     func streamGenerateFinishesImmediatelyBeforePrepare() async throws {
         let entry = Self.makeEntry(

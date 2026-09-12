@@ -20,7 +20,14 @@ final class MLXModelSelectionCoordinator {
         case downloading(fractionCompleted: Double)
         case trial
         case ready
-        case failed(description: String)
+        /// `isEnvironmentLimitation` distingue un VRAI échec de téléchargement/
+        /// génération (`false`, le cas courant) d'une limitation connue de
+        /// l'environnement (`true` — ex. `MLXProviderError.simulatorUnsupported`,
+        /// aucun GPU Metal complet sur le Simulateur) où rien n'a jamais été
+        /// téléchargé : l'UI (voir `MLXModelSelectionView.failedContent`) ne
+        /// doit pas afficher "Le téléchargement a échoué" dans ce cas, ce
+        /// serait factuellement faux.
+        case failed(description: String, isEnvironmentLimitation: Bool = false)
     }
 
     static let trialQuestions = [
@@ -77,6 +84,11 @@ final class MLXModelSelectionCoordinator {
                 phase = .trial
             } catch is CancellationError {
                 self?.reset()
+            } catch let error as MLXProviderError where error == .simulatorUnsupported {
+                self?.phase = .failed(
+                    description: "Les modèles locaux (MLX) nécessitent un vrai appareil : le Simulateur n'a pas de vrai GPU Metal.",
+                    isEnvironmentLimitation: true
+                )
             } catch {
                 self?.phase = .failed(description: String(describing: error))
             }

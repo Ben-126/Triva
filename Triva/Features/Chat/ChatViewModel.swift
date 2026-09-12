@@ -99,12 +99,19 @@ final class ChatViewModel {
     /// — seule source affichée par `ChatView`, pour éviter le message
     /// dupliqué) ; `isStreaming` repasse à `false` sur le message assistant
     /// concerné dans tous les cas — jamais d'état bloqué en streaming
-    /// indéfiniment. Si la `Task` englobante (créée par `ChatView.send()`)
-    /// est annulée pendant le streaming — écran de chat quitté, moteur
-    /// changé — `streamingAnswer.textStream` se termine alors normalement
-    /// (sans lever d'erreur, voir `AsyncThrowingStream`) : ce cas est détecté
-    /// via `Task.isCancelled` et traité comme un arrêt volontaire, jamais
-    /// comme un échec ni comme une réponse vide.
+    /// indéfiniment. Erreurs connues du pipeline (voir
+    /// `userFacingMessage(for:)`) traduites en message français clair plutôt
+    /// que le nom brut de l'enum. Si la `Task` englobante (créée par
+    /// `ChatView.send()`) est annulée — écran de chat quitté, moteur changé —
+    /// à N'IMPORTE quelle étape (résolution du provider, recherche encore en
+    /// vol dans `FailoverManager.search`, ou pendant `textStream`), ce cas est
+    /// détecté via `Task.isCancelled` (vérifié dans LES DEUX `catch`, pas
+    /// seulement celui qui entoure `textStream`) et traité comme un arrêt
+    /// volontaire (`stopStreamingWithoutError`), jamais comme un échec ni
+    /// comme une réponse vide — sinon une erreur fantôme écrite dans
+    /// `errorDescription` survivrait à la fermeture de l'écran (effacée
+    /// seulement au début du PROCHAIN `send(query:)` réussi) et s'afficherait
+    /// au prochain retour sur ce même écran.
     func send(query: String) async {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty, !isGenerating else { return }
@@ -161,10 +168,46 @@ final class ChatViewModel {
                     fail(assistantMessageID: assistantMessageID, error: ChatViewModelError.emptyResponse)
                 }
             } catch {
-                fail(assistantMessageID: assistantMessageID, error: error)
+                // Même garde que la branche de succès juste au-dessus : une
+                // erreur levée par le flux PENDANT que la Task englobante est
+                // déjà annulée (ex. le provider ferme sa propre session au
+                // moment où l'utilisateur quitte l'écran) est un arrêt
+                // volontaire, jamais un vrai échec — sinon `errorDescription`
+                // serait renseigné pour rien voir plus haut.
+                if Task.isCancelled {
+                    stopStreamingWithoutError(assistantMessageID: assistantMessageID)
+                } else {
+                    fail(assistantMessageID: assistantMessageID, error: error)
+                }
             }
         } catch {
-            fail(assistantMessageID: assistantMessageID, error: error)
+            // Même raisonnement que le catch interne ci-dessus, mais pour un
+            // échec survenant AVANT même de commencer `textStream` (résolution
+            // du provider, du `FailoverManager`, ou recherche encore en vol
+            // dans `orchestrator.streamAnswer`) : annuler la Task englobante
+            // pendant que `failoverManager.search(query:)` est en vol fait
+            // remonter ici l'erreur produite par cette annulation (voir
+            // `FailoverManager.search`), qui ne doit jamais être traitée comme
+            // un vrai échec — sinon ce message fantôme survivrait à la
+            // fermeture de l'écran (`errorDescription` n'est effacé qu'au
+            // début du PROCHAIN `send(query:)` réussi) et s'afficherait au
+            // prochain retour sur cet écran, sans rapport avec un vrai
+            // problème.
+            if Task.isCancelled {
+                stopStreamingWithoutError(assistantMessageID: assistantMessageID)
+            } else {
+                fail(assistantMessageID: assistantMessageID, error: error)
+            }
+        }
+    }
+
+    /// Arrête proprement le streaming d'un message assistant SANS reporter
+    /// d'erreur — cas de l'annulation volontaire (écran quitté, moteur
+    /// changé), à distinguer d'un vrai échec (voir `fail(assistantMessageID:error:)`).
+    /// Conserve, comme `fail`, le texte déjà streamé s'il y en a.
+    private func stopStreamingWithoutError(assistantMessageID: UUID) {
+        updateAssistantMessage(id: assistantMessageID) { message in
+            message.isStreaming = false
         }
     }
 
@@ -178,10 +221,65 @@ final class ChatViewModel {
     /// affiché) et marque `isStreaming = false` — jamais de message qui reste
     /// vide en streaming pour toujours.
     private func fail(assistantMessageID: UUID, error: Error) {
-        errorDescription = String(describing: error)
+        errorDescription = Self.userFacingMessage(for: error)
         updateAssistantMessage(id: assistantMessageID) { message in
             message.isStreaming = false
         }
+    }
+
+    /// Traduit une erreur technique en message français compréhensible pour
+    /// les cas connus du pipeline recherche -> génération (0.7/0.8), chacun
+    /// documenté par son enum d'origine pour permettre justement ce mapping
+    /// (voir le commentaire de tête d'`ActiveAIProviderResolverError`). Pour
+    /// tout le reste (ex. erreur interne d'un provider tiers, erreur de test),
+    /// retombe sur `String(describing:)` plutôt que d'inventer un message
+    /// générique qui masquerait une information utile en debug — mieux vaut un
+    /// nom d'enum brut mais réel qu'un message inventé qui ne correspond à
+    /// rien.
+    static func userFacingMessage(for error: Error) -> String {
+        if let resolverError = error as? ActiveAIProviderResolverError {
+            switch resolverError {
+            case .noEngineSelected:
+                return "Aucun moteur IA sélectionné. Choisis-en un dans les Réglages."
+            case .appleIntelligenceUnavailable:
+                return "Apple Intelligence n'est pas disponible sur cet appareil."
+            case .noMLXModelSelected:
+                return "Aucun modèle local choisi. Sélectionne un modèle MLX dans les Réglages."
+            case .mlxModelNotInCatalog:
+                return "Le modèle local choisi n'est plus disponible. Choisis-en un autre dans les Réglages."
+            case .noCloudSelectionStored:
+                return "Aucun fournisseur configuré. Va dans Réglages pour en choisir un."
+            case .cloudSelectionUnresolvable:
+                return "Le fournisseur choisi n'est plus disponible. Vérifie tes Réglages."
+            }
+        }
+
+        if let failoverError = error as? FailoverError {
+            switch failoverError {
+            case .noInstancesConfigured:
+                return "Aucune instance de recherche n'est configurée."
+            case .allInstancesUnavailable:
+                return "Aucune instance de recherche n'a répondu. Réessaie dans un instant."
+            }
+        }
+
+        // Cas précis introduit par le garde-fou anti-crash de `MLXProvider`
+        // (voir son commentaire de tête) : sans ce mapping, choisir MLX local
+        // et envoyer un message sur le Simulateur afficherait littéralement
+        // "Erreur : simulatorUnsupported" — exactement le défaut que ce
+        // mapping existe pour éviter. Les autres cas de `MLXProviderError`
+        // (téléchargement, génération) retombent volontairement sur
+        // `String(describing:)` : ils portent déjà une `description` texte
+        // utile, pas un simple nom de cas.
+        if let mlxError = error as? MLXProviderError, mlxError == .simulatorUnsupported {
+            return "Les modèles locaux (MLX) ne fonctionnent pas sur le Simulateur — teste sur un appareil réel."
+        }
+
+        if error is ChatViewModelError {
+            return "Le moteur IA n'a renvoyé aucune réponse. Réessaie."
+        }
+
+        return String(describing: error)
     }
 
     private func updateAssistantMessage(id: UUID, _ update: (inout Message) -> Void) {

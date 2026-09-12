@@ -24,6 +24,14 @@ enum MLXProviderError: Error, Sendable, Equatable {
     /// arbitrer avec Ben (monter la cible à 27, ou accepter la limitation
     /// tant qu'iOS 27 n'est pas généralisé) plutôt qu'à masquer.
     case unsupportedOS
+    /// Le Simulateur iOS/iPadOS n'expose pas de vrai GPU Metal à MLX : sans
+    /// cette garde, `mlx::core::metal::Device` crashe le process entier
+    /// (SIGABRT, "basic_string(const char*) detected nullptr") dès
+    /// `prepare()` — avant même l'UI de téléchargement (voir le rapport de
+    /// crash de la revue 0.8, thread `GPUEnum`). MLX local n'est donc
+    /// testable que sur un appareil réel (voir CLAUDE.md : "Devices de test
+    /// disponibles").
+    case simulatorUnsupported
 }
 
 /// Progression de téléchargement d'un modèle MLX (0.5), exposée à l'UI.
@@ -90,6 +98,9 @@ actor MLXProvider: AIGenerating {
     /// Télécharge (si besoin, sinon réutilise le cache local) et charge le
     /// modèle en mémoire. À appeler avant `generate(prompt:)`.
     func prepare(onProgress: @Sendable @escaping (MLXDownloadProgress) -> Void = { _ in }) async throws {
+        #if targetEnvironment(simulator)
+        throw MLXProviderError.simulatorUnsupported
+        #else
         if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
             let model = Self.makeLanguageModel(for: entry, onProgress: onProgress)
             // Posé avant `preload()`, pas après : `cancel()` doit pouvoir
@@ -108,6 +119,7 @@ actor MLXProvider: AIGenerating {
         } else {
             throw MLXProviderError.unsupportedOS
         }
+        #endif
     }
 
     func generate(prompt: String) async throws -> String {

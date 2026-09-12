@@ -40,8 +40,8 @@ struct MLXModelSelectionView: View {
                     trialContent
                 case .ready:
                     readyContent
-                case .failed(let description):
-                    failedContent(description: description)
+                case .failed(let description, let isEnvironmentLimitation):
+                    failedContent(description: description, isEnvironmentLimitation: isEnvironmentLimitation)
                 }
             }
             .padding(.horizontal, 20)
@@ -223,9 +223,12 @@ struct MLXModelSelectionView: View {
     }
 
     @ViewBuilder
-    private func failedContent(description: String) -> some View {
+    private func failedContent(description: String, isEnvironmentLimitation: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Le téléchargement a échoué")
+            // "Le téléchargement a échoué" serait factuellement faux pour une
+            // limitation d'environnement (ex. Simulateur sans GPU Metal
+            // complet) : rien n'a jamais été téléchargé dans ce cas.
+            Text(isEnvironmentLimitation ? "Indisponible dans cet environnement" : "Le téléchargement a échoué")
                 .font(.system(size: 28, weight: .semibold))
             Text(description)
                 .font(.caption)

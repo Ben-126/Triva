@@ -36,6 +36,26 @@ private actor MockSearXNGClient: SearXNGSearching {
     }
 }
 
+/// Client SearXNG factice dont `search` reste en vol jusqu'à ce que le test
+/// appelle explicitement `fail(with:)` — nécessaire pour simuler une Task
+/// annulée PENDANT que `failoverManager.search(query:)` est en vol (avant
+/// même que `streamAnswer` ait pu créer un `textStream`), le scénario exact
+/// du finding ChatViewModel.swift:166 de la revue 0.8.
+private actor ControllableSearXNGClient: SearXNGSearching {
+    private(set) var continuation: CheckedContinuation<SearXNGSearchResponse, Error>?
+
+    func search(query: String, options: SearXNGSearchOptions, instance: URL) async throws -> SearXNGSearchResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func fail(with error: Error) {
+        continuation?.resume(throwing: error)
+        continuation = nil
+    }
+}
+
 /// Provider IA factice qui streame une suite de morceaux fixe, avec une
 /// erreur optionnelle en fin de flux — même principe que
 /// `MockStreamingAIGenerating` dans `SearchOrchestratorStreamingTests.swift`
@@ -277,8 +297,10 @@ struct ChatViewModelTests {
         let isGenerating = await viewModel.isGenerating
         let errorDescription = await viewModel.errorDescription
         #expect(isGenerating == false)
-        #expect(errorDescription != nil)
-        #expect(errorDescription?.contains("allInstancesUnavailable") == true)
+        // Message français clair, pas le nom brut de l'enum `FailoverError`
+        // (voir `ChatViewModel.userFacingMessage(for:)`, finding 19 de la
+        // revue 0.8).
+        #expect(errorDescription == "Aucune instance de recherche n'a répondu. Réessaie dans un instant.")
 
         // La recherche a échoué avant tout appel au provider IA.
         let prompts = await aiProvider.receivedPrompts
@@ -442,8 +464,9 @@ struct ChatViewModelTests {
         let isGenerating = await viewModel.isGenerating
         let errorDescription = await viewModel.errorDescription
         #expect(isGenerating == false)
-        #expect(errorDescription != nil)
-        #expect(errorDescription?.contains("emptyResponse") == true)
+        // Message français clair, pas le nom brut de l'enum
+        // `ChatViewModelError` (voir `userFacingMessage(for:)`, finding 19).
+        #expect(errorDescription == "Le moteur IA n'a renvoyé aucune réponse. Réessaie.")
     }
 
     @Test("Un flux IA qui produit un UNIQUE yield vide (chaîne \"\") est traité comme un échec explicite (ChatViewModelError.emptyResponse), pas seulement le cas 0 yield — sinon la bulle assistant resterait vide et silencieuse (isStreaming == false, text == \"\", errorDescription == nil)")
@@ -467,8 +490,9 @@ struct ChatViewModelTests {
         let isGenerating = await viewModel.isGenerating
         let errorDescription = await viewModel.errorDescription
         #expect(isGenerating == false)
-        #expect(errorDescription != nil)
-        #expect(errorDescription?.contains("emptyResponse") == true)
+        // Message français clair, pas le nom brut de l'enum
+        // `ChatViewModelError` (voir `userFacingMessage(for:)`, finding 19).
+        #expect(errorDescription == "Le moteur IA n'a renvoyé aucune réponse. Réessaie.")
     }
 
     // MARK: - Annulation
@@ -511,5 +535,125 @@ struct ChatViewModelTests {
 
         let isGenerating = await viewModel.isGenerating
         #expect(isGenerating == false)
+    }
+
+    @Test("Annuler la Task englobante PENDANT la recherche (avant même que streamAnswer crée un textStream) n'est PAS traité comme une erreur — errorDescription reste nil (finding ChatViewModel.swift:166 de la revue 0.8)")
+    func cancellingDuringInFlightSearchIsNotReportedAsError() async {
+        let client = ControllableSearXNGClient()
+        let failoverManager = FailoverManager(client: client, instances: [Self.instance])
+        let aiProvider = MockStreamingAIGenerating()
+        let viewModel = await ChatViewModel(
+            resolveProvider: { aiProvider },
+            resolveFailoverManager: { failoverManager }
+        )
+
+        let task = Task { await viewModel.send(query: "requête") }
+        await waitUntil("la recherche est en vol dans FailoverManager.search") {
+            await client.continuation != nil
+        }
+
+        // Annule la Task englobante PUIS fait échouer la recherche en cours
+        // avec l'erreur que produirait cette annulation (voir
+        // `FailoverManager.search`, qui rethrow directement quand
+        // `Task.isCancelled` est vrai) — reproduit l'ordonnancement exact du
+        // scénario du finding.
+        task.cancel()
+        await client.fail(with: CancellationError())
+        await task.value
+
+        let messages = await viewModel.messages
+        #expect(messages.count == 2)
+        let assistantMessage = messages[1]
+        #expect(assistantMessage.isStreaming == false)
+        #expect(assistantMessage.text.isEmpty)
+
+        let errorDescription = await viewModel.errorDescription
+        #expect(errorDescription == nil)
+
+        let isGenerating = await viewModel.isGenerating
+        #expect(isGenerating == false)
+    }
+
+    @Test("Une erreur levée par le flux du provider EXACTEMENT au moment de l'annulation n'est pas traitée comme un échec — Task.isCancelled vérifié avant fail() dans le catch qui entoure textStream (finding ChatViewModel.swift:163 de la revue 0.8)")
+    func streamErrorDuringCancellationIsNotReportedAsError() async {
+        let failoverManager = FailoverManager(client: MockSearXNGClient(), instances: [Self.instance])
+        let aiProvider = ControllableStreamingAIGenerating()
+        let viewModel = await ChatViewModel(
+            resolveProvider: { aiProvider },
+            resolveFailoverManager: { failoverManager }
+        )
+
+        let task = Task { await viewModel.send(query: "requête") }
+        guard let continuation = await waitForContinuation(aiProvider) else {
+            Issue.record("continuation jamais assignée")
+            task.cancel()
+            return
+        }
+
+        continuation.yield("Voici un début")
+        await waitUntil("le message assistant reflète le 1er chunk") {
+            await viewModel.messages.last?.text == "Voici un début"
+        }
+
+        // Annule la Task englobante PUIS fait échouer le flux lui-même (pas
+        // une terminaison normale) : simule le provider dont la session
+        // réseau échoue de son côté exactement au moment où l'utilisateur
+        // quitte l'écran.
+        task.cancel()
+        continuation.finish(throwing: MockError.midStreamFailure)
+        await task.value
+
+        let lastMessage = await viewModel.messages.last
+        #expect(lastMessage?.text == "Voici un début")
+        #expect(lastMessage?.isStreaming == false)
+
+        let errorDescription = await viewModel.errorDescription
+        #expect(errorDescription == nil)
+    }
+
+    // MARK: - Messages d'erreur compréhensibles (finding 19 de la revue 0.8)
+
+    @Test("Une ActiveAIProviderResolverError connue (ex. noCloudSelectionStored) est traduite en message français clair, pas le nom brut de l'enum")
+    func knownResolverErrorIsTranslatedToFriendlyMessage() async {
+        let failoverManager = FailoverManager(client: MockSearXNGClient(), instances: [Self.instance])
+        let viewModel = await ChatViewModel(
+            resolveProvider: { throw ActiveAIProviderResolverError.noCloudSelectionStored },
+            resolveFailoverManager: { failoverManager }
+        )
+
+        await viewModel.send(query: "Test")
+
+        let errorDescription = await viewModel.errorDescription
+        #expect(errorDescription == "Aucun fournisseur configuré. Va dans Réglages pour en choisir un.")
+        #expect(errorDescription?.contains("noCloudSelectionStored") == false)
+    }
+
+    @Test("MLXProviderError.simulatorUnsupported (garde-fou anti-crash sur le Simulateur) est traduit en message clair, pas le nom brut du cas")
+    func simulatorUnsupportedErrorIsTranslatedToFriendlyMessage() async {
+        let failoverManager = FailoverManager(client: MockSearXNGClient(), instances: [Self.instance])
+        let viewModel = await ChatViewModel(
+            resolveProvider: { throw MLXProviderError.simulatorUnsupported },
+            resolveFailoverManager: { failoverManager }
+        )
+
+        await viewModel.send(query: "Test")
+
+        let errorDescription = await viewModel.errorDescription
+        #expect(errorDescription == "Les modèles locaux (MLX) ne fonctionnent pas sur le Simulateur — teste sur un appareil réel.")
+        #expect(errorDescription?.contains("simulatorUnsupported") == false)
+    }
+
+    @Test("Une erreur inconnue du mapping (ex. erreur de test) retombe sur String(describing:) plutôt qu'un message inventé")
+    func unknownErrorFallsBackToRawDescription() async {
+        let failoverManager = FailoverManager(client: MockSearXNGClient(), instances: [Self.instance])
+        let viewModel = await ChatViewModel(
+            resolveProvider: { throw MockError.providerResolutionFailed },
+            resolveFailoverManager: { failoverManager }
+        )
+
+        await viewModel.send(query: "Test")
+
+        let errorDescription = await viewModel.errorDescription
+        #expect(errorDescription?.contains("providerResolutionFailed") == true)
     }
 }

@@ -28,14 +28,35 @@ struct MessageBubbleView: View {
         }
     }
 
+    private var accessibilityLabel: String {
+        let roleLabel = message.role == .user ? "Vous" : "Assistant"
+        if message.isStreaming && message.text.isEmpty {
+            return "\(roleLabel), génération de la réponse en cours"
+        }
+        return "\(roleLabel), \(message.text)"
+    }
+
     @ViewBuilder
     private var bubbleContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if message.isStreaming && message.text.isEmpty {
-                ProgressView()
-            } else {
-                Text(message.text)
+            // Sans ceci, VoiceOver ne communique le rôle (utilisateur/
+            // assistant) que visuellement (alignement + teinte du verre).
+            // Combine + `accessibilityLabel` ne portent QUE sur le texte/
+            // `ProgressView` — jamais sur `SourcesListView` juste en dessous,
+            // qui doit rester EN DEHORS de cet élément combiné : chaque
+            // source y est son propre `Link` individuellement balayable
+            // (trait `.isLink`, voir `SourcesListView`) ; les fusionner ici
+            // les rendrait inatteignables un par un pour VoiceOver.
+            Group {
+                if message.isStreaming && message.text.isEmpty {
+                    ProgressView()
+                        .accessibilityLabel("Génération de la réponse en cours")
+                } else {
+                    Text(message.text)
+                }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabel)
 
             if message.role == .assistant, !message.sources.isEmpty {
                 SourcesListView(sources: message.sources)

@@ -33,3 +33,6 @@ graphify-out/
 
 # essais de direction artistique (jetables, pas destinés au repo)
 Triva/DesignExploration/
+
+# raccourci local vers le plan iOS (symlink vers Perplexica_ameliorer, propre à la machine)
+/plan_a_suivre_ios.md

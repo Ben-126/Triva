@@ -16,6 +16,15 @@ struct AIEngineSelectionView: View {
     private let recommendation: AIEngineRecommendation
     private let onConfirm: (AIEngineOption) -> Void
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Largeur de contenu plafonnée en `regular` (iPad/Mac) — même principe
+    /// que `ChatView.contentMaxWidth`, pour éviter que les cartes et le
+    /// bouton "Continuer" ne s'étirent bord à bord sur un grand écran.
+    private var contentMaxWidth: CGFloat? {
+        horizontalSizeClass == .regular ? 640 : nil
+    }
+
     init(
         capabilityProvider: any DeviceCapabilityProviding = SystemDeviceCapabilityProvider(),
         currentSelection: AIEngineOption? = nil,
@@ -58,6 +67,8 @@ struct AIEngineSelectionView: View {
                 .buttonStyle(.glassProminent)
                 .frame(maxWidth: .infinity)
             }
+            .frame(maxWidth: contentMaxWidth)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
