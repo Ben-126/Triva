@@ -9,6 +9,25 @@ import Testing
 import Foundation
 @testable import Triva
 
+/// Faux magasin de clés API, pour vérifier que `remove(id:)` nettoie bien le
+/// Keychain sans toucher au vrai trousseau de la machine qui exécute les
+/// tests.
+private final class MockAPIKeyStore: APIKeyStoring, @unchecked Sendable {
+    private(set) var deletedAccounts: [String] = []
+    var storedKeysByAccount: [String: String] = [:]
+
+    func apiKey(account: String) throws -> String? { storedKeysByAccount[account] }
+
+    func save(apiKey: String, account: String) throws {
+        storedKeysByAccount[account] = apiKey
+    }
+
+    func deleteAPIKey(account: String) throws {
+        deletedAccounts.append(account)
+        storedKeysByAccount[account] = nil
+    }
+}
+
 @Suite("CustomProviderStore")
 struct CustomProviderStoreTests {
     /// `UserDefaults` isolé par test, même principe que
@@ -89,6 +108,27 @@ struct CustomProviderStoreTests {
         store.remove(id: added.id)
 
         #expect(selectionStore.selection == nil)
+    }
+
+    @Test("Supprimer un fournisseur personnalisé efface aussi sa clé API du Keychain")
+    func removeDeletesKeychainEntry() throws {
+        let keyStore = MockAPIKeyStore()
+        let store = CustomProviderStore(
+            userDefaults: uniqueDefaults(),
+            selectionStore: uniqueSelectionStore(),
+            keyStore: keyStore
+        )
+        let added = store.add(
+            displayName: "Mon LLM",
+            baseURL: URL(string: "https://llm.example.com/v1")!,
+            model: "m"
+        )
+        try? keyStore.save(apiKey: "secret", account: added.id)
+
+        store.remove(id: added.id)
+
+        #expect(keyStore.deletedAccounts == [added.id])
+        #expect(try keyStore.apiKey(account: added.id) == nil)
     }
 
     @Test("Supprimer un fournisseur personnalisé non sélectionné laisse la sélection intacte")

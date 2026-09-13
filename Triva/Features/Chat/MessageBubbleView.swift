@@ -12,7 +12,14 @@ import SwiftUI
 ///
 /// Utilise exclusivement `.rect(cornerRadius: 20)` (DESIGN.md : un seul rayon
 /// de coin pour les conteneurs de cette taille).
-struct MessageBubbleView: View {
+///
+/// `Equatable` (synthétisée à partir de `message`, seule propriété stockée) :
+/// permet à `ChatView.messagesList` d'appliquer `.equatable()` sur chaque
+/// bulle. `ChatViewModel` est `@Observable` au niveau de la PROPRIÉTÉ, donc
+/// chaque snapshot de streaming (`messages[index].text = snapshot`) invalide
+/// tout `messages` — sans `.equatable()`, le `ForEach` re-évaluerait le corps
+/// des N-1 bulles dont le contenu n'a pas changé à chaque token reçu.
+struct MessageBubbleView: View, Equatable {
     let message: ChatViewModel.Message
 
     var body: some View {

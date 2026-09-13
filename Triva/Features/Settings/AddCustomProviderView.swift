@@ -24,7 +24,7 @@ struct AddCustomProviderView: View {
 
     private var isValid: Bool {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && URL(string: baseURLText)?.scheme?.hasPrefix("http") == true
+            && URL(string: baseURLText)?.scheme == "https"
             && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -32,19 +32,23 @@ struct AddCustomProviderView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    TextField("Nom (ex. Mon LLM)", text: $displayName)
-                        .padding(16)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                    GlassEffectContainer(spacing: 20) {
+                        VStack(alignment: .leading, spacing: 20) {
+                            TextField("Nom (ex. Mon LLM)", text: $displayName)
+                                .padding(16)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
-                    TextField("URL de base (ex. https://api.exemple.com/v1)", text: $baseURLText)
-                        .autocorrectionDisabled()
-                        .padding(16)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                            TextField("URL de base (ex. https://api.exemple.com/v1)", text: $baseURLText)
+                                .autocorrectionDisabled()
+                                .padding(16)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
-                    TextField("Nom du modèle", text: $model)
-                        .autocorrectionDisabled()
-                        .padding(16)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                            TextField("Nom du modèle", text: $model)
+                                .autocorrectionDisabled()
+                                .padding(16)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                        }
+                    }
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -69,8 +73,9 @@ struct AddCustomProviderView: View {
     }
 
     private func save() {
-        guard let url = URL(string: baseURLText) else {
-            errorMessage = "URL invalide."
+        guard let url = URL(string: baseURLText), url.scheme == "https" else {
+            errorMessage = "URL invalide. Utilisez une adresse https://."
+            announce(error: errorMessage!)
             return
         }
         customStore.add(
@@ -79,6 +84,14 @@ struct AddCustomProviderView: View {
             model: model.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         dismiss()
+    }
+
+    /// Poste une annonce VoiceOver proactive : sans ça, un utilisateur en
+    /// VoiceOver n'a aucun moyen de savoir que la validation vient d'échouer
+    /// tant qu'il ne réexplore pas l'écran (même pattern que
+    /// ProviderAPIKeyEntryView.announce(error:)).
+    private func announce(error description: String) {
+        AccessibilityNotification.Announcement("Erreur : \(description)").post()
     }
 }
 

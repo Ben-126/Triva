@@ -57,7 +57,7 @@ struct CloudProviderModelPickerView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Fournisseur & modèle")
                 .font(.system(size: 28, weight: .semibold))
-            Text("Choisis le fournisseur cloud et le modèle à utiliser.")
+            Text("Seuls les fournisseurs dont la clé est enregistrée apparaissent ici.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -83,6 +83,7 @@ struct CloudProviderModelPickerView: View {
                 Spacer()
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .accessibilityHidden(true)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,8 +91,10 @@ struct CloudProviderModelPickerView: View {
                 isSelected ? .regular.tint(.accentColor.opacity(0.12)) : .regular,
                 in: .rect(cornerRadius: 20)
             )
+            .accessibilityElement(children: .combine)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder

@@ -49,16 +49,25 @@ struct ProviderAPIKeyEntryView: View {
             .padding(.bottom, 40)
         }
         .navigationTitle(providerDisplayName)
+        .onChange(of: viewModel.state) { _, newValue in
+            if case .failed(let message) = newValue {
+                announce(error: message)
+            }
+        }
+    }
+
+    /// Annonce l'échec à VoiceOver dès qu'il survient, sur le modèle de
+    /// `ChatView.announce(error:)` : sans ceci, un utilisateur VoiceOver n'a
+    /// aucun moyen de savoir que la validation vient d'échouer tant qu'il ne
+    /// réexplore pas l'écran.
+    private func announce(error description: String) {
+        AccessibilityNotification.Announcement("Erreur : \(description)").post()
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(providerDisplayName)
-                .font(.system(size: 28, weight: .semibold))
-            Text("Envoyée directement à \(providerDisplayName) — jamais à un serveur Triva.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
+        Text("Envoyée directement à \(providerDisplayName) — jamais à un serveur Triva.")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
     }
 
     private var entryField: some View {
@@ -73,6 +82,7 @@ struct ProviderAPIKeyEntryView: View {
                 Group {
                     if viewModel.state == .validating {
                         ProgressView()
+                            .accessibilityLabel("Validation de la clé en cours")
                     } else {
                         Text("Enregistrer")
                     }
@@ -98,7 +108,7 @@ struct ProviderAPIKeyEntryView: View {
                 viewModel.deleteStoredKey()
                 rawKey = ""
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.borderless)
         }
         .padding(16)
         .glassEffect(.regular, in: .rect(cornerRadius: 20))

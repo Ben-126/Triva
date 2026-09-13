@@ -73,7 +73,16 @@ struct ChatView: View {
                     GlassEffectContainer(spacing: 16) {
                         VStack(alignment: .leading, spacing: 16) {
                             ForEach(viewModel.messages) { message in
+                                // `.equatable()` juste après l'initialiseur
+                                // (avant `.id()`, qui rendrait le type
+                                // englobant non-Equatable) : évite de
+                                // ré-évaluer le corps des bulles dont le
+                                // `message` n'a pas changé à chaque snapshot
+                                // de streaming reçu par une AUTRE bulle (voir
+                                // le commentaire de tête de
+                                // `MessageBubbleView`).
                                 MessageBubbleView(message: message)
+                                    .equatable()
                                     .id(message.id)
                             }
                         }
@@ -117,7 +126,13 @@ struct ChatView: View {
                 // scroll si l'utilisateur a délibérément remonté pour relire
                 // le début — sinon chaque token reçu annulerait son geste.
                 guard isPinnedToBottom else { return }
-                scrollToBottom(proxy: proxy)
+                // Sans animation ici : ce `onChange` se déclenche à chaque
+                // snapshot reçu de `textStream` (potentiellement des dizaines
+                // par réponse), et envelopper chacun dans `withAnimation`
+                // relançait autant de transactions d'animation/scroll en
+                // rafale. Les scrolls déclenchés par un nouvel échange ou une
+                // erreur (événements ponctuels, pas un flux) restent animés.
+                scrollToBottom(proxy: proxy, animated: false)
             }
             .onChange(of: viewModel.errorDescription) { _, newValue in
                 scrollToBottom(proxy: proxy)
@@ -128,8 +143,12 @@ struct ChatView: View {
         }
     }
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        withAnimation {
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
+        if animated {
+            withAnimation {
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+            }
+        } else {
             proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
         }
     }

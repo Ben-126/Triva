@@ -90,6 +90,12 @@ actor MLXProvider: AIGenerating {
     /// `cancel()` : c'est justement pendant le téléchargement que ce levier
     /// doit déjà être disponible pour avoir un effet.
     private var evictCurrent: (@Sendable () async -> Void)?
+    /// Posé par `cancel()`, lu par `prepare()` juste après la reprise de
+    /// `preload()` (le seul point de suspension entre les deux) : l'acteur
+    /// étant réentrant, `cancel()` peut s'exécuter intégralement pendant
+    /// cette suspension et effacer `loaded`/`evictCurrent` — sans ce drapeau,
+    /// `prepare()` ressusciterait un état que `cancel()` vient de nettoyer.
+    private var isCancelled = false
 
     init(entry: MLXModelCatalogEntry) {
         self.entry = entry
@@ -102,6 +108,7 @@ actor MLXProvider: AIGenerating {
         throw MLXProviderError.simulatorUnsupported
         #else
         if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+            isCancelled = false
             let model = Self.makeLanguageModel(for: entry, onProgress: onProgress)
             // Posé avant `preload()`, pas après : `cancel()` doit pouvoir
             // évincer ce modèle pendant que le téléchargement est en cours,
@@ -114,6 +121,11 @@ actor MLXProvider: AIGenerating {
                 evictCurrent = nil
                 throw MLXProviderError.downloadFailed(description: String(describing: error))
             }
+
+            // L'acteur est réentrant : `cancel()` a pu s'exécuter en entier
+            // pendant la suspension sur `preload()` ci-dessus et effacer
+            // `loaded`/`evictCurrent`. Ne pas ressusciter cet état ici.
+            guard !isCancelled else { return }
 
             loaded = LoadedModel(makeSession: { LanguageModelSession(model: model) })
         } else {
@@ -188,6 +200,7 @@ actor MLXProvider: AIGenerating {
     /// comportement inhérente à cette version du module, pas contournable
     /// depuis l'app — à arbitrer avec Ben.
     func cancel() async {
+        isCancelled = true
         await evictCurrent?()
         evictCurrent = nil
         loaded = nil

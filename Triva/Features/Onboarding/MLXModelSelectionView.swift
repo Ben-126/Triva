@@ -17,6 +17,21 @@ struct MLXModelSelectionView: View {
     private let recommendation: MLXModelRecommendation?
     @State private var coordinator: MLXModelSelectionCoordinator
     @State private var showingFullCatalog = false
+    /// Dernier palier de progression (0/25/50/75/100) déjà annoncé à
+    /// VoiceOver pour le téléchargement en cours — évite de reposter une
+    /// annonce à chaque tick de `fractionCompleted` (potentiellement des
+    /// dizaines par seconde), voir `handlePhaseChange`.
+    @State private var lastAnnouncedProgressMilestone = 0
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Largeur de contenu plafonnée en `regular` (iPad/Mac) — même principe
+    /// que `AIEngineSelectionView.contentMaxWidth` / `ChatView.contentMaxWidth`,
+    /// pour que cet écran garde la même largeur que celui qui le précède dans
+    /// l'onboarding et n'étire pas ses cartes bord à bord sur un grand écran.
+    private var contentMaxWidth: CGFloat? {
+        horizontalSizeClass == .regular ? 640 : nil
+    }
 
     init(
         capabilityProvider: any MLXDeviceCapabilityProviding = SystemMLXDeviceCapabilityProvider(),
@@ -44,12 +59,52 @@ struct MLXModelSelectionView: View {
                     failedContent(description: description, isEnvironmentLimitation: isEnvironmentLimitation)
                 }
             }
+            .frame(maxWidth: contentMaxWidth)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
         }
         .sheet(isPresented: $showingFullCatalog) {
             fullCatalogSheet
+        }
+        .onChange(of: coordinator.phase) { oldValue, newValue in
+            handlePhaseChange(from: oldValue, to: newValue)
+        }
+    }
+
+    /// Annonce à VoiceOver la progression du téléchargement (par paliers de
+    /// ~25 %) et chaque changement de phase (téléchargement → essai →
+    /// prêt/échec) — sans ceci, un utilisateur VoiceOver n'a aucun signal
+    /// qu'un téléchargement potentiellement long progresse, se termine, ou
+    /// échoue. Reprend le pattern déjà validé par `ChatView.announce(error:)`.
+    private func handlePhaseChange(
+        from oldValue: MLXModelSelectionCoordinator.Phase,
+        to newValue: MLXModelSelectionCoordinator.Phase
+    ) {
+        switch newValue {
+        case .idle:
+            break
+        case .downloading(let fractionCompleted):
+            if case .downloading = oldValue {
+                // Simple progression du même téléchargement : seuls les
+                // paliers ci-dessous doivent déclencher une annonce.
+            } else {
+                lastAnnouncedProgressMilestone = 0
+            }
+            let percent = Int(fractionCompleted * 100)
+            let milestones = [25, 50, 75, 100]
+            if let milestone = milestones.last(where: { percent >= $0 }),
+               milestone != lastAnnouncedProgressMilestone {
+                lastAnnouncedProgressMilestone = milestone
+                AccessibilityNotification.Announcement("Téléchargement : \(milestone) %").post()
+            }
+        case .trial:
+            AccessibilityNotification.Announcement("Téléchargement terminé. Mode essai.").post()
+        case .ready:
+            AccessibilityNotification.Announcement("Modèle prêt.").post()
+        case .failed(let description, _):
+            AccessibilityNotification.Announcement(description).post()
         }
     }
 
@@ -185,6 +240,7 @@ struct MLXModelSelectionView: View {
                 } label: {
                     if coordinator.isGeneratingTrialAnswer {
                         ProgressView()
+                            .accessibilityLabel("Génération de la réponse en cours")
                     } else {
                         Text("Poser cette question")
                     }
@@ -250,25 +306,45 @@ struct MLXModelSelectionView: View {
                     coordinator.select(entry)
                 } label: {
                     VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(entry.displayName).font(.headline)
-                            Spacer()
-                            Text(Self.formattedSize(entry.downloadSizeBytes))
-                                .font(.caption)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(entry.displayName).font(.headline)
+                                Spacer()
+                                Text(Self.formattedSize(entry.downloadSizeBytes))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(entry.summary)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
-                        Text(entry.summary)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        ForEach(entry.strengths, id: \.self) { strength in
-                            Label(strength, systemImage: "checkmark.circle")
-                                .font(.caption)
-                                .foregroundStyle(.green)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(
+                            "\(entry.displayName), \(Self.formattedSize(entry.downloadSizeBytes)), \(entry.summary)"
+                        )
+
+                        if !entry.strengths.isEmpty {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(entry.strengths, id: \.self) { strength in
+                                    Label(strength, systemImage: "checkmark.circle")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Points forts : \(entry.strengths.joined(separator: ", "))")
                         }
-                        ForEach(entry.tradeoffs, id: \.self) { tradeoff in
-                            Label(tradeoff, systemImage: "exclamationmark.triangle")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
+
+                        if !entry.tradeoffs.isEmpty {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(entry.tradeoffs, id: \.self) { tradeoff in
+                                    Label(tradeoff, systemImage: "exclamationmark.triangle")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Compromis : \(entry.tradeoffs.joined(separator: ", "))")
                         }
                     }
                     .padding(.vertical, 4)

@@ -2,12 +2,34 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var engineSettings = AIEngineSettingsStore()
+    /// Stores de sélection partagés entre toutes les fenêtres de l'app (créés
+    /// une seule fois par `TrivaApp` et injectés ici) — sur macOS, chaque
+    /// nouvelle fenêtre (Cmd-N) instancie un `ContentView` distinct ; sans ce
+    /// partage, chaque fenêtre aurait sa propre copie de la sélection MLX/BYOK
+    /// et ne verrait jamais les changements faits dans une autre fenêtre. Les
+    /// valeurs par défaut ne servent qu'aux previews et aux tests isolés.
+    let mlxSelectionStore: MLXModelSelectionStore
+    let cloudSelectionStore: CloudProviderSelectionStore
+    let customProviderStore: CustomProviderStore
+
+    init(
+        mlxSelectionStore: MLXModelSelectionStore = MLXModelSelectionStore(),
+        cloudSelectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore(),
+        customProviderStore: CustomProviderStore = CustomProviderStore()
+    ) {
+        self.mlxSelectionStore = mlxSelectionStore
+        self.cloudSelectionStore = cloudSelectionStore
+        self.customProviderStore = customProviderStore
+    }
 
     var body: some View {
         if let selected = engineSettings.selectedOption {
             EngineStatusView(
                 selectedEngine: selected,
-                onChangeEngine: { engineSettings.selectedOption = nil }
+                onChangeEngine: { engineSettings.selectedOption = nil },
+                mlxSelectionStore: mlxSelectionStore,
+                cloudSelectionStore: cloudSelectionStore,
+                customProviderStore: customProviderStore
             )
         } else {
             AIEngineSelectionView { chosen in
@@ -25,19 +47,49 @@ private struct EngineStatusView: View {
     let selectedEngine: AIEngineOption
     let onChangeEngine: () -> Void
 
+    /// Stores de sélection injectés depuis `ContentView` (eux-mêmes uniques
+    /// pour toute l'app, voir son commentaire) — surtout PAS de `@State` ici :
+    /// `EngineStatusView` est recréée à chaque changement de moteur ou à
+    /// chaque nouvelle fenêtre sur macOS, et un `@State` réinitialisé à
+    /// chaque instance romprait le partage que `ContentView` établit.
+    let mlxSelectionStore: MLXModelSelectionStore
+    let cloudSelectionStore: CloudProviderSelectionStore
+    let customProviderStore: CustomProviderStore
+
+    /// Valeurs par défaut réservées aux previews ci-dessous (qui n'ont pas de
+    /// `ContentView` parent pour fournir les stores partagés) — l'app réelle
+    /// passe toujours les stores injectés par `ContentView`.
+    init(
+        selectedEngine: AIEngineOption,
+        onChangeEngine: @escaping () -> Void,
+        mlxSelectionStore: MLXModelSelectionStore = MLXModelSelectionStore(),
+        cloudSelectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore(),
+        customProviderStore: CustomProviderStore = CustomProviderStore()
+    ) {
+        self.selectedEngine = selectedEngine
+        self.onChangeEngine = onChangeEngine
+        self.mlxSelectionStore = mlxSelectionStore
+        self.cloudSelectionStore = cloudSelectionStore
+        self.customProviderStore = customProviderStore
+    }
+
     @State private var showingMLXSelection = false
     @State private var validatedMLXModel: MLXModelCatalogEntry?
-    @State private var mlxSelectionStore = MLXModelSelectionStore()
-    @State private var cloudSelectionStore = CloudProviderSelectionStore()
-    @State private var customProviderStore = CustomProviderStore()
+    /// Erreur de disponibilité Apple Intelligence, calculée une seule fois
+    /// (`onAppear`) plutôt qu'à chaque évaluation de `body` — même principe de
+    /// cache que `preparedProvider`/`failoverManager`/`chatViewModel`
+    /// ci-dessous : reconstruire `AppleIntelligenceProvider()` et relire
+    /// `SystemLanguageModel.availability` à chaque re-render (déclenché par
+    /// n'importe lequel des `@State` de cet écran, pas seulement ceux liés à
+    /// Apple Intelligence) est un travail inutile.
+    @State private var appleIntelligenceError: AppleIntelligenceError?
     /// Provider IA déjà résolu (et, pour MLX, déjà préparé) pour la sélection
     /// actuelle — évite de recréer un `MLXProvider` et de refaire un
     /// `prepare()` coûteux (voir son commentaire de tête) à chaque échange du
     /// chat. Invalidé explicitement quand la sélection change (nouveau
     /// modèle MLX choisi).
     @State private var preparedProvider: (any AIGenerating)?
-    /// `FailoverManager` unique pour la durée de vie de cet écran, comme
-    /// `mlxSelectionStore`/`cloudSelectionStore` — recréer un
+    /// `FailoverManager` unique pour la durée de vie de cet écran — recréer un
     /// `FailoverManager` à chaque échange annulerait son cache de dernière
     /// instance SearXNG fonctionnelle (voir son commentaire de tête).
     @State private var failoverManager: FailoverManager?
@@ -47,11 +99,21 @@ private struct EngineStatusView: View {
     /// principe de cache que `preparedProvider`/`failoverManager`.
     @State private var chatViewModel: ChatViewModel?
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Même plafond que `ChatView.contentMaxWidth` (640pt en `regular`,
+    /// iPad/Mac) — sans lui, le badge moteur IA et le bouton "Changer de
+    /// moteur" restaient collés au bord gauche pendant que `ChatView`
+    /// juste en dessous centrait ses messages, sur le même écran.
+    private var contentMaxWidth: CGFloat? {
+        horizontalSizeClass == .regular ? 640 : nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            if selectedEngine == .appleIntelligence, let error = AppleIntelligenceProvider().availabilityError {
+            if selectedEngine == .appleIntelligence, let error = appleIntelligenceError {
                 Label("Indisponible : \(String(describing: error))", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 20)
@@ -77,7 +139,15 @@ private struct EngineStatusView: View {
                 showingMLXSelection = false
             }
         }
+        .onChange(of: cloudSelectionStore.selection) {
+            // La sélection cloud BYOK a changé (ou a été effacée ailleurs,
+            // p. ex. `CustomProviderStore.remove(id:)` sur un fournisseur
+            // personnalisé actif) : le provider déjà préparé, s'il y en avait
+            // un, ne correspond plus forcément à la sélection actuelle.
+            preparedProvider = nil
+        }
         .onAppear {
+            appleIntelligenceError = AppleIntelligenceProvider().availabilityError
             rehydrateValidatedMLXModel()
             ensureChatViewModel()
         }
@@ -140,6 +210,8 @@ private struct EngineStatusView: View {
                     .buttonStyle(.glass)
             }
         }
+        .frame(maxWidth: contentMaxWidth)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
     }
 

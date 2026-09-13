@@ -235,7 +235,11 @@ final class ChatViewModel {
     /// retombe sur `String(describing:)` plutôt que d'inventer un message
     /// générique qui masquerait une information utile en debug — mieux vaut un
     /// nom d'enum brut mais réel qu'un message inventé qui ne correspond à
-    /// rien.
+    /// rien. Exception volontaire : `OpenAICompatibleProviderError` et
+    /// `CloudBYOKError` sont mappés vers un message fixe plutôt que
+    /// `String(describing:)`, car leur cas `generationFailed(description:)`
+    /// peut porter un texte brut renvoyé par le serveur du fournisseur BYOK
+    /// (risque de fuite de clé API — voir plus bas).
     static func userFacingMessage(for error: Error) -> String {
         if let resolverError = error as? ActiveAIProviderResolverError {
             switch resolverError {
@@ -277,6 +281,19 @@ final class ChatViewModel {
 
         if error is ChatViewModelError {
             return "Le moteur IA n'a renvoyé aucune réponse. Réessaie."
+        }
+
+        // Ces deux cas ne peuvent PAS retomber sur `String(describing:)` comme
+        // le reste : leur `generationFailed(description:)` peut encapsuler un
+        // message d'erreur brut renvoyé par le serveur du fournisseur BYOK
+        // (voir `OpenAICompatibleClientError.apiError(message:)`) — pour un
+        // fournisseur "Personnalisé", ce serveur est entièrement contrôlé par
+        // l'utilisateur (baseURL non liste blanche) et pourrait donc échoer
+        // délibérément l'en-tête `Authorization: Bearer <clé>` reçu dans son
+        // JSON d'erreur pour la faire fuiter en clair dans le chat. Message
+        // fixe uniquement, jamais d'interpolation du texte du fournisseur.
+        if error is OpenAICompatibleProviderError || error is CloudBYOKError {
+            return "Le fournisseur IA n'a pas pu répondre. Vérifie ta clé API et réessaie."
         }
 
         return String(describing: error)

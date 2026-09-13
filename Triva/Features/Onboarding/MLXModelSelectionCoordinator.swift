@@ -42,6 +42,13 @@ final class MLXModelSelectionCoordinator {
 
     private var provider: MLXProvider?
     private var downloadTask: Task<Void, Never>?
+    /// Incrémenté à chaque abandon (annulation, changement de modèle) pour
+    /// invalider toute Task de téléchargement encore en vol : `prepare()`
+    /// n'est pas cancellation-aware (le transfert réseau continue jusqu'à sa
+    /// fin naturelle, voir le commentaire de `MLXProvider.cancel()`), donc
+    /// `downloadTask?.cancel()` seul ne l'empêche pas de terminer et
+    /// d'essayer d'écrire dans `phase` bien après coup.
+    private var downloadGeneration = 0
 
     private let onValidated: (MLXModelCatalogEntry) -> Void
 
@@ -59,6 +66,14 @@ final class MLXModelSelectionCoordinator {
     }
 
     func select(_ entry: MLXModelCatalogEntry) {
+        // Invalide toute génération précédente (abandonne son provider) AVANT
+        // de préparer la nouvelle sélection : un premier téléchargement encore
+        // en vol après une annulation, ou un double-tap rapide sur deux
+        // modèles (cf. `MLXModelSelectionView`), ne doit plus jamais pouvoir
+        // toucher `phase` une fois la génération suivante démarrée.
+        invalidateCurrentDownload()
+        let generation = downloadGeneration
+
         selectedEntry = entry
         trialAnswers = []
         phase = .downloading(fractionCompleted: 0)
@@ -76,40 +91,53 @@ final class MLXModelSelectionCoordinator {
                         // encore appeler ce callback après coup — sans cette
                         // garde, la barre de progression réapparaîtrait après
                         // que l'utilisateur l'a fermée.
-                        guard let self, self.selectedEntry == entry else { return }
+                        guard let self, self.downloadGeneration == generation else { return }
                         self.phase = .downloading(fractionCompleted: progress.fractionCompleted)
                     }
                 }
-                guard let self, !Task.isCancelled else { return }
+                guard let self, self.downloadGeneration == generation else { return }
                 phase = .trial
             } catch is CancellationError {
-                self?.reset()
+                guard let self, self.downloadGeneration == generation else { return }
+                self.reset()
             } catch let error as MLXProviderError where error == .simulatorUnsupported {
-                self?.phase = .failed(
+                guard let self, self.downloadGeneration == generation else { return }
+                self.phase = .failed(
                     description: "Les modèles locaux (MLX) nécessitent un vrai appareil : le Simulateur n'a pas de vrai GPU Metal.",
                     isEnvironmentLimitation: true
                 )
             } catch {
-                self?.phase = .failed(description: String(describing: error))
+                guard let self, self.downloadGeneration == generation else { return }
+                self.phase = .failed(description: String(describing: error))
             }
         }
     }
 
     func cancelDownload() {
-        downloadTask?.cancel()
-        abandonProvider()
+        invalidateCurrentDownload()
         reset()
     }
 
     func askNextTrialQuestion() async {
         guard let provider, let question = nextTrialQuestion else { return }
+        // Capture la génération courante : si `chooseAnotherModel()` (ou une
+        // nouvelle `select()`) abandonne cette session pendant le `await`,
+        // la réponse tardive de l'ancien modèle ne doit pas atterrir dans le
+        // `trialAnswers` (vidé entretemps) de la nouvelle sélection.
+        let generation = downloadGeneration
         isGeneratingTrialAnswer = true
-        defer { isGeneratingTrialAnswer = false }
+        defer {
+            if downloadGeneration == generation {
+                isGeneratingTrialAnswer = false
+            }
+        }
 
         do {
             let answer = try await provider.generate(prompt: question)
+            guard downloadGeneration == generation else { return }
             trialAnswers.append(answer)
         } catch {
+            guard downloadGeneration == generation else { return }
             trialAnswers.append(String(describing: error))
         }
     }
@@ -121,16 +149,19 @@ final class MLXModelSelectionCoordinator {
     }
 
     func chooseAnotherModel() {
-        downloadTask?.cancel()
-        abandonProvider()
+        invalidateCurrentDownload()
         reset()
     }
 
-    /// Évince le modèle du cache partagé de `MLXLanguageModel` avant de
-    /// lâcher la référence au provider — best-effort, n'arrête pas un
-    /// téléchargement déjà en cours (voir `MLXProvider.cancel()`), mais évite
-    /// qu'un résultat obtenu après annulation reste mis en cache.
-    private func abandonProvider() {
+    /// Invalide la génération de téléchargement/essai courante et abandonne
+    /// son provider. N'interrompt PAS un transfert réseau déjà en vol —
+    /// `MLXProvider.cancel()` ne fait qu'évincer le modèle du cache partagé,
+    /// le téléchargement sous-jacent continue en tâche de fond jusqu'à sa fin
+    /// naturelle — mais garantit qu'une fois revenu, ce flux abandonné ne
+    /// pourra plus écrire dans `phase`/`trialAnswers` d'une session ultérieure.
+    private func invalidateCurrentDownload() {
+        downloadGeneration += 1
+        downloadTask?.cancel()
         Task { [provider] in
             await provider?.cancel()
         }
@@ -141,6 +172,7 @@ final class MLXModelSelectionCoordinator {
         provider = nil
         selectedEntry = nil
         trialAnswers = []
+        isGeneratingTrialAnswer = false
         phase = .idle
     }
 }

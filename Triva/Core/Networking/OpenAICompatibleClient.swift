@@ -78,6 +78,11 @@ struct OpenAICompatibleClient: OpenAICompatibleRequesting {
         let response: URLResponse
         do {
             (data, response) = try await urlSession.data(for: request)
+        } catch is CancellationError {
+            // Annulation : ne pas la maquiller en refus de clé côté fournisseur.
+            throw CancellationError()
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw urlError
         } catch {
             throw OpenAICompatibleClientError.transportError
         }

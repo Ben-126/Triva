@@ -18,12 +18,18 @@ final class CustomProviderStore {
     private static let storageKey = "byok.customProviders"
     private let userDefaults: UserDefaults
     private let selectionStore: CloudProviderSelectionStore
+    private let keyStore: any APIKeyStoring
 
     private(set) var customPresets: [CloudProviderPreset] = []
 
-    init(userDefaults: UserDefaults = .standard, selectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore()) {
+    init(
+        userDefaults: UserDefaults = .standard,
+        selectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore(),
+        keyStore: any APIKeyStoring = KeychainAPIKeyStore()
+    ) {
         self.userDefaults = userDefaults
         self.selectionStore = selectionStore
+        self.keyStore = keyStore
         load()
     }
 
@@ -43,10 +49,14 @@ final class CustomProviderStore {
     /// Supprime le fournisseur personnalisé `id`. S'il était le fournisseur
     /// BYOK actuellement sélectionné (`CloudProviderSelectionStore`), la
     /// sélection est aussi effacée — sinon elle resterait orpheline
-    /// indéfiniment, sans preset pour la résoudre.
+    /// indéfiniment, sans preset pour la résoudre. La clé API associée
+    /// (compte Keychain = `id`, voir `OpenAICompatibleProvider.init(preset:)`)
+    /// est aussi supprimée, sinon elle resterait dans le Keychain sans plus
+    /// aucun moyen de l'atteindre depuis l'app.
     func remove(id: String) {
         customPresets.removeAll { $0.id == id }
         persist()
+        try? keyStore.deleteAPIKey(account: id)
 
         if selectionStore.selection?.providerID == id {
             selectionStore.selection = nil
