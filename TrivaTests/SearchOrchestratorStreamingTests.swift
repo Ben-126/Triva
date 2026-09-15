@@ -36,12 +36,23 @@ private actor MockSearXNGClient: SearXNGSearching {
 
 /// Provider IA factice qui streame une suite de morceaux de texte fixe, avec
 /// une erreur optionnelle en fin de flux (pour simuler un échec survenant
-/// PENDANT le streaming, après un ou plusieurs yields). Classe simple plutôt
-/// qu'un acteur personnalisé, même raison que `MockAIGenerating` dans
-/// `SearchOrchestratorTests.swift` : `AIGenerating` hérite de l'isolation par
-/// défaut du projet (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`).
+/// PENDANT le streaming, après un ou plusieurs yields).
+///
+/// Depuis 1.2, `SearchOrchestrator` appelle `generate(prompt:)` pour la
+/// classification ET pour chaque tour planner (JAMAIS pour la génération
+/// finale, qui passe exclusivement par `streamGenerate(prompt:)`) : les deux
+/// méthodes enregistrent donc leurs prompts dans des tableaux SÉPARÉS —
+/// mélanger les deux dans un seul tableau rendrait `receivedPrompts.first`
+/// ambigu (tantôt le prompt de classification, tantôt celui du planner,
+/// selon le chemin emprunté) là où seul `receivedStreamPrompts` représente
+/// sans ambiguïté LE prompt de génération finale envoyé au flux. Les chunks
+/// fixes ne sont jamais du JSON valide : classification et planner retombent
+/// systématiquement sur leur repli sûr respectif (`.webSearch` / "done"),
+/// donc le comportement observable du pipeline reste inchangé par ce
+/// branchement — seul le suivi des prompts est plus précis qu'avant 1.2.
 private final class MockStreamingAIGenerating: AIGenerating {
-    private(set) var receivedPrompts: [String] = []
+    private(set) var receivedGeneratePrompts: [String] = []
+    private(set) var receivedStreamPrompts: [String] = []
     private let chunks: [String]
     private let midStreamFailure: (any Error)?
 
@@ -50,16 +61,13 @@ private final class MockStreamingAIGenerating: AIGenerating {
         self.midStreamFailure = midStreamFailure
     }
 
-    /// Non exercé par `streamAnswer(query:)` (qui n'appelle que
-    /// `streamGenerate(prompt:)`), présent uniquement pour satisfaire le
-    /// protocole `AIGenerating`.
     func generate(prompt: String) async throws -> String {
-        receivedPrompts.append(prompt)
+        receivedGeneratePrompts.append(prompt)
         return chunks.joined()
     }
 
     func streamGenerate(prompt: String) -> AsyncThrowingStream<String, Error> {
-        receivedPrompts.append(prompt)
+        receivedStreamPrompts.append(prompt)
         return AsyncThrowingStream { continuation in
             for chunk in chunks {
                 continuation.yield(chunk)
@@ -111,9 +119,11 @@ struct SearchOrchestratorStreamingTests {
         }
         #expect(received == ["Voici ", "la ", "réponse."])
 
-        let prompts = await aiProvider.receivedPrompts
-        #expect(prompts.count == 1)
-        let prompt = try #require(prompts.first)
+        // Un seul appel à `streamGenerate` : la génération finale, jamais la
+        // classification ni le planner (qui passent par `generate`).
+        let streamPrompts = await aiProvider.receivedStreamPrompts
+        #expect(streamPrompts.count == 1)
+        let prompt = try #require(streamPrompts.first)
         #expect(prompt.contains("quelle est la question ?"))
         #expect(prompt.contains("Titre A"))
         #expect(prompt.contains("Titre B"))
@@ -133,7 +143,7 @@ struct SearchOrchestratorStreamingTests {
         #expect(streamingAnswer.sources.map(\.title) == ["Titre 1", "Titre 2", "Titre 3", "Titre 4", "Titre 5"])
     }
 
-    @Test("Une erreur de recherche remonte AVANT que le provider IA soit sollicité : streamAnswer() lève, aucun prompt reçu")
+    @Test("Une erreur de recherche remonte AVANT que le flux final soit sollicité : streamAnswer() lève, streamGenerate() n'est jamais appelé (seule la classification, via generate(), a eu lieu)")
     func searchErrorPropagatesBeforeCallingAIProvider() async {
         let client = MockSearXNGClient(shouldFail: true)
         let failoverManager = FailoverManager(client: client, instances: [Self.instance])
@@ -144,8 +154,10 @@ struct SearchOrchestratorStreamingTests {
             _ = try await orchestrator.streamAnswer(query: "requête")
         }
 
-        let prompts = await aiProvider.receivedPrompts
-        #expect(prompts.isEmpty)
+        let generatePrompts = await aiProvider.receivedGeneratePrompts
+        let streamPrompts = await aiProvider.receivedStreamPrompts
+        #expect(generatePrompts.count == 1)
+        #expect(streamPrompts.isEmpty)
     }
 
     @Test("Une erreur survenant DANS le stream du provider IA (après des yields) est propagée par le flux, pas par streamAnswer() elle-même")

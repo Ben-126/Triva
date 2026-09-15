@@ -60,8 +60,18 @@ private actor ControllableSearXNGClient: SearXNGSearching {
 /// erreur optionnelle en fin de flux — même principe que
 /// `MockStreamingAIGenerating` dans `SearchOrchestratorStreamingTests.swift`
 /// (dupliqué ici, `private` est scopé au fichier).
+///
+/// Depuis 1.2, `SearchOrchestrator` appelle `generate(prompt:)` pour la
+/// classification ET chaque tour planner (jamais pour la génération finale,
+/// qui passe exclusivement par `streamGenerate(prompt:)`) : deux tableaux
+/// séparés évitent qu'un test lisant "le" prompt reçu tombe sur celui de la
+/// classification plutôt que celui de la génération finale selon le chemin
+/// emprunté. Les chunks fixes ne sont jamais du JSON valide : classification
+/// et planner retombent systématiquement sur leur repli sûr respectif, le
+/// comportement observable de `ChatViewModel` reste donc inchangé.
 private final class MockStreamingAIGenerating: AIGenerating {
-    private(set) var receivedPrompts: [String] = []
+    private(set) var receivedGeneratePrompts: [String] = []
+    private(set) var receivedStreamPrompts: [String] = []
     private let chunks: [String]
     private let midStreamFailure: (any Error)?
 
@@ -71,12 +81,12 @@ private final class MockStreamingAIGenerating: AIGenerating {
     }
 
     func generate(prompt: String) async throws -> String {
-        receivedPrompts.append(prompt)
+        receivedGeneratePrompts.append(prompt)
         return chunks.joined()
     }
 
     func streamGenerate(prompt: String) -> AsyncThrowingStream<String, Error> {
-        receivedPrompts.append(prompt)
+        receivedStreamPrompts.append(prompt)
         return AsyncThrowingStream { continuation in
             for chunk in chunks {
                 continuation.yield(chunk)
@@ -126,14 +136,29 @@ struct ChatViewModelTests {
 
     private static let instance = URL(string: "https://searxng.example")!
 
-    /// Poll coopératif : cède la main (`Task.yield()`) jusqu'à ce que
-    /// `condition` soit vraie ou que `maxAttempts` soit atteint — nécessaire
-    /// pour observer un état intermédiaire de `ChatViewModel` pendant qu'un
-    /// `send(query:)` est en cours dans une autre `Task`, sans dépendre d'un
-    /// délai fixe (non déterministe). Un timeout enregistre un échec via
-    /// `Issue.record` (plutôt que d'échouer silencieusement plus loin) : un
-    /// test dont la précondition n'est jamais atteinte doit se voir comme un
-    /// timeout, pas comme un mismatch d'assertion sans rapport.
+    /// Poll coopératif jusqu'à ce que `condition` soit vraie ou que
+    /// `maxAttempts` soit atteint — nécessaire pour observer un état
+    /// intermédiaire de `ChatViewModel` pendant qu'un `send(query:)` est en
+    /// cours dans une autre `Task`, sans dépendre d'un délai fixe unique (non
+    /// déterministe). Un timeout enregistre un échec via `Issue.record`
+    /// (plutôt que d'échouer silencieusement plus loin) : un test dont la
+    /// précondition n'est jamais atteinte doit se voir comme un timeout, pas
+    /// comme un mismatch d'assertion sans rapport.
+    ///
+    /// Attend via `Task.sleep` (1ms), PAS `Task.yield()` — bug trouvé le
+    /// 2026-09-15 pendant la vérification finale de 1.2 sur
+    /// `cancellingDuringInFlightSearchIsNotReportedAsError` : avec ce projet
+    /// compilé en isolation par défaut `MainActor` (flag `-default-isolation=
+    /// MainActor`, confirmé dans les logs de build), `Task.yield()` seul ne
+    /// redonne PAS la main de façon fiable à la Task productrice quand les
+    /// deux se disputent la même file d'exécution MainActor — la boucle
+    /// épuisait ses 200 (puis 2000, testé, même résultat) tentatives en
+    /// ~20-30ms SANS JAMAIS que la Task observée progresse, un vrai blocage
+    /// d'ordonnancement, pas un simple manque de budget. Une vraie suspension
+    /// temporisée (`Task.sleep`) force un passage par l'horloge du runtime et
+    /// laisse fiablement l'autre Task s'exécuter entre deux tentatives.
+    /// `maxAttempts` reste à 200 (200 * 1ms = 200ms de plafond par défaut,
+    /// largement suffisant pour un flux entièrement mocké sans I/O réel).
     private func waitUntil(
         _ timeoutMessage: String,
         maxAttempts: Int = 200,
@@ -142,7 +167,7 @@ struct ChatViewModelTests {
         var attempts = 0
         while attempts < maxAttempts {
             if await condition() { return }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
             attempts += 1
         }
         Issue.record("Timeout en attendant : \(timeoutMessage)")
@@ -194,9 +219,12 @@ struct ChatViewModelTests {
         #expect(isGenerating == false)
         #expect(errorDescription == nil)
 
-        let prompts = await aiProvider.receivedPrompts
-        #expect(prompts.count == 1)
-        #expect(prompts.first?.contains("Quelle est la question ?") == true)
+        // Un seul appel à `streamGenerate` (la génération finale) ; la
+        // classification et le(s) tour(s) planner passent par `generate` et
+        // ne sont pas comptés ici.
+        let streamPrompts = await aiProvider.receivedStreamPrompts
+        #expect(streamPrompts.count == 1)
+        #expect(streamPrompts.first?.contains("Quelle est la question ?") == true)
     }
 
     @Test("Chaque valeur du stream REMPLACE le texte du message assistant à chaque étape, jamais de concaténation")
@@ -302,9 +330,13 @@ struct ChatViewModelTests {
         // revue 0.8).
         #expect(errorDescription == "Aucune instance de recherche n'a répondu. Réessaie dans un instant.")
 
-        // La recherche a échoué avant tout appel au provider IA.
-        let prompts = await aiProvider.receivedPrompts
-        #expect(prompts.isEmpty)
+        // La recherche a échoué avant que le flux final soit sollicité :
+        // seule la classification (via `generate`) a eu lieu, `streamGenerate`
+        // (la génération finale) n'a jamais été appelé.
+        let generatePrompts = await aiProvider.receivedGeneratePrompts
+        let streamPrompts = await aiProvider.receivedStreamPrompts
+        #expect(generatePrompts.count == 1)
+        #expect(streamPrompts.isEmpty)
     }
 
     @Test("Une erreur survenant PENDANT le stream du provider IA est reportée sur le message assistant, texte déjà streamé conservé")
@@ -375,10 +407,12 @@ struct ChatViewModelTests {
 
         let messages = await viewModel.messages
         let isGenerating = await viewModel.isGenerating
-        let prompts = await aiProvider.receivedPrompts
+        let generatePrompts = await aiProvider.receivedGeneratePrompts
+        let streamPrompts = await aiProvider.receivedStreamPrompts
         #expect(messages.isEmpty)
         #expect(isGenerating == false)
-        #expect(prompts.isEmpty)
+        #expect(generatePrompts.isEmpty)
+        #expect(streamPrompts.isEmpty)
     }
 
     @Test("Une requête composée uniquement d'espaces est ignorée silencieusement : aucun message ajouté")
@@ -394,10 +428,12 @@ struct ChatViewModelTests {
 
         let messages = await viewModel.messages
         let isGenerating = await viewModel.isGenerating
-        let prompts = await aiProvider.receivedPrompts
+        let generatePrompts = await aiProvider.receivedGeneratePrompts
+        let streamPrompts = await aiProvider.receivedStreamPrompts
         #expect(messages.isEmpty)
         #expect(isGenerating == false)
-        #expect(prompts.isEmpty)
+        #expect(generatePrompts.isEmpty)
+        #expect(streamPrompts.isEmpty)
     }
 
     @Test("Un envoi concurrent est ignoré tant que isGenerating est true : aucun message ajouté pour le 2e envoi")
@@ -655,5 +691,45 @@ struct ChatViewModelTests {
 
         let errorDescription = await viewModel.errorDescription
         #expect(errorDescription?.contains("providerResolutionFailed") == true)
+    }
+
+    // MARK: - Historique passé au classifieur (1.2)
+
+    @Test("L'historique de conversation transmis à QueryClassifier contient les tours précédents, mais jamais le message courant : pas de duplication dans <conversation_history>")
+    func chatHistoryPassedToClassifierExcludesCurrentTurn() async throws {
+        let failoverManager = FailoverManager(client: MockSearXNGClient(), instances: [Self.instance])
+        let aiProvider = MockStreamingAIGenerating(chunks: ["réponse fixe"])
+        let viewModel = await ChatViewModel(
+            resolveProvider: { aiProvider },
+            resolveFailoverManager: { failoverManager }
+        )
+
+        await viewModel.send(query: "premier message")
+        await viewModel.send(query: "second message")
+
+        // Chaque tour appelle `generate` au moins une fois pour la
+        // classification (marqueur `<user_query>`, voir
+        // `QueryClassifier.buildPrompt`) : le 2e prompt de classification est
+        // celui qui doit porter l'historique du 1er tour.
+        let generatePrompts = await aiProvider.receivedGeneratePrompts
+        let classifyPrompts = generatePrompts.filter { $0.contains("<user_query>") }
+        #expect(classifyPrompts.count == 2)
+        let secondTurnClassifyPrompt = try #require(classifyPrompts.last)
+
+        guard
+            let historyStart = secondTurnClassifyPrompt.range(of: "<conversation_history>")?.upperBound,
+            let historyEnd = secondTurnClassifyPrompt.range(of: "</conversation_history>")?.lowerBound
+        else {
+            Issue.record("balises <conversation_history> introuvables dans le prompt de classification")
+            return
+        }
+        let historyBlock = String(secondTurnClassifyPrompt[historyStart..<historyEnd])
+
+        #expect(historyBlock.contains("premier message"))
+        #expect(historyBlock.contains("réponse fixe"))
+        // Le message courant apparaît dans <user_query> (hors de ce bloc),
+        // mais ne doit JAMAIS être dupliqué à l'intérieur de
+        // <conversation_history> — voir `ChatViewModel.classifierHistory`.
+        #expect(!historyBlock.contains("second message"))
     }
 }

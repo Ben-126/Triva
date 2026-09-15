@@ -132,7 +132,8 @@ final class ChatViewModel {
                 aiProvider: provider,
                 maxResultsUsedForContext: maxResultsUsedForContext
             )
-            let streamingAnswer = try await orchestrator.streamAnswer(query: trimmedQuery)
+            let chatHistory = Self.classifierHistory(from: messages)
+            let streamingAnswer = try await orchestrator.streamAnswer(query: trimmedQuery, chatHistory: chatHistory)
 
             // Sources attachées avant toute itération de `textStream`, comme
             // demandé : `StreamingAnswer.sources` est déjà connu à ce stade
@@ -302,5 +303,19 @@ final class ChatViewModel {
     private func updateAssistantMessage(id: UUID, _ update: (inout Message) -> Void) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         update(&messages[index])
+    }
+
+    /// Convertit l'historique de conversation UI vers `ClassifierChatMessage`
+    /// (branché sur `QueryClassifier` via `SearchOrchestrator.streamAnswer`,
+    /// tâche 1.2) : EXCLUT les deux derniers messages, qu'on vient d'ajouter
+    /// nous-mêmes juste avant l'appel (le message utilisateur courant et le
+    /// placeholder assistant vide en streaming, voir `send(query:)`) — les
+    /// inclure dupliquerait la requête courante à l'intérieur de
+    /// `<conversation_history>` en plus de `<user_query>`, et injecterait une
+    /// ligne "AI: " vide pour le placeholder.
+    private static func classifierHistory(from messages: [Message]) -> [ClassifierChatMessage] {
+        messages.dropLast(2).map { message in
+            ClassifierChatMessage(role: message.role == .user ? .user : .assistant, content: message.text)
+        }
     }
 }
