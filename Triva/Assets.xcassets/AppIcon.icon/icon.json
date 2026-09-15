@@ -1,27 +1,37 @@
 {
-  "groups": [
+  "groups" : [
     {
-      "layers": [
+      "layers" : [
         {
-          "image-name-specializations": [
+          "image-name-specializations" : [
             {
-              "value": "triva-appicon-clair.svg"
+              "value" : "triva-appicon-clair.svg"
             },
             {
-              "appearance": "dark",
-              "value": "triva-appicon-sombre.svg"
+              "appearance" : "dark",
+              "value" : "triva-appicon-sombre.svg"
             },
             {
-              "appearance": "tinted",
-              "value": "triva-appicon-teinte.svg"
+              "appearance" : "tinted",
+              "value" : "triva-appicon-teinte.svg"
             }
           ],
-          "name": "artwork"
+          "name" : "artwork"
         }
-      ]
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
     }
   ],
-  "supported-platforms": {
-    "squares": "shared"
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
   }
 }
