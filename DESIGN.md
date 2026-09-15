@@ -40,6 +40,16 @@ pas à un template. En cas de doute sur un écran, comparer avec
 `Triva/DesignSystem/TrivaHomeReferenceView.swift` et avec ce document — pas avec des
 réflexes "par défaut" d'outil de génération.
 
+**Exception ciblée — fondu de bord de scroll (validée le 2026-09-15) :** l'interdit sur
+les calques semi-transparents vise les dégradés DÉCORATIFS (fonds, glows, "aurora").
+Un masque de fondu FONCTIONNEL en haut d'une liste défilante — le contenu qui
+s'estompe progressivement en approchant du bord plutôt que d'être coupé net — reste
+autorisé : c'est le même principe que Mail, Messages ou Claude Code lui-même
+utilisent pour indiquer qu'il y a du contenu au-dessus sans le couper brutalement.
+Toujours une hauteur de fondu FIXE (pas relative à la hauteur totale de la liste),
+alignée sur la grille d'espacement (ex. 24pt), et seulement en bord de zone
+défilante — jamais en fond plein écran ni sur du texte statique.
+
 ---
 
 ## Principe

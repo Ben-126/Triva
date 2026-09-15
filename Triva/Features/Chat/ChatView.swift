@@ -79,7 +79,14 @@ struct ChatView: View {
     /// viewport et donc visible.)
     private static let bottomAnchorHeight: CGFloat = 20
 
+    /// Hauteur FIXE du fondu en haut de la liste (DESIGN.md, exception
+    /// "fondu de bord de scroll" du 2026-09-15) — pas relative à la hauteur
+    /// totale de la liste, pour un rendu cohérent quelle que soit la taille
+    /// de fenêtre. Valeur de la grille d'espacement (24pt).
+    private static let topFadeHeight: CGFloat = 24
+
     private var messagesList: some View {
+        GeometryReader { containerGeometry in
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -118,6 +125,7 @@ struct ChatView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
             }
+            .mask(topFadeMask(containerHeight: containerGeometry.size.height))
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 let distanceFromBottom = geometry.contentSize.height
                     - geometry.contentOffset.y
@@ -125,6 +133,28 @@ struct ChatView: View {
                 return distanceFromBottom < 80
             } action: { _, isNearBottom in
                 isPinnedToBottom = isNearBottom
+            }
+            // Re-scrolle dès que la hauteur RÉELLE du contenu augmente (bug
+            // trouvé le 2026-09-15 : la dernière réponse en streaming pouvait
+            // rester tronquée en plein milieu d'une phrase). Le
+            // `.onChange(of: viewModel.messages.last?.text)` juste en dessous
+            // déclenche un scroll dès que le MODÈLE change, mais ce
+            // changement de données précède la mise à jour de layout de
+            // SwiftUI : la bulle vient tout juste de s'agrandir avec ce
+            // nouveau morceau de texte, et ce scroll utilise encore
+            // l'ancienne géométrie (avant que la bulle n'ait fini de
+            // grandir) — surtout visible sur le TOUT DERNIER morceau reçu,
+            // puisqu'aucun scroll ultérieur ne vient jamais corriger cette
+            // position figée. `onScrollGeometryChange` se déclenche lui APRÈS
+            // que SwiftUI ait posé la géométrie réelle (`contentSize` inclut
+            // déjà la bulle à sa hauteur finale) : une hauteur de contenu qui
+            // augmente est donc un signal fiable qu'il faut re-scroller,
+            // contrairement à un changement de texte qui ne l'est pas.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height
+            } action: { oldHeight, newHeight in
+                guard newHeight > oldHeight, isPinnedToBottom else { return }
+                scrollToBottom(proxy: proxy, animated: false)
             }
             .onChange(of: viewModel.messages.count) {
                 // Un nouvel échange (nouvelle question envoyée) reprend
@@ -153,6 +183,29 @@ struct ChatView: View {
                 }
             }
         }
+        }
+    }
+
+    /// Masque de fondu en haut de la liste (DESIGN.md, exception "fondu de
+    /// bord de scroll") : les premiers `topFadeHeight` points du viewport
+    /// passent de transparent à opaque, le reste (tout le bas, où vit la
+    /// quasi-totalité du contenu) reste pleinement opaque. Hauteur FIXE
+    /// (fraction recalculée depuis `containerHeight`, pas un pourcentage fixe
+    /// du viewport) pour un fondu de taille constante quelle que soit la
+    /// taille de fenêtre.
+    private func topFadeMask(containerHeight: CGFloat) -> some View {
+        let fadeFraction = containerHeight > 0
+            ? min(Self.topFadeHeight / containerHeight, 0.5)
+            : 0
+        return LinearGradient(
+            stops: [
+                Gradient.Stop(color: .clear, location: 0),
+                Gradient.Stop(color: .black, location: fadeFraction),
+                Gradient.Stop(color: .black, location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
