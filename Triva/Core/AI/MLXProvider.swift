@@ -18,12 +18,6 @@ enum MLXProviderError: Error, Sendable, Equatable {
     case downloadFailed(description: String)
     case modelNotLoaded
     case generationFailed(description: String)
-    /// `MLXLanguageModel` (mlx-swift-lm) exige iOS/macOS 27, alors que la
-    /// cible de déploiement du projet reste 26.5 — un appareil resté sur un
-    /// OS plus ancien ne peut donc pas utiliser MLX local du tout. À
-    /// arbitrer avec Ben (monter la cible à 27, ou accepter la limitation
-    /// tant qu'iOS 27 n'est pas généralisé) plutôt qu'à masquer.
-    case unsupportedOS
     /// Le Simulateur iOS/iPadOS n'expose pas de vrai GPU Metal à MLX : sans
     /// cette garde, `mlx::core::metal::Device` crashe le process entier
     /// (SIGABRT, "basic_string(const char*) detected nullptr") dès
@@ -62,20 +56,17 @@ struct MLXDownloadProgress: Sendable, Equatable {
 /// - Wi-Fi obligatoire pour tout le catalogue, sans seuil (respecte la limite
 ///   App Store de 200 Mo en cellulaire — le plus petit modèle la dépasse déjà).
 ///
-/// `MLXLanguageModel` exige iOS/macOS 27 (voir `MLXProviderError.unsupportedOS`) ;
-/// ce type reste volontairement sans annotation `@available` pour ne pas faire
-/// remonter cette contrainte jusqu'à `MLXModelSelectionCoordinator` ou
-/// `AIProviderSelector` — la disponibilité est vérifiée à l'exécution dans
-/// `prepare()`.
+/// `MLXLanguageModel` exige iOS/macOS 27, ce que la cible de déploiement du
+/// projet garantit déjà partout (voir `IPHONEOS_DEPLOYMENT_TARGET`/
+/// `MACOSX_DEPLOYMENT_TARGET` = 27.0) — plus besoin de vérifier ça à
+/// l'exécution ni de protéger `MLXModelSelectionCoordinator`/
+/// `AIProviderSelector` d'une contrainte `@available` inférieure.
 actor MLXProvider: AIGenerating {
     /// Boîte type-effacée autour d'un `MLXLanguageModel` chargé, pour obtenir
     /// une session fraîche à chaque appel (voir `generate()` — aucune mémoire
     /// de conversation entre deux appels, comme l'ancien code et comme
     /// `AppleIntelligenceProvider.generate()`, puisque `LanguageModelSession`
-    /// accumule son propre transcript si on la réutilise). Cette indirection
-    /// permet à `MLXProvider` de ne jamais porter l'annotation
-    /// `@available(iOS 27, ...)` qu'exige `MLXLanguageModel`, pour ne pas la
-    /// faire remonter jusqu'à `MLXModelSelectionCoordinator`/`AIProviderSelector`.
+    /// accumule son propre transcript si on la réutilise).
     private struct LoadedModel {
         let makeSession: @Sendable () -> LanguageModelSession
     }
@@ -107,30 +98,26 @@ actor MLXProvider: AIGenerating {
         #if targetEnvironment(simulator)
         throw MLXProviderError.simulatorUnsupported
         #else
-        if #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
-            isCancelled = false
-            let model = Self.makeLanguageModel(for: entry, onProgress: onProgress)
-            // Posé avant `preload()`, pas après : `cancel()` doit pouvoir
-            // évincer ce modèle pendant que le téléchargement est en cours,
-            // c'est le seul moment où ça a un effet (voir `cancel()`).
-            evictCurrent = { await model.evict() }
+        isCancelled = false
+        let model = Self.makeLanguageModel(for: entry, onProgress: onProgress)
+        // Posé avant `preload()`, pas après : `cancel()` doit pouvoir
+        // évincer ce modèle pendant que le téléchargement est en cours,
+        // c'est le seul moment où ça a un effet (voir `cancel()`).
+        evictCurrent = { await model.evict() }
 
-            do {
-                try await model.preload()
-            } catch {
-                evictCurrent = nil
-                throw MLXProviderError.downloadFailed(description: String(describing: error))
-            }
-
-            // L'acteur est réentrant : `cancel()` a pu s'exécuter en entier
-            // pendant la suspension sur `preload()` ci-dessus et effacer
-            // `loaded`/`evictCurrent`. Ne pas ressusciter cet état ici.
-            guard !isCancelled else { return }
-
-            loaded = LoadedModel(makeSession: { LanguageModelSession(model: model) })
-        } else {
-            throw MLXProviderError.unsupportedOS
+        do {
+            try await model.preload()
+        } catch {
+            evictCurrent = nil
+            throw MLXProviderError.downloadFailed(description: String(describing: error))
         }
+
+        // L'acteur est réentrant : `cancel()` a pu s'exécuter en entier
+        // pendant la suspension sur `preload()` ci-dessus et effacer
+        // `loaded`/`evictCurrent`. Ne pas ressusciter cet état ici.
+        guard !isCancelled else { return }
+
+        loaded = LoadedModel(makeSession: { LanguageModelSession(model: model) })
         #endif
     }
 
@@ -214,7 +201,6 @@ actor MLXProvider: AIGenerating {
     /// `MLXDownloadProgress.shared` interne : on le relaie tel quel en plus
     /// d'alimenter notre `onProgress` à nous, pour ne rien perdre côté
     /// framework tout en gardant le contrat existant avec l'UI.
-    @available(iOS 27.0, macOS 27.0, visionOS 27.0, *)
     private static func makeLanguageModel(
         for entry: MLXModelCatalogEntry,
         onProgress: @Sendable @escaping (MLXDownloadProgress) -> Void
