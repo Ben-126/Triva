@@ -59,7 +59,7 @@ struct MessageBubbleView: View, Equatable {
                     ProgressView()
                         .accessibilityLabel("Génération de la réponse en cours")
                 } else {
-                    Text(message.text)
+                    Text(Self.attributedText(from: message.text))
                 }
             }
             .accessibilityElement(children: .combine)
@@ -73,6 +73,21 @@ struct MessageBubbleView: View, Equatable {
 
     private var glass: Glass {
         message.role == .user ? .regular.tint(.accentColor.opacity(0.12)) : .regular
+    }
+
+    /// `Text(String)` n'interprète jamais le Markdown à l'exécution (seuls les
+    /// littéraux `LocalizedStringKey` connus à la compilation en bénéficient)
+    /// — c'était le bug : une réponse contenant `**Duo Mobile**` s'affichait
+    /// avec les astérisques au lieu du gras. `AttributedString(markdown:)` le
+    /// parse au runtime. `.inlineOnlyPreservingWhitespace` se limite au gras/
+    /// italique/code/liens/barré et préserve les retours à la ligne, sans
+    /// réinterpréter la réponse en blocs structurés (titres, listes à puces
+    /// avec mise en page propre) que `Text` ne rend de toute façon pas bien.
+    private static func attributedText(from text: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: text,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(text)
     }
 }
 

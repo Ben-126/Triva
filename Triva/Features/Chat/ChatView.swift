@@ -66,6 +66,19 @@ struct ChatView: View {
     /// TÊTE de liste, hors du chemin du scroll qui, lui, ancre en bas).
     private static let bottomAnchorID = "chat-bottom-anchor"
 
+    /// Hauteur de l'ancre de bas de liste — porte elle-même la marge visuelle
+    /// sous la dernière bulle (bug corrigé le 2026-09-15 : cette marge vivait
+    /// avant dans un `.padding(.bottom, 20)` placé APRÈS l'ancre dans le
+    /// VStack. Or `scrollTo(bottomAnchorID, anchor: .bottom)` aligne le BAS de
+    /// l'ancre sur le bas du viewport — tout ce qui suit spatialement l'ancre
+    /// se retrouve donc scrollé sous le viewport, invisible. Résultat : la
+    /// marge existait dans le layout mais jamais à l'écran, et la dernière
+    /// bulle apparaissait collée à la barre de saisie sans marge ni indice de
+    /// scroll. En donnant cette hauteur à l'ancre elle-même (qui précède
+    /// désormais le point d'ancrage), la marge reste au-dessus du bas du
+    /// viewport et donc visible.)
+    private static let bottomAnchorHeight: CGFloat = 20
+
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -96,7 +109,7 @@ struct ChatView: View {
                     }
 
                     Color.clear
-                        .frame(height: 1)
+                        .frame(height: Self.bottomAnchorHeight)
                         .id(Self.bottomAnchorID)
                         .accessibilityHidden(true)
                 }
@@ -104,7 +117,6 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
-                .padding(.bottom, 20)
             }
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 let distanceFromBottom = geometry.contentSize.height
