@@ -19,6 +19,16 @@ struct BYOKProvidersView: View {
     private static let claudeProviderID = CloudBYOKProviderKind.claude.rawValue
 
     @State private var customStore: CustomProviderStore
+    /// Sélection fournisseur/modèle PARTAGÉE par toute l'app
+    /// (`TrivaSharedStores.cloudSelection`), transmise à chaque
+    /// `APIKeysViewModel`. Avant, chacun construisait son propre
+    /// `CloudProviderSelectionStore()` : supprimer la clé du fournisseur actif
+    /// effaçait la sélection de ce store jetable, pendant que celui de l'app —
+    /// lu par la Recherche et par les autres fenêtres, qui ne relisent
+    /// `UserDefaults` qu'à leur construction — gardait une sélection
+    /// orpheline, sans clé pour la résoudre. Pas d'`@State` : la vue ne le
+    /// possède pas, elle le transmet.
+    private let selectionStore: CloudProviderSelectionStore
     @State private var isAddingCustomProvider = false
     /// Un seul `APIKeysViewModel` par fournisseur, construit paresseusement et
     /// réutilisé pour la ligne ET la destination du `NavigationLink` — sinon
@@ -35,8 +45,12 @@ struct BYOKProvidersView: View {
         horizontalSizeClass == .regular ? 640 : nil
     }
 
-    init(customStore: CustomProviderStore = CustomProviderStore()) {
+    /// Plus de valeurs par défaut : chacune créait un store de plus, invisible
+    /// du reste de l'app (le bug ci-dessus en est la forme exacte). Les deux
+    /// viennent de `TrivaSharedStores`, via `SettingsView`.
+    init(customStore: CustomProviderStore, selectionStore: CloudProviderSelectionStore) {
         _customStore = State(initialValue: customStore)
+        self.selectionStore = selectionStore
     }
 
     var body: some View {
@@ -87,14 +101,40 @@ struct BYOKProvidersView: View {
     /// grandit après l'ajout d'un fournisseur personnalisé.
     private func ensureViewModels() {
         if viewModels[Self.claudeProviderID] == nil {
-            viewModels[Self.claudeProviderID] = APIKeysViewModel()
+            viewModels[Self.claudeProviderID] = Self.makeClaudeViewModel(selectionStore: selectionStore)
         }
         for preset in CloudProviderCatalog.presets where viewModels[preset.id] == nil {
-            viewModels[preset.id] = viewModel(for: preset)
+            viewModels[preset.id] = Self.makeViewModel(for: preset, selectionStore: selectionStore)
         }
         for preset in customStore.customPresets where viewModels[preset.id] == nil {
-            viewModels[preset.id] = viewModel(for: preset)
+            viewModels[preset.id] = Self.makeViewModel(for: preset, selectionStore: selectionStore)
         }
+    }
+
+    /// `APIKeysViewModel` de Claude (validateur et compte par défaut), branché
+    /// sur la sélection partagée. Statique et interne pour que les tests
+    /// vérifient le branchement sans interface ni vrai trousseau.
+    static func makeClaudeViewModel(
+        selectionStore: CloudProviderSelectionStore,
+        keyStore: any APIKeyStoring = KeychainAPIKeyStore()
+    ) -> APIKeysViewModel {
+        APIKeysViewModel(keyStore: keyStore, selectionStore: selectionStore)
+    }
+
+    /// `APIKeysViewModel` d'un fournisseur compatible OpenAI (catalogue ou
+    /// personnalisé), branché sur la sélection partagée. Même raison d'être
+    /// statique que `makeClaudeViewModel`.
+    static func makeViewModel(
+        for preset: CloudProviderPreset,
+        selectionStore: CloudProviderSelectionStore,
+        keyStore: any APIKeyStoring = KeychainAPIKeyStore()
+    ) -> APIKeysViewModel {
+        APIKeysViewModel(
+            keyStore: keyStore,
+            validator: OpenAICompatibleAPIKeyValidator(baseURL: preset.baseURL, model: preset.defaultModel),
+            account: preset.id,
+            selectionStore: selectionStore
+        )
     }
 
     private var header: some View {
@@ -112,13 +152,6 @@ struct BYOKProvidersView: View {
                 .padding(16)
         }
         .buttonStyle(.glass)
-    }
-
-    private func viewModel(for preset: CloudProviderPreset) -> APIKeysViewModel {
-        APIKeysViewModel(
-            validator: OpenAICompatibleAPIKeyValidator(baseURL: preset.baseURL, model: preset.defaultModel),
-            account: preset.id
-        )
     }
 
     private func row(displayName: String, viewModel: APIKeysViewModel) -> some View {
@@ -147,5 +180,7 @@ struct BYOKProvidersView: View {
 }
 
 #Preview {
-    BYOKProvidersView()
+    // Stores des aperçus (domaine `UserDefaults` dédié), jamais ceux de l'app.
+    let stores = TrivaSharedStores.preview()
+    BYOKProvidersView(customStore: stores.customProviders, selectionStore: stores.cloudSelection)
 }

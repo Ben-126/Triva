@@ -1,22 +1,178 @@
 import SwiftUI
 
-/// Écran de chat complet (0.8, 3e étape) : liste défilante des messages (une
-/// `MessageBubbleView` par message), champ de saisie + bouton d'envoi, et
-/// affichage de l'erreur courante (`ChatViewModel.errorDescription`) s'il y
-/// en a une — seul endroit de l'écran qui affiche une erreur (voir
-/// `ChatViewModel.fail(assistantMessageID:error:)` : le texte de l'erreur
-/// n'est jamais aussi écrit dans une bulle, pour ne pas le dupliquer).
+// MARK: - Suivi du bas de liste (bug 7)
+
+/// Quand le fil suit-il le bas de la liste ? Logique pure, testée dans
+/// `MessageBubblePresentationTests.swift`.
+///
+/// ## Le bug 7 de la revue
+/// L'ancrage était DÉDUIT DE LA POSITION (« à moins de 80 pt du bas »), alors
+/// que la croissance du contenu déplace elle-même le bas : pendant un
+/// streaming, l'utilisateur qui remontait doucement était ramené en bas à
+/// chaque morceau, et un gros saut de contenu (5 sources d'un coup, une
+/// réponse arrivée en un bloc) pouvait au contraire faire décrocher le suivi,
+/// la réponse s'écrivant alors sous la zone visible.
+///
+/// ## La règle
+/// L'intention se lit dans le GESTE (`ScrollPhase`), pas dans la position :
+/// - le doigt (ou le trackpad) fait défiler → le suivi s'arrête aussitôt ;
+/// - le geste se termine (lâcher, fin d'inertie) → le suivi reprend si l'on
+///   s'est arrêté près du bas, sinon la vue reste où l'utilisateur l'a
+///   laissée ;
+/// - un simple toucher (`.tracking`, par exemple sur un badge de citation) ne
+///   compte pas comme un geste de défilement ;
+/// - un défilement sans phase de geste (molette de souris, flèches du
+///   clavier) se reconnaît à l'offset qui remonte : même effet ;
+/// - jamais de défilement programmatique pendant un geste ;
+/// - le suivi se déclenche après la mise en page (`onScrollGeometryChange`),
+///   quand la hauteur défilable augmente : contenu qui grandit OU conteneur
+///   qui rétrécit (clavier iPhone, fenêtre Mac raccourcie).
+nonisolated enum ChatScrollFollowing {
+    /// Distance au bas (pt) sous laquelle on est « en bas » à la fin d'un
+    /// geste. Même valeur que l'ancien seuil validé à la main.
+    static let nearBottomThreshold: CGFloat = 80
+    /// Écarts d'offset ignorés : arrondis de mise en page, pas un geste.
+    static let offsetTolerance: CGFloat = 1
+
+    /// Les trois mesures utiles d'une `ScrollGeometry`.
+    nonisolated struct Metrics: Sendable, Equatable {
+        var offsetY: CGFloat
+        var contentHeight: CGFloat
+        var containerHeight: CGFloat
+
+        init(offsetY: CGFloat, contentHeight: CGFloat, containerHeight: CGFloat) {
+            self.offsetY = offsetY
+            self.contentHeight = contentHeight
+            self.containerHeight = containerHeight
+        }
+
+        /// Même calcul que l'ancien observateur, validé à la main.
+        init(_ geometry: ScrollGeometry) {
+            self.init(
+                offsetY: geometry.contentOffset.y,
+                contentHeight: geometry.contentSize.height,
+                containerHeight: geometry.containerSize.height
+            )
+        }
+
+        var distanceFromBottom: CGFloat { contentHeight - offsetY - containerHeight }
+        /// Défilement maximal : grandit quand le contenu grandit, ou quand le
+        /// conteneur rétrécit.
+        var scrollableHeight: CGFloat { contentHeight - containerHeight }
+    }
+
+    /// Changement de phase de défilement.
+    static func isPinnedAfterPhaseChange(
+        from oldPhase: ScrollPhase,
+        to newPhase: ScrollPhase,
+        distanceFromBottom: CGFloat,
+        wasPinned: Bool
+    ) -> Bool {
+        switch newPhase {
+        case .interacting:
+            return false
+        case .idle where oldPhase == .interacting || oldPhase == .decelerating:
+            return distanceFromBottom < nearBottomThreshold
+        default:
+            // `.animating` -> `.idle` (fin d'un `scrollTo` animé) : rien ne
+            // change. Réévaluer ici décrocherait un échange tout neuf dont le
+            // contenu grandit pendant l'animation.
+            return wasPinned
+        }
+    }
+
+    /// Fin d'un toucher ou d'une animation alors que le suivi est actif :
+    /// le contenu a pu grandir pendant ce temps sans être suivi (le suivi est
+    /// suspendu pendant `.tracking`) — sans ce rattrapage, le DERNIER morceau
+    /// d'une réponse reçu pendant un toucher resterait sous la zone visible.
+    static func needsCatchUp(
+        from oldPhase: ScrollPhase,
+        to newPhase: ScrollPhase,
+        isPinned: Bool,
+        distanceFromBottom: CGFloat
+    ) -> Bool {
+        isPinned
+            && newPhase == .idle
+            && (oldPhase == .tracking || oldPhase == .animating)
+            && distanceFromBottom > offsetTolerance
+    }
+
+    /// Défilement sans phase de geste (molette, clavier). Un offset qui
+    /// remonte loin du bas ne vient que de l'utilisateur : la croissance du
+    /// contenu ne déplace pas l'offset, et un contenu qui rétrécit le ramène
+    /// au bas, distance nulle.
+    static func isPinnedAfterGeometryChange(
+        from old: Metrics,
+        to new: Metrics,
+        phase: ScrollPhase,
+        wasPinned: Bool
+    ) -> Bool {
+        let offsetDelta = new.offsetY - old.offsetY
+        if wasPinned {
+            let scrolledAway = offsetDelta < -offsetTolerance && new.distanceFromBottom > nearBottomThreshold
+            return !scrolledAway
+        }
+        return phase == .idle && offsetDelta > offsetTolerance && new.distanceFromBottom < nearBottomThreshold
+    }
+
+    /// LE déclencheur du suivi, unique et après mise en page.
+    static func shouldFollowContent(from old: Metrics, to new: Metrics, phase: ScrollPhase, isPinned: Bool) -> Bool {
+        guard isPinned, allowsProgrammaticScroll(during: phase) else { return false }
+        return new.scrollableHeight > old.scrollableHeight
+    }
+
+    static func allowsProgrammaticScroll(during phase: ScrollPhase) -> Bool {
+        switch phase {
+        case .idle, .animating:
+            true
+        case .tracking, .interacting, .decelerating:
+            false
+        }
+    }
+}
+
+// MARK: - Vue
+
+/// Écran de chat complet : le fil (une `MessageBubbleView` par message, avec
+/// autour les widgets, les médias à la demande et la relance en mode Rapide),
+/// les suggestions de la dernière réponse, la barre de saisie (fichiers
+/// joints, mode de réponse, champ, envoi/arrêt) et le bouton « Nouvelle
+/// conversation » de la barre d'outils.
+///
+/// Erreurs : `ChatViewModel.errorDescription` est la SEULE source du bandeau
+/// d'erreur d'échange (jamais recopié dans une bulle, pour ne pas le
+/// dupliquer) ; `persistenceErrorDescription` (historique, favoris) a sa
+/// propre ligne et ne l'écrase jamais.
 ///
 /// Ne crée jamais son `ChatViewModel` lui-même : reçu en paramètre, pour que
 /// l'appelant (`ContentView.swift`) reste seul responsable de résoudre le
-/// provider IA et le `FailoverManager` actifs
-/// (`resolveProvider`/`resolveFailoverManager`, voir le commentaire de tête
-/// de `ChatViewModel`) et de mettre ce ViewModel en cache — un par écran,
-/// jamais recréé à chaque re-render.
+/// provider IA et le `FailoverManager` actifs et de mettre ce ViewModel en
+/// cache — un par écran, jamais recréé à chaque re-render.
+///
+/// Quand une réponse n'a ni widget, ni média, ni raisonnement, l'écran est
+/// exactement celui d'avant : la question, la bulle de réponse, ses sources.
 struct ChatView: View {
     let viewModel: ChatViewModel
+    private let injectedResponseModeStore: ResponseModeSettingsStore?
 
-    @State private var draft = ""
+    /// - Parameter responseModeStore: le store PARTAGÉ du mode de réponse
+    ///   (1.13), le même que celui des Réglages. `nil` : l'instance unique du
+    ///   processus (`sharedResponseModeStore`). Pas de valeur par défaut
+    ///   `= ChatView.sharedResponseModeStore` : une expression par défaut est
+    ///   évaluée hors du main actor (même piège que `EngineStatusView.init`).
+    init(viewModel: ChatViewModel, responseModeStore: ResponseModeSettingsStore? = nil) {
+        self.viewModel = viewModel
+        self.injectedResponseModeStore = responseModeStore
+    }
+
+    /// Brouillon de la session (`SearchDraft`, `ContentView.swift`) : il
+    /// survit au démontage de cette vue (changement de destination en
+    /// sidebar, bascule de classe de taille) et reçoit le texte de Découvrir >
+    /// « Chercher dans Triva ». Lecture OPTIONNELLE, contrat d'I4b : les
+    /// aperçus n'en injectent pas, une lecture non optionnelle les ferait
+    /// planter — repli sur `localDraft`.
+    @Environment(SearchDraft.self) private var sessionDraft: SearchDraft?
+    @State private var localDraft = ""
     /// `Task` de la génération en cours, créée par `send()` — jamais une
     /// `Task {}` perdue (le handle serait alors immédiatement jeté) : gardée
     /// ici pour pouvoir l'annuler explicitement dans `.onDisappear`. Sans
@@ -24,16 +180,29 @@ struct ChatView: View {
     /// moteur IA depuis `ContentView`) laisserait le flux tourner
     /// indéfiniment en arrière-plan, invisible et impossible à arrêter —
     /// alors que `ChatViewModel.send(query:)` réagit correctement à
-    /// l'annulation de cette `Task` (voir son commentaire de tête).
+    /// l'annulation de cette `Task` (voir son commentaire de tête). Les
+    /// suggestions touchées et la relance en mode Rapide passent par elle
+    /// aussi : le bouton Stop les arrête de la même façon.
     @State private var sendTask: Task<Void, Never>?
-    /// Suit si l'utilisateur est actuellement ancré en bas de la liste — voir
-    /// `messagesList`/`onScrollGeometryChange` : tant que c'est vrai, chaque
-    /// nouveau morceau de texte streamé réancre le scroll en bas ; dès que
-    /// l'utilisateur remonte manuellement pendant un streaming, ça devient
-    /// faux et le scroll automatique s'arrête jusqu'au prochain envoi.
+    /// Le fil suit-il le bas de la liste ? Voir `ChatScrollFollowing`.
     @State private var isPinnedToBottom = true
+    /// Dernière phase de défilement connue, lue par l'observateur de
+    /// géométrie (aucun défilement programmatique pendant un geste).
+    @State private var scrollPhase: ScrollPhase = .idle
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @FocusState private var isDraftFocused: Bool
+
+    /// Repli tant que `TrivaSharedStores` ne porte pas le store du mode :
+    /// UNE instance par processus, partagée par toutes les fenêtres (iPad,
+    /// Mac). Une instance par vue afficherait un mode périmé dans une fenêtre
+    /// après un changement dans une autre — alors que l'envoi relit
+    /// `UserDefaults` : l'interface dirait « Rapide » pendant que la
+    /// recherche part en « Fiable ».
+    private static let sharedResponseModeStore = ResponseModeSettingsStore()
+
+    private var responseModeStore: ResponseModeSettingsStore {
+        injectedResponseModeStore ?? Self.sharedResponseModeStore
+    }
 
     /// Largeur de contenu plafonnée en `regular` (iPad/Mac) — même principe
     /// que `TrivaHomeReferenceView` (padding horizontal de 20 partout), pour
@@ -43,14 +212,52 @@ struct ChatView: View {
         horizontalSizeClass == .regular ? 640 : nil
     }
 
+    /// Texte de la barre de saisie : celui de la session quand elle en
+    /// fournit un.
+    private var draftText: String {
+        sessionDraft?.text ?? localDraft
+    }
+
+    private var draftBinding: Binding<String> {
+        guard let sessionDraft else { return $localDraft }
+        @Bindable var bindableDraft = sessionDraft
+        return $bindableDraft.text
+    }
+
     private var isSendDisabled: Bool {
-        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isGenerating
+        draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isGenerating
+    }
+
+    /// Suggestions de la DERNIÈRE réponse, une fois sa génération terminée
+    /// (même règle que le web) ; `nil` pendant une génération.
+    private var lastAnswerSuggestions: [String]? {
+        guard !viewModel.isGenerating,
+              let last = viewModel.messages.last,
+              last.role == .assistant,
+              !last.suggestions.isEmpty else { return nil }
+        return last.suggestions
     }
 
     var body: some View {
         VStack(spacing: 0) {
             messagesList
             composer
+        }
+        .toolbar {
+            // Décision 1 de Ben : les questions s'enchaînent dans la même
+            // conversation jusqu'à ce bouton ; l'ancienne reste dans la
+            // Bibliothèque. ⇧⌘O plutôt que ⌘N, qui ouvre une nouvelle
+            // fenêtre sur Mac et iPad.
+            ToolbarItem(placement: .primaryAction) {
+                Button("Nouvelle conversation", systemImage: "square.and.pencil") {
+                    startNewConversation()
+                }
+                .disabled(viewModel.messages.isEmpty)
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+                #if os(macOS)
+                .help("Nouvelle conversation")
+                #endif
+            }
         }
         .onDisappear {
             sendTask?.cancel()
@@ -90,22 +297,30 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // UN seul conteneur pour tout le verre du fil : bulles,
+                    // widgets, boutons des médias et de relance (DESIGN.md).
+                    // Les suggestions ouvrent le leur, donc restent dehors.
                     GlassEffectContainer(spacing: 16) {
                         VStack(alignment: .leading, spacing: 16) {
                             ForEach(viewModel.messages) { message in
-                                // `.equatable()` juste après l'initialiseur
-                                // (avant `.id()`, qui rendrait le type
-                                // englobant non-Equatable) : évite de
-                                // ré-évaluer le corps des bulles dont le
-                                // `message` n'a pas changé à chaque snapshot
-                                // de streaming reçu par une AUTRE bulle (voir
-                                // le commentaire de tête de
-                                // `MessageBubbleView`).
-                                MessageBubbleView(message: message)
-                                    .equatable()
-                                    .id(message.id)
+                                ChatTranscriptRow(
+                                    message: message,
+                                    viewModel: viewModel,
+                                    onRetry: { messageID in retryInQuickMode(messageID: messageID) }
+                                )
                             }
                         }
+                    }
+
+                    if let suggestions = lastAnswerSuggestions {
+                        SuggestionsView(suggestions: suggestions, onSelect: { suggestion in sendSuggestion(suggestion) })
+                    }
+
+                    if let persistenceError = viewModel.persistenceErrorDescription {
+                        Label(persistenceError, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityElement(children: .combine)
                     }
 
                     if let errorDescription = viewModel.errorDescription {
@@ -125,61 +340,62 @@ struct ChatView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
             }
+            // Une conversation rouverte (Bibliothèque, favori) s'ouvre sur
+            // sa fin, comme Messages.
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
             .mask(topFadeMask(containerHeight: containerGeometry.size.height))
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                let distanceFromBottom = geometry.contentSize.height
-                    - geometry.contentOffset.y
-                    - geometry.containerSize.height
-                return distanceFromBottom < 80
-            } action: { _, isNearBottom in
-                isPinnedToBottom = isNearBottom
+            .onScrollPhaseChange { oldPhase, newPhase, context in
+                scrollPhase = newPhase
+                let distance = ChatScrollFollowing.Metrics(context.geometry).distanceFromBottom
+                let pinned = ChatScrollFollowing.isPinnedAfterPhaseChange(
+                    from: oldPhase,
+                    to: newPhase,
+                    distanceFromBottom: distance,
+                    wasPinned: isPinnedToBottom
+                )
+                setPinned(pinned)
+                if ChatScrollFollowing.needsCatchUp(from: oldPhase, to: newPhase, isPinned: pinned, distanceFromBottom: distance) {
+                    scrollToBottom(proxy: proxy, animated: false)
+                }
             }
-            // Re-scrolle dès que la hauteur RÉELLE du contenu augmente (bug
-            // trouvé le 2026-09-15 : la dernière réponse en streaming pouvait
-            // rester tronquée en plein milieu d'une phrase). Le
-            // `.onChange(of: viewModel.messages.last?.text)` juste en dessous
-            // déclenche un scroll dès que le MODÈLE change, mais ce
-            // changement de données précède la mise à jour de layout de
-            // SwiftUI : la bulle vient tout juste de s'agrandir avec ce
-            // nouveau morceau de texte, et ce scroll utilise encore
-            // l'ancienne géométrie (avant que la bulle n'ait fini de
-            // grandir) — surtout visible sur le TOUT DERNIER morceau reçu,
-            // puisqu'aucun scroll ultérieur ne vient jamais corriger cette
-            // position figée. `onScrollGeometryChange` se déclenche lui APRÈS
-            // que SwiftUI ait posé la géométrie réelle (`contentSize` inclut
-            // déjà la bulle à sa hauteur finale) : une hauteur de contenu qui
-            // augmente est donc un signal fiable qu'il faut re-scroller,
-            // contrairement à un changement de texte qui ne l'est pas.
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentSize.height
-            } action: { oldHeight, newHeight in
-                guard newHeight > oldHeight, isPinnedToBottom else { return }
-                scrollToBottom(proxy: proxy, animated: false)
+            // LE déclencheur du suivi (le `.onChange(of: messages.last?.text)`
+            // d'avant faisait doublon). `onScrollGeometryChange` passe APRÈS
+            // que SwiftUI a posé la géométrie réelle (`contentSize` inclut déjà
+            // la bulle à sa hauteur finale) : c'est ce qui avait corrigé, le
+            // 2026-09-15, la réponse restée tronquée au milieu d'une phrase —
+            // un changement de texte précède la mise en page, une hauteur qui
+            // augmente la suit. Sans animation : il se déclenche à chaque
+            // palier de texte, des transactions animées en rafale saccadaient.
+            .onScrollGeometryChange(for: ChatScrollFollowing.Metrics.self) { geometry in
+                ChatScrollFollowing.Metrics(geometry)
+            } action: { oldMetrics, newMetrics in
+                let pinned = ChatScrollFollowing.isPinnedAfterGeometryChange(
+                    from: oldMetrics,
+                    to: newMetrics,
+                    phase: scrollPhase,
+                    wasPinned: isPinnedToBottom
+                )
+                setPinned(pinned)
+                if ChatScrollFollowing.shouldFollowContent(from: oldMetrics, to: newMetrics, phase: scrollPhase, isPinned: pinned) {
+                    scrollToBottom(proxy: proxy, animated: false)
+                }
             }
             .onChange(of: viewModel.messages.count) {
-                // Un nouvel échange (nouvelle question envoyée) reprend
-                // toujours le suivi automatique, même si l'utilisateur avait
-                // remonté pour relire une réponse précédente.
-                isPinnedToBottom = true
+                // Un nouvel échange (nouvelle question envoyée), une
+                // conversation rouverte ou vidée reprend toujours le suivi,
+                // même si l'utilisateur avait remonté pour relire.
+                setPinned(true)
                 scrollToBottom(proxy: proxy)
-            }
-            .onChange(of: viewModel.messages.last?.text) {
-                // Pendant le streaming d'une réponse longue, ne réancre PAS le
-                // scroll si l'utilisateur a délibérément remonté pour relire
-                // le début — sinon chaque token reçu annulerait son geste.
-                guard isPinnedToBottom else { return }
-                // Sans animation ici : ce `onChange` se déclenche à chaque
-                // snapshot reçu de `textStream` (potentiellement des dizaines
-                // par réponse), et envelopper chacun dans `withAnimation`
-                // relançait autant de transactions d'animation/scroll en
-                // rafale. Les scrolls déclenchés par un nouvel échange ou une
-                // erreur (événements ponctuels, pas un flux) restent animés.
-                scrollToBottom(proxy: proxy, animated: false)
             }
             .onChange(of: viewModel.errorDescription) { _, newValue in
                 scrollToBottom(proxy: proxy)
                 if let newValue {
-                    announce(error: newValue)
+                    announce("Erreur : \(newValue)")
+                }
+            }
+            .onChange(of: viewModel.persistenceErrorDescription) { _, newValue in
+                if let newValue {
+                    announce(newValue)
                 }
             }
         }
@@ -208,6 +424,12 @@ struct ChatView: View {
         )
     }
 
+    private func setPinned(_ pinned: Bool) {
+        if isPinnedToBottom != pinned {
+            isPinnedToBottom = pinned
+        }
+    }
+
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
         if animated {
             withAnimation {
@@ -218,55 +440,182 @@ struct ChatView: View {
         }
     }
 
-    /// Annonce l'échec à VoiceOver dès qu'il survient : sans ceci, un
+    /// Annonce une erreur à VoiceOver dès qu'elle survient : sans ceci, un
     /// utilisateur VoiceOver n'a aucun moyen de savoir qu'une erreur vient de
     /// s'afficher (le bandeau est un `Label` statique, pas un élément qui
     /// prend le focus tout seul).
-    private func announce(error description: String) {
-        AccessibilityNotification.Announcement("Erreur : \(description)").post()
+    private func announce(_ message: String) {
+        AccessibilityNotification.Announcement(message).post()
     }
 
-    private var composer: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                TextField("Pose ta question…", text: $draft)
-                    .focused($isDraftFocused)
-                    .onSubmit(send)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+    // MARK: Barre de saisie
 
-                Button {
-                    if viewModel.isGenerating {
-                        // Affordance d'annulation : sans elle, une génération
-                        // qui ne répond plus (ex. connexion BYOK qui pend)
-                        // tourne jusqu'au timeout réseau par défaut, sans
-                        // aucun moyen de l'arrêter autrement qu'en quittant
-                        // l'écran (ce qui annule aussi via `.onDisappear`,
-                        // mais fait perdre l'écran).
-                        sendTask?.cancel()
-                    } else {
-                        send()
-                    }
-                } label: {
-                    Image(systemName: viewModel.isGenerating ? "stop.fill" : "arrow.up")
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(viewModel.isGenerating ? false : isSendDisabled)
-                .accessibilityLabel(viewModel.isGenerating ? "Arrêter la génération" : "Envoyer")
+    /// Fichiers joints au-dessus (`FileAttachmentTray`, frère du conteneur :
+    /// il ouvre le sien), puis la barre : trombone, mode de réponse, champ,
+    /// envoi. Trombone et mode en `.glass` (actions secondaires), envoi seul en
+    /// `.glassProminent` (DESIGN.md). Même largeur plafonnée que le fil.
+    private var composer: some View {
+        VStack(spacing: 0) {
+            if !viewModel.attachmentController.isEmpty {
+                FileAttachmentTray(controller: viewModel.attachmentController)
+                    .frame(maxWidth: contentMaxWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
             }
-            .frame(maxWidth: contentMaxWidth)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+
+            GlassEffectContainer(spacing: 12) {
+                HStack(spacing: 12) {
+                    // Le contrôleur du ViewModel, jamais un `@State` d'ici :
+                    // ses fichiers n'atteindraient pas le pipeline.
+                    FileAttachmentPicker(controller: viewModel.attachmentController)
+
+                    ResponseModeSelector(store: responseModeStore)
+
+                    TextField("Pose ta question…", text: draftBinding)
+                        .focused($isDraftFocused)
+                        .onSubmit(send)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+
+                    sendButton
+                }
+                .frame(maxWidth: contentMaxWidth)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+            }
         }
     }
 
+    private var sendButton: some View {
+        Button {
+            if viewModel.isGenerating {
+                // Affordance d'annulation : sans elle, une génération qui ne
+                // répond plus (ex. connexion BYOK qui pend) tourne jusqu'au
+                // timeout réseau par défaut, sans aucun moyen de l'arrêter
+                // autrement qu'en quittant l'écran (ce qui annule aussi via
+                // `.onDisappear`, mais fait perdre l'écran).
+                sendTask?.cancel()
+            } else {
+                send()
+            }
+        } label: {
+            Image(systemName: viewModel.isGenerating ? "stop.fill" : "arrow.up")
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(viewModel.isGenerating ? false : isSendDisabled)
+        .accessibilityLabel(viewModel.isGenerating ? "Arrêter la génération" : "Envoyer")
+        // Échap arrête la génération (clavier matériel, Mac et iPad) ; rien
+        // le reste du temps, pour ne jamais envoyer par accident.
+        .keyboardShortcut(viewModel.isGenerating ? KeyboardShortcut.cancelAction : nil)
+    }
+
+    // MARK: Actions
+
     private func send() {
         guard !isSendDisabled else { return }
-        let query = draft
-        draft = ""
+        let query = draftText
+        if let sessionDraft {
+            sessionDraft.text = ""
+        } else {
+            localDraft = ""
+        }
         sendTask = Task { await viewModel.send(query: query) }
+    }
+
+    /// Suggestion touchée : envoyée comme une nouvelle question, dans
+    /// `sendTask` (le bouton Stop l'arrête comme un envoi tapé).
+    private func sendSuggestion(_ suggestion: String) {
+        guard !viewModel.isGenerating else { return }
+        sendTask = Task { await viewModel.send(query: suggestion) }
+    }
+
+    /// Décision (c) : même question, en mode Rapide, à la place de la réponse
+    /// sans source fiable. Pas de nouveau message : le suivi est réactivé à
+    /// la main, le contenu qui grandit fera le reste.
+    private func retryInQuickMode(messageID: UUID) {
+        guard !viewModel.isGenerating else { return }
+        setPinned(true)
+        sendTask = Task { await viewModel.retryInQuickMode(messageID: messageID) }
+    }
+
+    /// Le brouillon en cours est gardé : il servira de première question.
+    private func startNewConversation() {
+        viewModel.startNewConversation()
+        isDraftFocused = true
+    }
+}
+
+// MARK: - Un message du fil
+
+/// Un message et ce qui l'entoure, dans l'ordre de lecture : widgets
+/// (au-dessus de la réponse), la bulle, les médias à la demande, puis la
+/// relance en mode Rapide. Tous sont des éléments de verre FRÈRES de la
+/// bulle, jamais dedans (pas de verre sur du verre), dans le conteneur du fil.
+///
+/// `Group` et non `VStack` : ses enfants s'insèrent directement dans le
+/// `VStack(spacing: 16)` du fil, donc 16 pt entre deux éléments de verre
+/// (en dessous, le conteneur les fondrait), et un message qui n'affiche rien
+/// (échec avant tout contenu, bulle masquée) ne laisse aucun trou.
+private struct ChatTranscriptRow: View {
+    let message: ChatViewModel.Message
+    let viewModel: ChatViewModel
+    let onRetry: @MainActor (UUID) -> Void
+
+    var body: some View {
+        let answer = MessageBubbleView.answerSnapshot(of: message)
+        let isAnswer = message.role == .assistant
+        let messageID = message.id
+
+        Group {
+            if isAnswer {
+                // Cartes sans conteneur propre : celui du fil sert (voir
+                // `WeatherWidgetView`). Liste fixe pour un message donné.
+                ForEach(message.widgets.indices, id: \.self) { index in
+                    switch message.widgets[index] {
+                    case .weather(let data):
+                        WeatherWidgetView(data: data)
+                    case .calculation(let data):
+                        CalculationWidgetView(data: data)
+                    }
+                }
+            }
+
+            if !isAnswer || MessageBubblePresentation.showsBubble(answer) {
+                // `.equatable()` (voir `MessageBubbleView`) : la bulle n'est
+                // réévaluée que si son message ou son étoile change, pas à
+                // chaque snapshot reçu par une AUTRE bulle. `isFavorite` est
+                // lu ICI, dans un `body` : il observe la révision des favoris.
+                MessageBubbleView(
+                    message: message,
+                    isFavorite: viewModel.isFavorite(message),
+                    canToggleFavorite: viewModel.canToggleFavorite(message),
+                    onToggleFavorite: { viewModel.toggleFavorite(messageID: messageID) }
+                )
+                .equatable()
+            }
+
+            if isAnswer, MessageBubblePresentation.showsMediaSearch(answer) {
+                // Décision (a) : rien n'est cherché tant que l'utilisateur
+                // n'appuie pas. `onSearch` capture l'identifiant, jamais le
+                // message (il servira aussi à « Réessayer »).
+                ImageResultsView(phase: message.images, onSearch: { viewModel.searchImages(messageID: messageID) })
+                VideoResultsView(phase: message.videos, onSearch: { viewModel.searchVideos(messageID: messageID) })
+            }
+
+            if viewModel.canRetryInQuickMode(message) {
+                // Décision (c) : jamais de réponse sans source en mode
+                // Fiable ; on propose la relance, en verre (action
+                // secondaire), hors de la bulle.
+                Button(ChatViewModel.retryInQuickModeTitle, systemImage: ResponseMode.quick.systemImage) {
+                    onRetry(messageID)
+                }
+                .font(.subheadline)
+                .buttonStyle(.glass)
+            }
+        }
     }
 }
 
@@ -337,8 +686,10 @@ private func previewViewModel(response: String, sources: [SearXNGSearchResult]) 
         response: "Voici un résumé basé sur plusieurs sources récentes.",
         sources: PreviewSearXNGClient.sampleResults
     )
-    return ChatView(viewModel: viewModel)
-        .task { await viewModel.send(query: "Résume l'actualité tech d'aujourd'hui.") }
+    return NavigationStack {
+        ChatView(viewModel: viewModel)
+    }
+    .task { await viewModel.send(query: "Résume l'actualité tech d'aujourd'hui.") }
 }
 
 #Preview("Sans sources — sombre") {
