@@ -27,6 +27,7 @@ private final class MockAIGenerating: AIGenerating {
     }
 }
 
+@MainActor
 @Suite("QueryClassifier")
 struct QueryClassifierTests {
     // MARK: - parse

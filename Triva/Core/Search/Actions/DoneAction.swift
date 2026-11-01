@@ -13,8 +13,9 @@ import Foundation
 /// d'orchestration — exactement comme côté web, où `researcher/index.ts`
 /// intercepte le nom du dernier tool call AVANT tout appel à
 /// `ActionRegistry.executeAll` et sort de la boucle sans jamais exécuter
-/// l'action `done` elle-même (voir `SearchOrchestrator.runResearch`, qui fait
-/// le même test sur `decision.actionName == "done"` avant tout `execute()`).
+/// l'action `done` elle-même (voir `SearchOrchestrator.runPlannerLoop`, qui
+/// sort de la boucle sur "done" — comme sur toute action inconnue — avant
+/// tout `execute()`).
 ///
 /// `execute()` reste donc du code mort ASSUMÉ, jamais couvert par un appel
 /// réel dans le pipeline — commentaire volontairement explicite pour qu'un

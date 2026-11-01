@@ -11,8 +11,9 @@ import Foundation
 /// (`arxiv`, `google scholar`, `pubmed`), sans restriction de catégorie — côté
 /// web, `searchConfig: { engines: [...] }` est la SEULE surcharge passée à
 /// `executeSearch`, `categories` reste vide comme pour `WebSearchAction`.
-/// Sélectionnée quand `QueryClassification.primaryAction == .academicSearch`
-/// (voir `SearchOrchestrator`).
+/// Action du tour seedé de la route `.web(.academic)` (`SearchRoute.resolve`,
+/// `WebSearchFlavor.action`) ; restée vide, elle est relancée une fois en
+/// `WebSearchAction` (bug 5, `SearchOrchestrator.seededSearch`).
 struct AcademicSearchAction: SearchAction {
     let name = "academicSearch"
     let descriptionForPlanner = "Recherche académique : à utiliser pour des articles scientifiques, études ou publications de recherche (arXiv, Google Scholar, PubMed)."

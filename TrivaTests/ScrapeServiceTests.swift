@@ -16,7 +16,11 @@ private enum MockFetchError: Error, Sendable {
 
 /// `URLFetching` factice : simule un statut HTTP + Content-Type + corps
 /// donnés, ou une erreur de transport — sans réseau réel ni `URLProtocol`
-/// personnalisé.
+/// personnalisé. N'implémente QUE `fetch` : `scrape(url:)` passe donc par le
+/// repli `streamBytes` de l'extension `URLFetching` (corps rejoué octet par
+/// octet), comme tout mock écrit avant la lecture en flux. Ce que la lecture
+/// en flux borne réellement (octets lus, annulation, thread) est prouvé dans
+/// `ScrapeServiceFetchTests`, avec un flux instrumenté.
 private struct MockURLFetching: URLFetching {
     enum Behavior: Sendable {
         case success(data: Data, statusCode: Int, contentType: String)
@@ -41,8 +45,34 @@ private struct MockURLFetching: URLFetching {
     }
 }
 
+/// Générateur pseudo-aléatoire à graine fixe (LCG de Knuth) : des textes
+/// variés mais IDENTIQUES à chaque exécution — un échec reste reproductible.
+private struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed
+    }
+
+    mutating func next() -> UInt64 {
+        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+        return state
+    }
+}
+
+/// `@MainActor` : même contexte d'appel que `ChatViewModel` en production.
+@MainActor
 @Suite("ScrapeService")
 struct ScrapeServiceTests {
+    /// Paragraphe TÉMOIN, positif et sans aucun mot piège. Indispensable aux
+    /// tests d'heuristique : `scoreAndSelectMainBlock` renvoie le meilleur
+    /// segment quand AUCUN n'est positif — un paragraphe testé seul
+    /// reviendrait donc même pénalisé, et le test ne prouverait rien. Avec le
+    /// témoin, le paragraphe testé n'est gardé que si son score est positif.
+    private static let neutralParagraph =
+        "<p>L'opération prend moins d'une minute et libère souvent plusieurs centaines de mégaoctets sur un ordinateur ancien.</p>"
+    private static let neutralFragment = "L'opération prend moins d'une minute"
+
     // MARK: - stripNonContentTags
 
     @Test("Retire script/style/noscript et les commentaires HTML")
@@ -61,7 +91,7 @@ struct ScrapeServiceTests {
         #expect(result.contains("<p>Contenu réel</p>"))
     }
 
-    @Test("Retire les conteneurs structurels nav/header/footer/aside/form")
+    @Test("Retire nav, footer, aside et l'en-tête du site ; <form> déballé (balises et champs retirés, contenu gardé)")
     func stripNonContentTagsRemovesStructuralContainers() {
         let html = """
         <nav><a href="/">Accueil</a></nav>
@@ -79,7 +109,39 @@ struct ScrapeServiceTests {
         #expect(!result.contains("Liens sponsorisés"))
         #expect(!result.contains("Copyright 2026"))
         #expect(!result.contains("<form>"))
+        #expect(!result.contains("<input"))
         #expect(result.contains("Contenu principal"))
+    }
+
+    @Test("<header> d'un <article>/<main> conservé (chapô), en-tête du site hors article retiré")
+    func articleHeaderIsKeptButSiteHeaderIsRemoved() {
+        let html = """
+        <header class="site"><a href="/">Le Journal</a><p>Menu du site et abonnement</p></header>
+        <main><article><header><h1>Enquête sur l'eau</h1><p>Le chapô résume l'essentiel de l'enquête en deux phrases.</p></header>
+        <p>Le corps de l'article développe ensuite chaque point.</p></article></main>
+        """
+
+        let result = ScrapeService.stripNonContentTags(html)
+
+        #expect(!result.contains("Menu du site et abonnement"))
+        #expect(result.contains("Le chapô résume l'essentiel"))
+        #expect(result.contains("Enquête sur l'eau"))
+    }
+
+    @Test("Page ASP.NET WebForms (tout le <body> dans <form id=\"aspnetForm\">) : le contenu survit, le __VIEWSTATE disparaît")
+    func aspNetFormPageKeepsItsContent() {
+        let html = """
+        <html><head><title>Mairie</title></head><body><form method="post" action="./Default.aspx" id="aspnetForm">
+        <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="/wEPDwUKLTk2Njk3OTQxNg9kFgJmD2QWAgIDD2Q=">
+        <div class="content"><p>Les inscriptions à la cantine scolaire pour la rentrée de septembre sont ouvertes jusqu'au 15 juillet inclus.</p></div>
+        </form></body></html>
+        """
+
+        let (title, content) = ScrapeService.extractMainContent(fromHTML: html)
+
+        #expect(title == "Mairie")
+        #expect(content.contains("inscriptions à la cantine scolaire"))
+        #expect(!content.contains("VIEWSTATE"))
     }
 
     // MARK: - decodeHTMLEntities
@@ -127,6 +189,107 @@ struct ScrapeServiceTests {
 
         #expect(selected.contains("Texte principal de l'article"))
         #expect(!selected.contains("Super article"))
+    }
+
+    @Test(
+        "Mot-clé négatif en PRÉFIXE d'un token class/id (commentaires, sidebar-droite, widget_text, post-comments) : toujours pénalisé",
+        arguments: ["class=\"commentaires\"", "id=\"sidebar-droite\"", "class=\"widget_text\"", "class=\"post-comments\""]
+    )
+    func negativeClassOrIDTokenIsStillPenalized(attribute: String) {
+        let html = """
+        <div class="content"><p>Texte principal de l'article, suffisamment long et dense pour être reconnu comme le contenu principal.</p></div>
+        <div \(attribute)><p>Super article, merci beaucoup pour ce partage très intéressant qui aidera sûrement beaucoup de monde.</p></div>
+        """
+
+        let selected = ScrapeService.scoreAndSelectMainBlock(fromCleanedHTML: html)
+
+        #expect(selected.contains("Texte principal de l'article"))
+        #expect(!selected.contains("Super article"))
+    }
+
+    /// AVANT le correctif : `contains` sur TOUT le segment brut (texte visible
+    /// et `href` compris) — « comment » + « nav » (navigateur) valaient -1000.
+    @Test(
+        "Mot piège dans le TEXTE visible, un href ou au milieu d'un token class (unavailable) : paragraphe conservé",
+        arguments: [
+            (
+                "<p>Voici comment vider le cache de votre navigateur : ouvrez les réglages, choisissez Confidentialité, puis effacez l'historique.</p>",
+                "Voici comment vider le cache de votre navigateur"
+            ),
+            (
+                "<p>The minister declined to comment on the navigation data, which remained unavailable to the sponsors of the bill.</p>",
+                "declined to comment on the navigation data"
+            ),
+            (
+                "<p>Les réponses des lecteurs sont regroupées sur <a href=\"/comments/42\">une page à part</a>, avec le détail des votes et des corrections de la rédaction.</p>",
+                "Les réponses des lecteurs sont regroupées"
+            ),
+            (
+                "<p class=\"entry-unavailable\">Le musée reste ouvert le dimanche matin, mais la galerie des sculptures ferme pour travaux jusqu'en mars.</p>",
+                "la galerie des sculptures ferme"
+            ),
+        ]
+    )
+    func trapWordsOutsideClassOrIDPrefixesDoNotPenalize(trapParagraph: String, expectedFragment: String) {
+        let html = "<div class=\"content\">\(trapParagraph)\n\(Self.neutralParagraph)</div>"
+
+        let selected = ScrapeService.scoreAndSelectMainBlock(fromCleanedHTML: html)
+
+        #expect(selected.contains(expectedFragment))
+        #expect(selected.contains(Self.neutralFragment))
+    }
+
+    /// AVANT le correctif : densité = HTML BRUT des `<a>` / texte visible —
+    /// chaque renvoi `cite_note` (~80 caractères de balisage pour « [3] »)
+    /// poussait la densité à ~1 et l'intro disparaissait (score -357).
+    @Test("Intro Wikipédia truffée de renvois <a href=\"#cite_note-…\"> : conservée (densité mesurée sur le texte visible des liens)")
+    func wikipediaIntroWithCiteNotesIsKept() {
+        func citeNote(_ number: Int) -> String {
+            "<sup id=\"cite_ref-\(number)\" class=\"reference\"><a href=\"#cite_note-\(number)\"><span class=\"cite-bracket\">&#91;</span>\(number)<span class=\"cite-bracket\">&#93;</span></a></sup>"
+        }
+        let intro = """
+        <p><b>Paris</b> est la <a href="/wiki/Capitale" title="Capitale">capitale</a> de la <a href="/wiki/France" title="France">France</a>\(citeNote(1)). \
+        Elle se situe au cœur d'un vaste bassin sédimentaire aux sols fertiles et au climat tempéré, sur une boucle de la Seine\(citeNote(2)), \
+        entre les confluents de celle-ci avec la Marne et l'Oise\(citeNote(3)). Ses habitants sont appelés les Parisiens\(citeNote(4)). \
+        Paris est aussi le chef-lieu de la région Île-de-France\(citeNote(5)) et l'unique commune française qui est en même temps un département\(citeNote(6)).</p>
+        """
+        let html = "<div id=\"mw-content-text\" class=\"mw-body-content\">\(intro)\n\(Self.neutralParagraph)</div>"
+
+        let selected = ScrapeService.scoreAndSelectMainBlock(fromCleanedHTML: html)
+
+        #expect(selected.contains("vaste bassin sédimentaire"))
+        #expect(selected.contains("chef-lieu de la région Île-de-France"))
+        #expect(selected.contains(Self.neutralFragment))
+    }
+
+    /// AVANT le correctif : longueur du HTML BRUT comparée à 40 —
+    /// `<li>4 œufs</li>` (15 caractères) était jeté avant même d'être noté.
+    @Test("Liste d'ingrédients (<li>4 œufs</li>…) : items courts conservés (filtre sur le texte visible)")
+    func shortRecipeListItemsAreKept() {
+        let html = """
+        <div class="content"><p>Pour six crêpes fines, compter dix minutes de préparation et une heure de repos pour la pâte.</p>
+        <ul><li>4 œufs</li><li>250 g de farine</li><li>1 pincée de sel</li><li>50 cl de lait</li></ul></div>
+        """
+
+        let selected = ScrapeService.scoreAndSelectMainBlock(fromCleanedHTML: html)
+
+        for ingredient in ["4 œufs", "250 g de farine", "1 pincée de sel", "50 cl de lait"] {
+            #expect(selected.contains(ingredient), "ingrédient perdu : \(ingredient)")
+        }
+    }
+
+    @Test("Tableau de prix (<td>1,20 €</td>…) : cellules courtes conservées")
+    func shortPriceTableCellsAreKept() {
+        let html = """
+        <div class="content"><p>Les tarifs ci-dessous s'appliquent du lundi au vendredi, hors jours fériés et vacances scolaires.</p>
+        <table><tr><th>Boisson</th><th>Prix</th></tr><tr><td>Café</td><td>1,20 €</td></tr><tr><td>Thé</td><td>1,50 €</td></tr></table></div>
+        """
+
+        let selected = ScrapeService.scoreAndSelectMainBlock(fromCleanedHTML: html)
+
+        for cell in ["Café", "1,20 €", "Thé", "1,50 €"] {
+            #expect(selected.contains(cell), "cellule perdue : \(cell)")
+        }
     }
 
     @Test("Contenu réparti sur des <div> imbriqués sur plusieurs niveaux : préservé en entier (pas tronqué à la première fermeture rencontrée)")
@@ -195,44 +358,51 @@ struct ScrapeServiceTests {
         #expect(chunks == ["un texte quelconque"])
     }
 
-    // MARK: - decodeBoundedHTML (troncature UTF-8, régression)
+    /// `firstChunk` ne découpe qu'une fenêtre bornée au lieu du contenu entier
+    /// d'une page de 2 Mo : ce test prouve que le résultat est IDENTIQUE.
+    /// Cas limites choisis pour casser une fenêtre trop courte (frontière
+    /// avant la limite + texte plus long), puis 300 textes pseudo-aléatoires.
+    @Test("firstChunk (fenêtre bornée) == splitIntoChunks(...).first : cas limites + 300 textes à graine fixe")
+    func firstChunkMatchesFirstChunkOfFullSplit() {
+        let limit = 40
+        var cases: [(text: String, maxCharacters: Int)] = []
+        for length in [limit - 1, limit, limit + 1, limit + 32, limit + 33, 500] {
+            cases.append((String(repeating: "a", count: length), limit))
+            cases.append((String(String(repeating: "Une phrase. ", count: length / 12 + 1).prefix(length)), limit))
+        }
+        cases.append((String(repeating: "x", count: limit - 2) + ". suite du texte après la limite", limit))
+        cases.append((String(repeating: "x", count: limit - 3) + "." + String(repeating: " ", count: 10) + "fin", limit))
+        cases.append((String(repeating: "x", count: limit + 29) + "." + String(repeating: " ", count: 10) + "fin", limit))
+        cases.append(("Début. " + String(repeating: "é👨‍👩‍👧 ", count: 60), limit))
+        cases.append(("", limit))
+        cases.append(("texte quelconque", 0))
 
-    @Test("Troncature en plein milieu d'un caractère UTF-8 multi-octets (é, 0xC3 0xA9 coupé au premier octet) : recule jusqu'à la dernière frontière valide plutôt que produire du mojibake via un repli Latin-1 direct")
-    func decodeBoundedHTMLBacktracksOnIncompleteMultiByteSequenceAtTruncationBoundary() {
-        var bytes = Array("Texte avant caf".utf8)
-        bytes.append(0xC3) // premier octet de 'é' — le second (0xA9) est absent, coupé par la troncature
-        let boundedData = Data(bytes)
+        var generator = SeededGenerator(seed: 0x5EED)
+        for _ in 0..<300 {
+            cases.append((Self.randomText(using: &generator), [1, 2, 7, 40, 120].randomElement(using: &generator) ?? 40))
+        }
 
-        let decoded = ScrapeService.decodeBoundedHTML(boundedData, isTruncated: true)
-
-        // AVANT le fix : `String(data:encoding:.utf8)` échoue sur l'octet 0xC3
-        // orphelin, et le repli direct sur Latin-1 le décodait en "Ã" (U+00C3)
-        // -> "Texte avant cafÃ", un caractère corrompu greffé sur du texte
-        // par ailleurs valide. APRÈS le fix : recul d'un octet, caractère
-        // incomplet simplement absent du résultat, aucune corruption.
-        #expect(decoded == "Texte avant caf")
-        #expect(decoded?.contains("Ã") == false)
+        for (text, maxCharacters) in cases {
+            let expected = ScrapeService.splitIntoChunks(text, maxCharacters: maxCharacters, overlapCharacters: 0).first ?? ""
+            let actual = ScrapeService.firstChunk(of: text, maxCharacters: maxCharacters)
+            #expect(actual == expected, "max=\(maxCharacters) texte=\(text.debugDescription)")
+        }
     }
 
-    @Test("Page non tronquée mais authentiquement non-UTF-8 : repli direct sur Latin-1, sans tentative de réparation (réservée aux troncatures)")
-    func decodeBoundedHTMLFallsBackToLatin1WhenNotTruncated() {
-        let bytes: [UInt8] = Array("Caf".utf8) + [0xE9] // 'é' en Latin-1 seul, invalide en UTF-8
-        let boundedData = Data(bytes)
+    /// Briques qui déclenchent toutes les frontières de `splitIntoChunks`
+    /// (ponctuation + blancs, retours à la ligne, puces) et des graphèmes
+    /// multi-scalaires (famille ZWJ) qui décalent UTF-16 et `Character`.
+    private static let textPieces = [
+        "mot", "phrase", "é", "👨‍👩‍👧", " ", "   ", ". ", "! ", "? ", "; ", ": ", "\n", "\n\n", "- ", "* ", "\t", ",", "a", ".", "  .  ",
+    ]
 
-        let decoded = ScrapeService.decodeBoundedHTML(boundedData, isTruncated: false)
-
-        #expect(decoded == "Café")
-    }
-
-    @Test("Contenu authentiquement non-UTF-8 même une fois tronqué (octet invalide loin de la fin du buffer) : la réparation à 3 octets ne suffit pas, repli Latin-1 correct")
-    func decodeBoundedHTMLFallsBackToLatin1WhenInvalidByteIsFarFromTheEnd() {
-        var bytes: [UInt8] = [0xE9] // 'é' en Latin-1, invalide en UTF-8, en tête de buffer
-        bytes.append(contentsOf: Array("caf, suivi d'un texte ASCII largement plus long que trois octets".utf8))
-        let boundedData = Data(bytes)
-
-        let decoded = ScrapeService.decodeBoundedHTML(boundedData, isTruncated: true)
-
-        #expect(decoded?.hasPrefix("é") == true)
+    private static func randomText(using generator: inout SeededGenerator) -> String {
+        let pieceCount = Int.random(in: 0...200, using: &generator)
+        var text = ""
+        for _ in 0..<pieceCount {
+            text += textPieces.randomElement(using: &generator) ?? ""
+        }
+        return text
     }
 
     // MARK: - scrape(url:) — jamais de throw, statut HTTP / Content-Type / erreurs de transport
@@ -248,12 +418,15 @@ struct ScrapeServiceTests {
         #expect(page.content.isEmpty)
     }
 
+    /// URL SANS extension `.pdf` : avec, elle serait écartée avant toute
+    /// requête (`ScrapeService.isScrapable`) et ce test ne vérifierait plus
+    /// le Content-Type (voir `ScrapeServiceFetchTests` pour ce refus-là).
     @Test("Content-Type non-HTML (ex. PDF) : succeeded = false, aucune tentative d'extraction")
     func scrapeReturnsFailureOnNonHTMLContentType() async {
         let fetcher = MockURLFetching(behavior: .success(data: Data([0x25, 0x50, 0x44, 0x46]), statusCode: 200, contentType: "application/pdf"))
         let service = ScrapeService(fetcher: fetcher)
 
-        let page = await service.scrape(url: "https://example.com/document.pdf")
+        let page = await service.scrape(url: "https://example.com/document")
 
         #expect(page.succeeded == false)
     }

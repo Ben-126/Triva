@@ -16,8 +16,9 @@ import Foundation
 /// `SearchOrchestrator.decideNextAction`, jamais à cette action elle-même.
 ///
 /// `SearchOrchestrator` ne câble PAS `PlanAction` dans sa boucle planner
-/// (`availableActionNames` ne contient que `scrapeURL`/`done`, voir la
-/// checklist 1.2 — une UI "recherche en cours" façon web est hors scope).
+/// (`SearchOrchestrator.plannerActionNames` ne propose que `scrapeURL`,
+/// `uploadsSearch` depuis 1.11, et `done` — une UI "recherche en cours"
+/// façon web est hors scope).
 /// Ce type existe pour satisfaire "un protocole SearchAction avec une
 /// implémentation par type d'action" et rester testable isolément, pas parce
 /// qu'un appelant réel l'invoque aujourd'hui.

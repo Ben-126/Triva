@@ -10,7 +10,7 @@ import Foundation
 /// Message d'historique propre au `Core` : indépendant de `ChatViewModel.Message`
 /// (type UI avec id/isStreaming/sources, hors de propos ici). Ne garde que ce
 /// dont la classification a besoin — qui a dit quoi.
-struct ClassifierChatMessage: Sendable, Equatable {
+nonisolated struct ClassifierChatMessage: Sendable, Equatable {
     enum Role: Sendable, Equatable {
         case user
         case assistant
@@ -25,7 +25,7 @@ struct ClassifierChatMessage: Sendable, Equatable {
 /// exemple demander un widget météo ET être `skipSearch`) plus la
 /// reformulation autonome de la requête, utile pour les tours de conversation
 /// suivants.
-struct QueryClassification: Sendable, Equatable {
+nonisolated struct QueryClassification: Sendable, Equatable {
     let skipSearch: Bool
     let personalSearch: Bool
     let academicSearch: Bool
@@ -41,7 +41,7 @@ struct QueryClassification: Sendable, Equatable {
 /// recherche complémentaire) reste le travail des tâches 1.2/1.5 : ceci est
 /// seulement la décision "action principale" pure demandée par le plan pour
 /// 1.1, isolée pour rester testable sans dépendre du pipeline complet.
-enum ClassifiedAction: Sendable, Equatable {
+nonisolated enum ClassifiedAction: Sendable, Equatable {
     case skip
     case weatherWidget
     case stockWidget
