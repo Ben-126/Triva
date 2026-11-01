@@ -36,3 +36,16 @@ Triva/DesignExploration/
 
 # raccourci local vers le plan iOS (symlink vers Perplexica_ameliorer, propre à la machine)
 /plan_a_suivre_ios.md
+
+# Brouillon de prompt personnel, hors dépôt
+prompt_correction_15_bugs.md
+
+# Instructions locales pour Claude Code (propres à la machine de Ben)
+CLAUDE.md
+
+# Workflows GitHub d'essai de Claude Code, retirés du dépôt
+.github/workflows/claude.yml
+.github/workflows/claude-code-review.yml
+
+# État local d'outils d'agents
+.claude-flow/
