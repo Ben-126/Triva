@@ -69,4 +69,29 @@ nonisolated struct SearXNGSearchResult: Codable, Sendable, Equatable, Identifiab
 nonisolated struct SearXNGSearchResponse: Codable, Sendable, Equatable {
     let results: [SearXNGSearchResult]
     let suggestions: [String]
+    /// Moteurs qui n'ont pas répondu (bloqués, suspendus, en délai dépassé).
+    /// SearXNG renvoie alors un HTTP 200 avec `results` vide : ce champ dit
+    /// pourquoi (bug 5, diagnostic). `nil` si absent ou de forme inattendue —
+    /// il ne doit jamais faire échouer le décodage de toute la réponse.
+    let unresponsiveEngines: [String]?
+
+    init(results: [SearXNGSearchResult], suggestions: [String], unresponsiveEngines: [String]? = nil) {
+        self.results = results
+        self.suggestions = suggestions
+        self.unresponsiveEngines = unresponsiveEngines
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case results, suggestions
+        case unresponsiveEngines = "unresponsive_engines"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        results = try container.decode([SearXNGSearchResult].self, forKey: .results)
+        suggestions = try container.decode([String].self, forKey: .suggestions)
+        // Forme réelle : une liste de paires [moteur, motif].
+        let pairs = try? container.decodeIfPresent([[String]].self, forKey: .unresponsiveEngines)
+        unresponsiveEngines = pairs?.compactMap(\.first)
+    }
 }
