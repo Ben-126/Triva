@@ -14,6 +14,7 @@ private struct MockMLXDeviceCapabilities: MLXDeviceCapabilityProviding {
     let chipSpeedTier: ChipSpeedTier
 }
 
+@MainActor
 @Suite("MLXModelRecommender")
 struct MLXModelRecommenderTests {
     // Catalogue de test à 4 paliers : 1 Go / 4 Go / 8 Go / 16 Go (le dernier "advancedOnly").

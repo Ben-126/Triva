@@ -11,6 +11,7 @@ import Foundation
 
 /// Un `service` Keychain unique par test évite toute interférence entre
 /// tests exécutés en parallèle ou d'une exécution à l'autre.
+@MainActor
 @Suite("KeychainAPIKeyStore")
 struct KeychainAPIKeyStoreTests {
     @Test("Round-trip : save() puis apiKey() renvoie la même valeur")

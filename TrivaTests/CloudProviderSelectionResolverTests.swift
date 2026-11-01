@@ -20,6 +20,7 @@ private struct MockAPIKeyStore: APIKeyStoring {
     func deleteAPIKey(account: String) throws {}
 }
 
+@MainActor
 @Suite("CloudProviderSelectionResolver")
 struct CloudProviderSelectionResolverTests {
     @Test("Résout vers CloudBYOKProvider pour Claude avec un modèle valide")
@@ -36,9 +37,48 @@ struct CloudProviderSelectionResolverTests {
         #expect(provider?.model.id == "claude-sonnet-5")
     }
 
-    @Test("Renvoie nil pour un id de modèle Claude inconnu")
-    func returnsNilForUnknownClaudeModel() {
+    @Test("Id Claude inconnu : provider construit avec les capacités par défaut")
+    func buildsUnknownClaudeModelWithDefaultCapabilities() throws {
         let selection = CloudProviderSelection(providerID: CloudProviderSelectionResolver.claudeProviderID, model: "claude-modele-inconnu")
+
+        let resolved = CloudProviderSelectionResolver.makeProvider(
+            for: selection,
+            customPresets: [],
+            keyStore: MockAPIKeyStore(storedKey: "sk-test")
+        )
+
+        let provider = try #require(resolved as? CloudBYOKProvider)
+        #expect(provider.model.id == "claude-modele-inconnu")
+        #expect(provider.model.capabilities == CloudProviderSelectionResolver.unknownClaudeModelCapabilities)
+        #expect(!provider.model.capabilities.samplingParams)
+        #expect(!provider.model.capabilities.adaptiveThinking)
+        #expect(provider.model.capabilities.effortLevels.isEmpty)
+    }
+
+    @Test("Id Claude connu : capacités précises du package conservées")
+    func knownClaudeModelKeepsPackageCapabilities() throws {
+        let selection = CloudProviderSelection(providerID: CloudProviderSelectionResolver.claudeProviderID, model: "claude-haiku-4-5")
+
+        let resolved = CloudProviderSelectionResolver.makeProvider(
+            for: selection,
+            customPresets: [],
+            keyStore: MockAPIKeyStore(storedKey: "sk-test")
+        )
+
+        let provider = try #require(resolved as? CloudBYOKProvider)
+        #expect(provider.model == ClaudeModel.haiku4_5)
+    }
+
+    @Test("Id Claude daté : rapproché de l'alias connu et de ses capacités")
+    func datedClaudeIDMapsToKnownAlias() {
+        #expect(CloudProviderSelectionResolver.claudeModel(forID: "claude-haiku-4-5-20251001") == ClaudeModel.haiku4_5)
+        #expect(CloudProviderSelectionResolver.claudeModel(forID: "claude-haiku-4-5-beta") == nil)
+        #expect(CloudProviderSelectionResolver.resolvedClaudeModel(forID: "claude-opus-5") == ClaudeModel.opus5)
+    }
+
+    @Test("Modèle Claude vide : nil")
+    func returnsNilForEmptyClaudeModel() {
+        let selection = CloudProviderSelection(providerID: CloudProviderSelectionResolver.claudeProviderID, model: "")
 
         let resolved = CloudProviderSelectionResolver.makeProvider(
             for: selection,

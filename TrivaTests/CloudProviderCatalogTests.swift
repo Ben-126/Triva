@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import Triva
 
+@MainActor
 @Suite("CloudProviderCatalog")
 struct CloudProviderCatalogTests {
     @Test("Contient exactement les fournisseurs génériques attendus, sans doublon")

@@ -13,7 +13,10 @@ import Metal
 /// casserait à chaque nouvelle génération Apple. MLX tourne sur le GPU (Metal),
 /// pas sur le Neural Engine — celui-ci n'entre donc pas dans ce calcul (il sert
 /// à Core ML / Apple Intelligence, déjà géré séparément en 0.4).
-enum ChipSpeedTier: Int, Sendable, Codable, Comparable, CaseIterable {
+/// `nonisolated` : enum de valeurs pur, avec un parsing de chaîne déterministe
+/// (`parse(deviceName:)`) appelé depuis des contextes non isolés — tests
+/// compris. Même convention que les autres types de données du projet.
+nonisolated enum ChipSpeedTier: Int, Sendable, Codable, Comparable, CaseIterable {
     case base
     case pro
     case max

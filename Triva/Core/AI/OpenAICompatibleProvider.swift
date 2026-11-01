@@ -101,10 +101,10 @@ struct OpenAICompatibleAPIKeyValidator: APIKeyValidating {
     private let model: String
     private let client: any OpenAICompatibleRequesting
 
-    init(baseURL: URL, model: String, client: any OpenAICompatibleRequesting = OpenAICompatibleClient()) {
+    init(baseURL: URL, model: String, client: (any OpenAICompatibleRequesting)? = nil) {
         self.baseURL = baseURL
         self.model = model
-        self.client = client
+        self.client = client ?? CloudChatClientFactory.client(forBaseURL: baseURL)
     }
 
     func validate(apiKey: String) async throws {

@@ -28,6 +28,7 @@ private final class MockAPIKeyStore: APIKeyStoring, @unchecked Sendable {
     }
 }
 
+@MainActor
 @Suite("CustomProviderStore")
 struct CustomProviderStoreTests {
     /// `UserDefaults` isolé par test, même principe que

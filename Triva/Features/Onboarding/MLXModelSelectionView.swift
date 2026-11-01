@@ -255,6 +255,14 @@ struct MLXModelSelectionView: View {
                 }
                 .buttonStyle(.glassProminent)
                 .frame(maxWidth: .infinity)
+            } else {
+                // L'essai reste proposé mais jamais imposé (demande de Ben,
+                // 2026-10-04) : le modèle est déjà téléchargé et fonctionnel.
+                Button("Passer l'essai et valider") {
+                    coordinator.validateAsDefault()
+                }
+                .buttonStyle(.glass)
+                .disabled(coordinator.isGeneratingTrialAnswer)
             }
 
             Button("Choisir un autre modèle") {

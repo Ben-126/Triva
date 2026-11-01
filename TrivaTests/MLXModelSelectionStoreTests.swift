@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import Triva
 
+@MainActor
 @Suite("MLXModelSelectionStore")
 struct MLXModelSelectionStoreTests {
     /// `UserDefaults` isolé par test, même principe que

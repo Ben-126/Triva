@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import ClaudeForFoundationModels
 
 /// Écran de choix du fournisseur cloud BYOK actif et de son modèle (0.6
 /// élargi — sélection de fournisseur/modèle), parmi les fournisseurs pour
@@ -19,6 +18,16 @@ import ClaudeForFoundationModels
 struct CloudProviderModelPickerView: View {
     @State private var viewModel: CloudProviderModelPickerViewModel
     @State private var customModelText: String = ""
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Largeur de contenu plafonnée hors `compact` (iPad plein écran, Split
+    /// View large, Stage Manager, Mac — où la size class vaut `nil`) : même
+    /// principe que `BYOKProvidersView.contentMaxWidth`, pour que les cartes
+    /// et le menu des modèles ne s'étirent pas bord à bord.
+    private var contentMaxWidth: CGFloat? {
+        horizontalSizeClass == .compact ? nil : 640
+    }
 
     init(viewModel: CloudProviderModelPickerViewModel = CloudProviderModelPickerViewModel()) {
         _viewModel = State(initialValue: viewModel)
@@ -45,12 +54,12 @@ struct CloudProviderModelPickerView: View {
                     }
                 }
             }
+            .frame(maxWidth: contentMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
         }
-        .onAppear { syncCustomModelText() }
-        .onChange(of: viewModel.selectedConfiguredProviderID) { _, _ in syncCustomModelText() }
     }
 
     private var header: some View {
@@ -105,31 +114,76 @@ struct CloudProviderModelPickerView: View {
                 .tracking(1.5)
                 .foregroundStyle(.tertiary)
 
-            if providerID == CloudProviderSelectionResolver.claudeProviderID {
-                claudeModelPicker
-            } else {
+            // Saisie manuelle UNIQUEMENT quand la liste ne peut pas être
+            // obtenue (voir `showsManualModelEntry`) ; sinon le menu.
+            if viewModel.showsManualModelEntry {
                 customModelField
+            } else {
+                modelMenu
             }
+
+            modelListStatus
+        }
+        .task(id: providerID) { await viewModel.loadModels() }
+        .onChange(of: viewModel.showsManualModelEntry, initial: true) { _, showsField in
+            if showsField { customModelText = viewModel.selectedModel ?? "" }
         }
     }
 
-    private var claudeModelPicker: some View {
+    /// Menu natif de tous les modèles récupérés chez le fournisseur.
+    private var modelMenu: some View {
         Picker(
             "Modèle",
             selection: Binding(
-                get: { viewModel.selectedModel ?? ClaudeModel.sonnet5.id },
+                get: { viewModel.selectedModel ?? "" },
                 set: { viewModel.updateModel(to: $0) }
             )
         ) {
-            ForEach(CloudProviderSelectionResolver.knownClaudeModels, id: \.id) { model in
-                Text(CloudProviderModelPickerViewModel.claudeModelDisplayName(for: model))
-                    .tag(model.id)
+            ForEach(viewModel.modelMenuOptions) { option in
+                Text(option.displayName)
+                    .tag(option.id)
             }
         }
         .pickerStyle(.menu)
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+    }
+
+    @ViewBuilder
+    private var modelListStatus: some View {
+        switch viewModel.modelListState {
+        case .idle, .loaded:
+            EmptyView()
+        case .loading:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Chargement des modèles…")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+        case .noKey:
+            statusText("Aucune clé lisible pour ce fournisseur : la liste des modèles ne peut pas être chargée. Saisis le nom exact du modèle.")
+        case .unavailable(let message):
+            statusText(message)
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                statusText(message)
+                Button("Réessayer") {
+                    Task { await viewModel.loadModels(forceRefresh: true) }
+                }
+                .buttonStyle(.glass)
+            }
+        }
+    }
+
+    private func statusText(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var customModelField: some View {
@@ -145,23 +199,14 @@ struct CloudProviderModelPickerView: View {
         )
         .autocorrectionDisabled()
         .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
-    }
-
-    /// Le `TextField` des modèles non-Claude est un état local (`customModelText`),
-    /// pas directement lié à `viewModel.selectedModel` — sinon chaque frappe
-    /// clavier ferait un aller-retour par le view model. Il est resynchronisé
-    /// ici à l'apparition et à chaque changement de fournisseur sélectionné.
-    private func syncCustomModelText() {
-        guard let selectedProviderID = viewModel.selectedConfiguredProviderID,
-              selectedProviderID != CloudProviderSelectionResolver.claudeProviderID else {
-            return
-        }
-        customModelText = viewModel.selectedModel ?? ""
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
     }
 }
 
-#Preview {
+/// Construit l'écran avec des clés factices et un faux réseau : les previews
+/// ne doivent jamais appeler un vrai fournisseur.
+@MainActor
+private func previewPicker(suiteName: String) -> CloudProviderModelPickerView {
     struct PreviewAPIKeyStore: APIKeyStoring {
         func apiKey(account: String) throws -> String? {
             ["claude": "sk-demo", "groq": "sk-demo", "mistral": "sk-demo"][account]
@@ -170,13 +215,31 @@ struct CloudProviderModelPickerView: View {
         func deleteAPIKey(account: String) throws {}
     }
 
+    struct PreviewRequester: HTTPDataRequesting {
+        func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+            let body = #"{"data":[{"id":"llama-3.3-70b-versatile"},{"id":"llama-3.1-8b-instant"}]}"#
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+    }
+
+    let selectionStore = CloudProviderSelectionStore(userDefaults: UserDefaults(suiteName: suiteName)!)
+    selectionStore.selection = CloudProviderSelection(providerID: "groq", model: "llama-3.3-70b-versatile")
     return CloudProviderModelPickerView(
         viewModel: CloudProviderModelPickerViewModel(
             keyStore: PreviewAPIKeyStore(),
             customPresets: [],
-            selectionStore: CloudProviderSelectionStore(
-                userDefaults: UserDefaults(suiteName: "preview.cloudProviderModelPicker")!
-            )
+            selectionStore: selectionStore,
+            modelListService: CloudModelListService(requester: PreviewRequester(), cache: CloudModelListCache())
         )
     )
+}
+
+#Preview("iPhone") {
+    previewPicker(suiteName: "preview.cloudProviderModelPicker")
+}
+
+#Preview("iPad paysage", traits: .fixedLayout(width: 1180, height: 820)) {
+    previewPicker(suiteName: "preview.cloudProviderModelPicker.ipad")
+        .environment(\.horizontalSizeClass, .regular)
 }

@@ -9,6 +9,7 @@ import Foundation
 import Testing
 @testable import Triva
 
+@MainActor
 @Suite("MLXModelCatalog")
 struct MLXModelCatalogTests {
     @Test("Décode et trie les modèles par capacité croissante, quel que soit l'ordre dans le JSON")

@@ -9,6 +9,7 @@ import Testing
 import FoundationModels
 @testable import Triva
 
+@MainActor
 @Suite("AppleIntelligenceProvider.mapAvailability")
 struct AppleIntelligenceProviderTests {
     @Test("Aucune erreur quand le modèle est disponible")

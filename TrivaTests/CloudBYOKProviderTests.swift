@@ -25,6 +25,7 @@ private struct MockAPIKeyStore: APIKeyStoring {
 
 private struct StubError: Error, Equatable {}
 
+@MainActor
 @Suite("CloudBYOKProvider")
 struct CloudBYOKProviderTests {
     @Test("Échoue avec missingAPIKey quand aucune clé n'est stockée")

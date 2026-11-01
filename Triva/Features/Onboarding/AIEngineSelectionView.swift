@@ -15,6 +15,11 @@ struct AIEngineSelectionView: View {
     @State private var selection: AIEngineOption
     private let recommendation: AIEngineRecommendation
     private let onConfirm: (AIEngineOption) -> Void
+    /// `nil` à la première ouverture (aucun moteur encore choisi : il n'y a rien
+    /// vers quoi revenir) ; fourni quand on CHANGE de moteur, pour pouvoir
+    /// renoncer sans devoir reconfirmer un moteur (demande de Ben, 2026-10-08).
+    /// Les Réglages ne le passent pas : leur feuille a déjà son propre « Annuler ».
+    private let onCancel: (() -> Void)?
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -28,12 +33,14 @@ struct AIEngineSelectionView: View {
     init(
         capabilityProvider: any DeviceCapabilityProviding = SystemDeviceCapabilityProvider(),
         currentSelection: AIEngineOption? = nil,
+        onCancel: (() -> Void)? = nil,
         onConfirm: @escaping (AIEngineOption) -> Void
     ) {
         let recommendation = AIProviderSelector.recommend(for: capabilityProvider)
         self.recommendation = recommendation
         _selection = State(initialValue: currentSelection ?? recommendation.option)
         self.onConfirm = onConfirm
+        self.onCancel = onCancel
     }
 
     var body: some View {
@@ -66,6 +73,13 @@ struct AIEngineSelectionView: View {
                 }
                 .buttonStyle(.glassProminent)
                 .frame(maxWidth: .infinity)
+
+                if let onCancel {
+                    Button("Annuler", action: onCancel)
+                        .buttonStyle(.glass)
+                        .keyboardShortcut(.cancelAction)
+                        .frame(maxWidth: .infinity)
+                }
             }
             .frame(maxWidth: contentMaxWidth)
             .frame(maxWidth: .infinity)
@@ -131,6 +145,10 @@ struct AIEngineSelectionView: View {
     }
 }
 
-#Preview {
+#Preview("Premier lancement") {
     AIEngineSelectionView { _ in }
+}
+
+#Preview("Changement de moteur") {
+    AIEngineSelectionView(currentSelection: .cloudBYOK, onCancel: {}) { _ in }
 }

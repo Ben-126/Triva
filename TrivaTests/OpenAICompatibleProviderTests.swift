@@ -36,6 +36,7 @@ private struct MockOpenAICompatibleClient: OpenAICompatibleRequesting {
 
 private struct StubError: Error, Equatable {}
 
+@MainActor
 @Suite("OpenAICompatibleProvider")
 struct OpenAICompatibleProviderTests {
     private let preset = CloudProviderCatalog.presets.first { $0.id == "groq" }!

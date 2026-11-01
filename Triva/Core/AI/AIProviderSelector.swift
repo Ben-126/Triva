@@ -57,6 +57,13 @@ enum AIProviderSelector {
 
 /// Stocke le choix de moteur IA de l'utilisateur, pour un accès ultérieur
 /// depuis les Réglages (1.15) — persistance simple, aucune donnée sensible.
+///
+/// **Une seule instance pour toute l'app**, créée par `TrivaApp`
+/// (`TrivaSharedStores`) et injectée partout : `UserDefaults` n'est lu qu'à
+/// la construction, donc deux instances divergent en mémoire dès que l'une
+/// écrit — c'était la cause racine du bug 10 (une fenêtre affichait le badge
+/// d'un moteur pendant qu'une autre en avait choisi un autre). Comportement
+/// figé par `AIEngineSettingsStoreTests`.
 @Observable
 final class AIEngineSettingsStore {
     private static let storageKey = "ai.engine.selectedOption"

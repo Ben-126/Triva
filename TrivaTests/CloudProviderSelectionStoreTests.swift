@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import Triva
 
+@MainActor
 @Suite("CloudProviderSelectionStore")
 struct CloudProviderSelectionStoreTests {
     /// `UserDefaults` isolé par test, même principe que

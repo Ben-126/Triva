@@ -21,6 +21,7 @@ private struct DecodedRequestBody: Decodable {
     let messages: [Message]
 }
 
+@MainActor
 @Suite("OpenAICompatibleClient")
 struct OpenAICompatibleClientTests {
     @Test("Construit une requête POST avec l'en-tête d'auth, le Content-Type et le bon corps JSON")

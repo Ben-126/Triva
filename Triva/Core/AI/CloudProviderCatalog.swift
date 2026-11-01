@@ -91,8 +91,11 @@ enum CloudProviderCatalog {
         CloudProviderPreset(
             id: "perplexity",
             displayName: "Perplexity",
+            // Chat via l'Agent API (`POST /v1/agent`, voir `PerplexityAgentClient`) :
+            // Sonar Chat Completions est arrêté depuis le 2026-09-27 (docs.perplexity.ai,
+            // consultée le 2026-10-28). Le « modèle » est un niveau d'effort.
             baseURL: URL(string: "https://api.perplexity.ai")!,
-            defaultModel: "sonar-pro"
+            defaultModel: "fast"
         ),
     ]
 

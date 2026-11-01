@@ -9,6 +9,7 @@ import Foundation
 import Testing
 @testable import Triva
 
+@MainActor
 @Suite("ChipSpeedTier.parse")
 struct ChipSpeedTierParseTests {
     @Test(

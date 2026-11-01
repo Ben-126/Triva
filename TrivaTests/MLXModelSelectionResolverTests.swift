@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import Triva
 
+@MainActor
 @Suite("MLXModelSelectionResolver")
 struct MLXModelSelectionResolverTests {
     private static func makeEntry(id: String) -> MLXModelCatalogEntry {

@@ -10,6 +10,7 @@ import MLXLMCommon
 import Testing
 @testable import Triva
 
+@MainActor
 @Suite("MLXProvider")
 struct MLXProviderTests {
     @Test("wifiOnlySession() interdit systématiquement le cellulaire — garde-fou App Store")
@@ -79,6 +80,9 @@ struct MLXProviderTests {
         }
     }
 
+    // Simulateur seulement : sur un Mac ou un appareil réel, `prepare()`
+    // téléchargerait et chargerait le vrai modèle (constaté le 2026-11-01).
+    #if targetEnvironment(simulator)
     @Test("prepare() échoue immédiatement avec simulatorUnsupported sur le Simulateur — jamais de crash MLX (SIGABRT) faute de vrai GPU Metal (voir le rapport de crash de la revue 0.8)")
     func prepareFailsImmediatelyOnSimulator() async throws {
         let entry = Self.makeEntry(
@@ -92,6 +96,7 @@ struct MLXProviderTests {
             try await provider.prepare()
         }
     }
+    #endif
 
     @Test("streamGenerate() finish immédiatement avec modelNotLoaded tant que prepare() n'a pas été appelé, sans yield")
     func streamGenerateFinishesImmediatelyBeforePrepare() async throws {

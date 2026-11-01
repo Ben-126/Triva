@@ -24,7 +24,8 @@ enum ActiveAIProviderResolverError: Error, Sendable, Equatable {
     /// Cloud BYOK choisi, mais aucune sélection fournisseur/modèle n'a jamais été stockée (`CloudProviderSelectionStore.selection == nil`).
     case noCloudSelectionStored
     /// Cloud BYOK choisi, une sélection est stockée mais `CloudProviderSelectionResolver.makeProvider` ne peut pas la résoudre
-    /// (fournisseur supprimé du catalogue/des presets personnalisés, ou modèle Claude inconnu).
+    /// (fournisseur supprimé du catalogue/des presets personnalisés, ou modèle Claude vide — un modèle Claude
+    /// INCONNU, lui, est accepté avec des capacités par défaut, voir `CloudProviderSelectionResolver.unknownClaudeModelCapabilities`).
     case cloudSelectionUnresolvable(CloudProviderSelection)
 }
 
@@ -44,16 +45,36 @@ enum ActiveAIProviderResolverError: Error, Sendable, Equatable {
 /// de sélection. C'est à l'appelant du pipeline (0.7) d'appeler `prepare()`
 /// lui-même sur le `MLXProvider` renvoyé avant de s'en servir — exactement
 /// comme le reste du code le documente déjà pour `MLXProvider`.
+///
+/// ## Quel moteur résoudre : jamais une relecture de `UserDefaults` (bug 10)
+/// La primitive est `resolve(engine:…)` : elle reçoit le moteur EN VALEUR et
+/// ne lit aucun store de moteur. C'est ce qui permet à `SearchSession` de
+/// résoudre exactement le moteur que sa fenêtre affiche dans le badge de
+/// confidentialité (la session le fige à sa construction), même si le store
+/// partagé a déjà basculé ailleurs entre-temps. `resolve(engineSettings:…)`
+/// reste disponible : il lit `selectedOption` de l'INSTANCE fournie (valeur
+/// en mémoire), jamais `UserDefaults`.
+///
+/// Historique : avant la coquille de navigation V1, la vue appelait ce
+/// résolveur avec un `AIEngineSettingsStore()` NEUF, donc relu dans
+/// `UserDefaults` — dernier écrivain toutes fenêtres confondues. Une fenêtre
+/// qui affichait « Apple Intelligence · Sur l'appareil » pouvait ainsi
+/// envoyer requête, historique et contexte scrapé au fournisseur cloud choisi
+/// dans une AUTRE fenêtre : le badge mentait, ce que DESIGN.md interdit en
+/// premier. Les tests `ActiveAIProviderResolverTests` et
+/// `SearchSessionEngineBindingTests` verrouillent les deux garanties.
 enum ActiveAIProviderResolver {
+    /// Résout le provider de `engine` (`nil` = aucun moteur choisi). Aucun
+    /// store de moteur n'est consulté : l'appelant décide quel moteur fait foi.
     static func resolve(
-        engineSettings: AIEngineSettingsStore,
+        engine: AIEngineOption?,
         mlxSelection: MLXModelSelectionStore,
         mlxCatalog: [MLXModelCatalogEntry],
         cloudSelection: CloudProviderSelectionStore,
         customCloudPresets: [CloudProviderPreset],
         keyStore: any APIKeyStoring = KeychainAPIKeyStore()
     ) throws -> any AIGenerating {
-        guard let option = engineSettings.selectedOption else {
+        guard let option = engine else {
             throw ActiveAIProviderResolverError.noEngineSelected
         }
 
@@ -88,5 +109,27 @@ enum ActiveAIProviderResolver {
             }
             return provider
         }
+    }
+
+    /// Variante qui lit le moteur dans `engineSettings` : la valeur EN MÉMOIRE
+    /// de l'instance fournie, pas `UserDefaults` (`AIEngineSettingsStore` ne
+    /// lit ses défauts qu'à sa construction). Ne JAMAIS l'appeler avec un
+    /// store construit pour l'occasion : voir « Historique » ci-dessus.
+    static func resolve(
+        engineSettings: AIEngineSettingsStore,
+        mlxSelection: MLXModelSelectionStore,
+        mlxCatalog: [MLXModelCatalogEntry],
+        cloudSelection: CloudProviderSelectionStore,
+        customCloudPresets: [CloudProviderPreset],
+        keyStore: any APIKeyStoring = KeychainAPIKeyStore()
+    ) throws -> any AIGenerating {
+        try resolve(
+            engine: engineSettings.selectedOption,
+            mlxSelection: mlxSelection,
+            mlxCatalog: mlxCatalog,
+            cloudSelection: cloudSelection,
+            customCloudPresets: customCloudPresets,
+            keyStore: keyStore
+        )
     }
 }

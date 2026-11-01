@@ -50,6 +50,7 @@ private final class MockAPIKeyValidator: APIKeyValidating, @unchecked Sendable {
     }
 }
 
+@MainActor
 @Suite("APIKeysViewModel")
 struct APIKeysViewModelTests {
     /// `UserDefaults` isolé par test — jamais `.standard`, pour ne pas

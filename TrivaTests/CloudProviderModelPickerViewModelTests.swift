@@ -19,6 +19,28 @@ private struct MockAPIKeyStore: APIKeyStoring {
     func deleteAPIKey(account: String) throws {}
 }
 
+/// Faux client HTTP pour la liste des modèles : réponse fixe, appels comptés.
+private final class StubModelListRequester: HTTPDataRequesting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _callCount = 0
+    private let statusCode: Int
+    private let body: String
+
+    init(statusCode: Int = 200, body: String) {
+        self.statusCode = statusCode
+        self.body = body
+    }
+
+    var callCount: Int { lock.withLock { _callCount } }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        lock.withLock { _callCount += 1 }
+        let response = HTTPURLResponse(url: request.url!, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
+        return (Data(body.utf8), response)
+    }
+}
+
+@MainActor
 @Suite("CloudProviderModelPickerViewModel")
 struct CloudProviderModelPickerViewModelTests {
     private func uniqueSelectionStore() -> CloudProviderSelectionStore {
@@ -221,4 +243,215 @@ struct CloudProviderModelPickerViewModelTests {
         #expect(CloudProviderModelPickerViewModel.claudeModelDisplayName(for: .opus4_8) == "Opus 4.8")
         #expect(CloudProviderModelPickerViewModel.claudeModelDisplayName(for: .haiku4_5) == "Haiku 4.5")
     }
+
+    // MARK: - Menu déroulant des modèles
+
+    private func makeViewModel(
+        keys: [String: String],
+        selection: CloudProviderSelection?,
+        requester: StubModelListRequester
+    ) -> CloudProviderModelPickerViewModel {
+        let selectionStore = uniqueSelectionStore()
+        selectionStore.selection = selection
+        return CloudProviderModelPickerViewModel(
+            keyStore: MockAPIKeyStore(storedKeys: keys),
+            customPresets: [],
+            selectionStore: selectionStore,
+            modelListService: CloudModelListService(requester: requester, cache: CloudModelListCache())
+        )
+    }
+
+    @Test("Charge la liste et la propose dans le menu")
+    func loadsModelsIntoMenu() async {
+        let requester = StubModelListRequester(body: #"{"data":[{"id":"llama-3.3-70b-versatile"},{"id":"llama-3.1-8b-instant"}]}"#)
+        let viewModel = makeViewModel(
+            keys: ["groq": "sk-groq"],
+            selection: CloudProviderSelection(providerID: "groq", model: "llama-3.3-70b-versatile"),
+            requester: requester
+        )
+
+        await viewModel.loadModels()
+
+        #expect(viewModel.modelMenuOptions.map(\.id) == ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"])
+        #expect(!viewModel.showsManualModelEntry)
+    }
+
+    @Test("Le modèle courant absent de la liste reste proposé, en tête")
+    func currentModelMissingFromListStaysVisible() async {
+        let requester = StubModelListRequester(body: #"{"data":[{"id":"llama-3.1-8b-instant"}]}"#)
+        let viewModel = makeViewModel(
+            keys: ["groq": "sk-groq"],
+            selection: CloudProviderSelection(providerID: "groq", model: "mon-modele-retire"),
+            requester: requester
+        )
+
+        await viewModel.loadModels()
+
+        #expect(viewModel.modelMenuOptions.map(\.id) == ["mon-modele-retire", "llama-3.1-8b-instant"])
+    }
+
+    @Test("Choisir un modèle du menu met à jour la sélection persistée")
+    func choosingMenuModelUpdatesSelection() async {
+        let requester = StubModelListRequester(body: #"{"data":[{"id":"a"},{"id":"b"}]}"#)
+        let viewModel = makeViewModel(
+            keys: ["groq": "sk-groq"],
+            selection: CloudProviderSelection(providerID: "groq", model: "a"),
+            requester: requester
+        )
+        await viewModel.loadModels()
+
+        viewModel.updateModel(to: "b")
+
+        #expect(viewModel.selectedModel == "b")
+        #expect(viewModel.modelMenuOptions.map(\.id) == ["a", "b"])
+    }
+
+    @Test("Changer de fournisseur réinitialise l'état de la liste")
+    func switchingProviderResetsListState() async {
+        let requester = StubModelListRequester(body: #"{"data":[{"id":"a"}]}"#)
+        let viewModel = makeViewModel(
+            keys: ["groq": "sk-groq", "mistral": "sk-mistral"],
+            selection: CloudProviderSelection(providerID: "groq", model: "a"),
+            requester: requester
+        )
+        await viewModel.loadModels()
+
+        viewModel.selectProvider(id: "mistral")
+
+        #expect(viewModel.modelListState == .idle)
+        #expect(!viewModel.showsManualModelEntry)
+    }
+
+    @Test("Sans clé lisible : aucun appel réseau, saisie manuelle en repli")
+    func noKeyMakesNoRequest() async {
+        // Clé présente à l'init (fournisseur configuré) puis illisible : on
+        // simule avec un magasin dont la clé a disparu entre-temps.
+        let requester = StubModelListRequester(body: #"{"data":[]}"#)
+        let selectionStore = uniqueSelectionStore()
+        selectionStore.selection = CloudProviderSelection(providerID: "groq", model: "a")
+        let viewModel = CloudProviderModelPickerViewModel(
+            keyStore: DisappearingKeyStore(account: "groq"),
+            customPresets: [],
+            selectionStore: selectionStore,
+            modelListService: CloudModelListService(requester: requester, cache: CloudModelListCache())
+        )
+
+        await viewModel.loadModels()
+
+        #expect(viewModel.modelListState == .noKey)
+        #expect(viewModel.showsManualModelEntry)
+        #expect(requester.callCount == 0)
+    }
+
+    @Test("Erreur temporaire → .failed, pas de saisie manuelle, Réessayer refait l'appel")
+    func temporaryFailureOffersRetryOnly() async {
+        let requester = StubModelListRequester(statusCode: 503, body: "{}")
+        let viewModel = makeViewModel(
+            keys: ["groq": "sk-groq-secret"],
+            selection: CloudProviderSelection(providerID: "groq", model: "a"),
+            requester: requester
+        )
+
+        await viewModel.loadModels()
+        #expect(viewModel.modelListState == .failed(message: CloudModelListError.serverUnavailable.message))
+        #expect(!viewModel.showsManualModelEntry)
+        #expect(viewModel.modelMenuOptions.map(\.id) == ["a"])
+
+        await viewModel.loadModels(forceRefresh: true)
+        #expect(requester.callCount == 2)
+    }
+
+    @Test("Endpoint de liste absent (fournisseur personnalisé) → saisie manuelle en repli")
+    func missingListEndpointFallsBackToManualEntry() async {
+        let custom = CloudProviderPreset(
+            id: "custom:abc",
+            displayName: "Mon LLM",
+            baseURL: URL(string: "https://llm.example.com/v1")!,
+            defaultModel: "mon-modele"
+        )
+        let selectionStore = uniqueSelectionStore()
+        selectionStore.selection = CloudProviderSelection(providerID: "custom:abc", model: "mon-modele")
+        let viewModel = CloudProviderModelPickerViewModel(
+            keyStore: MockAPIKeyStore(storedKeys: ["custom:abc": "sk-custom"]),
+            customPresets: [custom],
+            selectionStore: selectionStore,
+            modelListService: CloudModelListService(
+                requester: StubModelListRequester(statusCode: 404, body: "Not Found"),
+                cache: CloudModelListCache()
+            )
+        )
+
+        await viewModel.loadModels()
+
+        #expect(viewModel.modelListState == .unavailable(message: CloudModelListError.listUnavailable.message))
+        #expect(viewModel.showsManualModelEntry)
+    }
+
+    @Test("Format de liste inconnu → saisie manuelle en repli")
+    func unknownListFormatFallsBackToManualEntry() async {
+        let viewModel = makeViewModel(
+            keys: ["groq": "sk-groq"],
+            selection: CloudProviderSelection(providerID: "groq", model: "a"),
+            requester: StubModelListRequester(body: #"{"models":"inattendu"}"#)
+        )
+
+        await viewModel.loadModels()
+
+        #expect(viewModel.showsManualModelEntry)
+    }
+
+    @Test("Claude : tous les modèles de l'API, ids datés ramenés à l'alias connu")
+    func claudeListsAllFetchedModels() async {
+        let requester = StubModelListRequester(body: """
+        {"data":[
+          {"id":"claude-opus-5","display_name":"Claude Opus 5"},
+          {"id":"claude-futur-9","display_name":"Claude Futur 9"},
+          {"id":"claude-haiku-4-5-20251001","display_name":"Claude Haiku 4.5"}
+        ]}
+        """)
+        let viewModel = makeViewModel(
+            keys: ["claude": "sk-claude"],
+            selection: CloudProviderSelection(providerID: "claude", model: "claude-opus-5"),
+            requester: requester
+        )
+
+        await viewModel.loadModels()
+
+        #expect(viewModel.modelMenuOptions == [
+            CloudModelOption(id: "claude-opus-5", displayName: "Claude Opus 5"),
+            CloudModelOption(id: "claude-futur-9", displayName: "Claude Futur 9"),
+            CloudModelOption(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5"),
+        ])
+        #expect(!viewModel.showsManualModelEntry)
+    }
+
+    @Test("Claude avant chargement : tous les modèles connus restent proposés")
+    func claudeFallsBackToKnownModels() {
+        let viewModel = makeViewModel(
+            keys: ["claude": "sk-claude"],
+            selection: CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5"),
+            requester: StubModelListRequester(body: "{}")
+        )
+
+        #expect(viewModel.modelMenuOptions.map(\.id) == CloudProviderSelectionResolver.knownClaudeModels.map(\.id))
+    }
+}
+
+/// Clé lisible au premier accès (init du view model), absente ensuite.
+private final class DisappearingKeyStore: APIKeyStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private let account: String
+    private var reads = 0
+
+    init(account: String) { self.account = account }
+
+    func apiKey(account: String) throws -> String? {
+        lock.withLock {
+            guard account == self.account else { return nil }
+            reads += 1
+            return reads == 1 ? "sk-temporaire" : nil
+        }
+    }
+    func save(apiKey: String, account: String) throws {}
+    func deleteAPIKey(account: String) throws {}
 }

@@ -201,7 +201,13 @@ actor MLXProvider: AIGenerating {
     /// `MLXDownloadProgress.shared` interne : on le relaie tel quel en plus
     /// d'alimenter notre `onProgress` à nous, pour ne rien perdre côté
     /// framework tout en gardant le contrat existant avec l'UI.
-    private static func makeLanguageModel(
+    /// `nonisolated` : fabrique pure appelée depuis `prepare()`, c'est-à-dire
+    /// depuis le contexte de l'`actor` `MLXProvider`. Sans ce marqueur elle
+    /// hérite de `@MainActor` sous `-default-isolation=MainActor` et devient
+    /// inappelable depuis l'acteur (erreur visible uniquement sur la cible
+    /// macOS : sur simulateur iOS, `prepare()` court-circuite ce chemin via
+    /// `#if targetEnvironment(simulator)`, MLX n'y fonctionnant pas).
+    nonisolated private static func makeLanguageModel(
         for entry: MLXModelCatalogEntry,
         onProgress: @Sendable @escaping (MLXDownloadProgress) -> Void
     ) -> MLXLanguageModel {
@@ -244,20 +250,25 @@ actor MLXProvider: AIGenerating {
     /// Logique pure, isolée de `makeLanguageModel` pour rester testable sans
     /// dépendre d'iOS/macOS 27 (`ModelConfiguration`/`LLMRegistry` n'ont pas
     /// cette contrainte).
-    static func resolvedConfiguration(for entry: MLXModelCatalogEntry) -> ModelConfiguration {
+    nonisolated static func resolvedConfiguration(for entry: MLXModelCatalogEntry) -> ModelConfiguration {
         entry.registryKey != nil
             ? LLMRegistry.shared.configuration(id: entry.huggingFaceRepo)
             : ModelConfiguration(id: entry.huggingFaceRepo)
     }
 
-    static func modelStorageDirectory(for modelId: String) -> URL {
+    nonisolated static func modelStorageDirectory(for modelId: String) -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base
             .appendingPathComponent("MLXModels", isDirectory: true)
             .appendingPathComponent(modelId, isDirectory: true)
     }
 
-    static func wifiOnlySession() -> URLSession {
+    /// `nonisolated` : appelée depuis la closure `load` du descripteur de modèle,
+    /// qui s'exécute hors du main actor. Elle ne fait que fabriquer une
+    /// `URLSessionConfiguration` locale — aucun état partagé, donc rien à isoler.
+    /// Sans ce marqueur, le mode de langage Swift 6 rejette l'appel
+    /// (« main actor-isolated static method cannot be called from outside of the actor »).
+    nonisolated static func wifiOnlySession() -> URLSession {
         let configuration = URLSessionConfiguration.default
         configuration.allowsCellularAccess = false
         return URLSession(configuration: configuration)
