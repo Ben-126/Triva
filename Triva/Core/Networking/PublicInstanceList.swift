@@ -7,14 +7,17 @@
 
 import Foundation
 
-enum PublicInstanceListError: Error, Sendable, Equatable {
+nonisolated enum PublicInstanceListError: Error, Sendable, Equatable {
     case resourceMissing
     case invalidFormat
 }
 
 /// Charge la liste statique d'instances SearXNG publiques depuis
 /// `Resources/searxng-instances.json`, dans l'ordre de priorité à essayer.
-enum PublicInstanceList {
+///
+/// `nonisolated` : logique pure sur des fichiers et des `URL`, appelée aussi bien depuis le main
+/// actor (Réglages) que depuis une tâche de fond (rafraîchissement de l'annuaire).
+nonisolated enum PublicInstanceList {
     static func load(bundle: Bundle = .main, resourceName: String = "searxng-instances") throws -> [URL] {
         guard let fileURL = bundle.url(forResource: resourceName, withExtension: "json") else {
             throw PublicInstanceListError.resourceMissing
@@ -29,6 +32,34 @@ enum PublicInstanceList {
         }
 
         return urls
+    }
+
+    /// Liste embarquée PUIS instances rafraîchies depuis l'annuaire searx.space
+    /// (`SearXNGDirectoryRefresher`). `FailoverManager` classe ensuite le tout par fiabilité mesurée.
+    ///
+    /// La liste embarquée reste en tête, dans son ordre : c'est la liste de référence (elle
+    /// peut commencer par l'instance personnelle de l'utilisateur, qui doit rester prioritaire)
+    /// et le seul contenu garanti hors ligne au premier lancement. Les instances de l'annuaire
+    /// ne font que la compléter. Sans rafraîchissement (jamais fait, échec, hors ligne), le
+    /// résultat est exactement `load`.
+    ///
+    /// - Throws: les mêmes erreurs que `load` : une liste embarquée illisible est un défaut
+    ///   d'empaquetage qui doit rester visible, même si l'annuaire a des instances à proposer.
+    static func loadMerged(
+        bundle: Bundle = .main,
+        resourceName: String = "searxng-instances",
+        directoryStore: SearXNGDirectoryStore = .shared
+    ) throws -> [URL] {
+        merging(try load(bundle: bundle, resourceName: resourceName), with: directoryStore.refreshedInstances)
+    }
+
+    /// Ajoute à `base` les instances de `extras` qui n'y figurent pas déjà. Comparaison par
+    /// `SearXNGInstanceAddress.comparisonKey` : `https://Searx.be/` et `https://searx.be` sont
+    /// la même instance. L'ordre de `base` est conservé tel quel, doublons internes compris.
+    static func merging(_ base: [URL], with extras: [URL]) -> [URL] {
+        var known = Set(base.map(InstanceReliabilityStore.key(for:)))
+        let additions = extras.filter { known.insert(InstanceReliabilityStore.key(for: $0)).inserted }
+        return base + additions
     }
 
     private struct InstanceListFile: Decodable {

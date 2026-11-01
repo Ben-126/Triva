@@ -37,6 +37,7 @@ private actor MockSearXNGClient: SearXNGSearching {
     }
 }
 
+@MainActor
 @Suite("FailoverManager")
 struct FailoverManagerTests {
     private let instance1 = URL(string: "https://instance1.example")!
@@ -147,11 +148,28 @@ private actor ControllableSearXNGClient: SearXNGSearching {
     }
 }
 
+@MainActor
 @Suite("FailoverManager — annulation")
 struct FailoverManagerCancellationTests {
     private let instance1 = URL(string: "https://instance1.example")!
     private let instance2 = URL(string: "https://instance2.example")!
 
+    /// Poll coopératif d'attente d'un état produit par une AUTRE `Task`.
+    ///
+    /// `try? await Task.sleep(...)` et surtout PAS `await Task.yield()` : ce projet
+    /// compile avec `-default-isolation=MainActor`, et dans ce contexte `yield()` ne
+    /// garantit pas de façon fiable que l'autre `Task` reçoive la main — la boucle peut
+    /// épuiser ses tentatives en quelques dizaines de millisecondes sans que l'autre
+    /// `Task` ait jamais progressé. Ce n'est pas un problème de budget : monter
+    /// `maxAttempts` à 2000 n'y change rien, c'est un vrai blocage d'ordonnancement.
+    /// Le symptôme est un échec intermittent (environ 1 run sur 2-3) sur un test
+    /// pourtant parfaitement déterministe. Une vraie suspension temporisée passe par
+    /// l'horloge du runtime et laisse fiablement l'autre `Task` s'exécuter.
+    ///
+    /// Diagnostiqué et corrigé une première fois sur
+    /// `ChatViewModelTests/cancellingDuringInFlightSearchIsNotReportedAsError` (2026-09-15) ;
+    /// le même helper vivait ici avec le motif d'origine, encore vert mais exposé au
+    /// même piège — aligné sur `ChatViewModelTests.waitUntil` le 2026-09-23.
     private func waitUntil(
         maxAttempts: Int = 200,
         _ condition: () async -> Bool
@@ -159,7 +177,7 @@ struct FailoverManagerCancellationTests {
         var attempts = 0
         while attempts < maxAttempts {
             if await condition() { return }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
             attempts += 1
         }
         Issue.record("Timeout")

@@ -25,6 +25,7 @@ private func makeBundle(fileName: String = "searxng-instances", json: String?) t
     return try #require(Bundle(path: directory.path))
 }
 
+@MainActor
 @Suite("PublicInstanceList")
 struct PublicInstanceListTests {
     @Test("Charge une liste valide d'instances dans l'ordre du fichier")
@@ -85,5 +86,64 @@ struct PublicInstanceListTests {
         let urls = try PublicInstanceList.load(bundle: bundle)
 
         #expect(urls == [URL(string: "https://searx.example.org")!])
+    }
+
+    // MARK: Fusion avec l'annuaire rafraîchi
+
+    @Test("merging : la liste embarquée reste en tête, dans son ordre, les nouvelles s'ajoutent")
+    func mergingKeepsBaseFirst() {
+        let base = [URL(string: "https://perso.example.org")!, URL(string: "https://a.example.org")!]
+        let extras = [URL(string: "https://b.example.org")!, URL(string: "https://c.example.org")!]
+
+        #expect(PublicInstanceList.merging(base, with: extras) == base + extras)
+    }
+
+    @Test("merging : une instance déjà présente (casse, barre finale) n'est pas ajoutée deux fois")
+    func mergingDeduplicatesEquivalentAddresses() {
+        let base = [URL(string: "https://searx.be")!]
+        let extras = [URL(string: "https://Searx.be/")!, URL(string: "https://neuve.example.org")!]
+
+        #expect(PublicInstanceList.merging(base, with: extras) == [
+            URL(string: "https://searx.be")!,
+            URL(string: "https://neuve.example.org")!
+        ])
+    }
+
+    @Test("merging : sans instance rafraîchie, le résultat est la liste embarquée telle quelle")
+    func mergingWithoutExtrasIsIdentity() {
+        let base = [URL(string: "https://a.example.org")!, URL(string: "https://b.example.org")!]
+
+        #expect(PublicInstanceList.merging(base, with: []) == base)
+    }
+
+    @Test("loadMerged : liste embarquée puis instances de l'annuaire persistées")
+    func loadMergedAppendsDirectoryInstances() throws {
+        let bundle = try makeBundle(json: #"{ "instances": ["https://base.example.org"] }"#)
+        let store = SearXNGDirectoryStore()
+        store.save(SearXNGDirectorySnapshot(instances: ["https://annuaire.example.org"]))
+
+        let urls = try PublicInstanceList.loadMerged(bundle: bundle, directoryStore: store)
+
+        #expect(urls == [URL(string: "https://base.example.org")!, URL(string: "https://annuaire.example.org")!])
+    }
+
+    @Test("loadMerged : sans rafraîchissement, le résultat est exactement load")
+    func loadMergedWithoutRefreshEqualsLoad() throws {
+        let bundle = try makeBundle(json: #"{ "instances": ["https://base.example.org"] }"#)
+
+        let merged = try PublicInstanceList.loadMerged(bundle: bundle, directoryStore: SearXNGDirectoryStore())
+
+        #expect(merged == (try PublicInstanceList.load(bundle: bundle)))
+    }
+
+    @Test("loadMerged : une liste embarquée illisible reste une erreur, même si l'annuaire a des instances")
+    func loadMergedPropagatesBundleErrors() throws {
+        let bundle = try makeBundle(json: nil)
+        let store = SearXNGDirectoryStore()
+        store.save(SearXNGDirectorySnapshot(instances: ["https://annuaire.example.org"]))
+
+        #expect(throws: PublicInstanceListError.resourceMissing) {
+            try PublicInstanceList.loadMerged(bundle: bundle, directoryStore: store)
+        }
     }
 }

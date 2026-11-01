@@ -77,6 +77,35 @@ struct SearXNGClient: SearXNGSearching {
         }
     }
 
+    /// Construit `GET {instance}/search?format=json&q=…`, plus les options renseignées.
+    ///
+    /// **Le « + » doit partir en `%2B` (bug 12 de la revue V1).** `URLComponents`
+    /// suit la RFC 3986, pour laquelle `+` est un caractère légal dans une query :
+    /// son setter `queryItems` le laisse donc tel quel (vérifié sur macOS 27 le
+    /// 2026-09-30 : « tutoriel C++ » donnait `q=tutoriel%20C++`). Or SearXNG
+    /// (Flask/werkzeug) décode la query string au format
+    /// `application/x-www-form-urlencoded`, où `+` vaut une espace : « tutoriel
+    /// C++ » était cherché comme « tutoriel C » suivi de deux espaces, « 2+2 »
+    /// comme « 2 2 », et « Canal+ » ou « Disney+ » perdaient leur « + ». Apple
+    /// décrit ce conflit dans la documentation de `URLComponents.queryItems` et
+    /// conseille d'encoder soi-même le `+` quand le serveur suit la convention
+    /// des formulaires. On le fait APRÈS le setter, sur `percentEncodedQuery` :
+    /// encoder la valeur avant de la confier à `queryItems` donnerait `%252B`,
+    /// puisque le setter réencode le `%`.
+    ///
+    /// Ce n'est PAS un écart assumé avec le web : `searxng.ts` passe par
+    /// `URLSearchParams.append`, qui sérialise déjà `+` en `%2B`. Le web n'a
+    /// jamais eu ce bug, et ce correctif rétablit la parité.
+    ///
+    /// Pourquoi le remplacement sur toute la query est sûr : après le setter
+    /// `queryItems`, un `+` restant ne peut être qu'un `+` littéral venu d'une
+    /// valeur (Foundation encode l'espace en `%20`, jamais en `+`, et les noms de
+    /// paramètres sont fixes). Un `%` tapé par l'utilisateur est déjà devenu
+    /// `%25`, donc un « %2B » saisi tel quel part en `%252B` et n'est pas touché.
+    /// Le résultat reste un encodage valide : le setter `percentEncodedQuery`,
+    /// qui déclenche un `fatalError` sur un encodage invalide, ne peut pas planter
+    /// ici. Les espaces restent en `%20`, que le serveur décode correctement :
+    /// inutile de les convertir en `+`.
     private static func buildURL(instance: URL, query: String, options: SearXNGSearchOptions) -> URL? {
         guard var components = URLComponents(
             url: instance.appendingPathComponent("search"),
@@ -105,6 +134,9 @@ struct SearXNGClient: SearXNGSearching {
             queryItems.append(URLQueryItem(name: "time_range", value: timeRange))
         }
         components.queryItems = queryItems
+        // `+` littéral -> `%2B`, sinon SearXNG le lit comme une espace (voir la doc ci-dessus).
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
 
         return components.url
     }

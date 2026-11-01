@@ -46,6 +46,7 @@ private final class MockURLProtocol: URLProtocol {
 // parallèle et l'`init()`/l'assignation d'un test peut écraser ces statics
 // avant que la closure d'un autre test n'ait tourné — d'où des tests qui
 // n'obtiennent jamais d'erreur, ou des `LockedBox` restés à `nil`.
+@MainActor
 @Suite("SearXNGClient", .serialized)
 struct SearXNGClientTests {
     private let instance = URL(string: "https://searx.example")!
@@ -129,6 +130,54 @@ struct SearXNGClientTests {
         #expect(capturedHeader.value == "application/json")
     }
 
+    // MARK: - buildURL : encodage du « + » (bug 12 de la revue V1)
+
+    /// Le test d'aller-retour `buildsURLWithQueryAndFormat` ne pouvait PAS voir
+    /// ce bug : `URLComponents.queryItems` relit la query selon la RFC 3986 et
+    /// rend un `+` brut comme un `+`. Il faut inspecter la chaîne ENCODÉE, celle
+    /// qui part réellement sur le réseau.
+    @Test("Encode le « + » de la requête en %2B plutôt qu'en « + » brut")
+    func encodesPlusSignAsPercent2B() async throws {
+        let url = try await capturedRequestURL(forQuery: "tutoriel C++")
+
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let encodedQuery = try #require(components.percentEncodedQuery)
+        #expect(encodedQuery.contains("q=tutoriel%20C%2B%2B"))
+        #expect(!encodedQuery.contains("+"))
+        // Aller-retour RFC 3986 : `%2B` redevient bien `+`, donc aucun double
+        // encodage (`%252B`) n'a été introduit par le correctif.
+        #expect(components.queryItems?.contains(URLQueryItem(name: "q", value: "tutoriel C++")) == true)
+    }
+
+    /// Test SÉMANTIQUE : on relit la query exactement comme SearXNG la relit
+    /// (voir `formDecodedValue`). Avant le correctif, « tutoriel C++ » était lu
+    /// « tutoriel C » suivi de deux espaces, « 2+2 » devenait « 2 2 ». Le
+    /// dernier cas mêle `+`, `&`, `=`, `%` et espaces pour vérifier que le
+    /// réencodage du `+` ne casse pas l'encodage des autres caractères.
+    @Test(
+        "SearXNG relit exactement la requête tapée, « + » compris",
+        arguments: ["tutoriel C++", "Canal+", "Disney+", "2+2", "C++ & Rust = 100%"]
+    )
+    func serverFormDecodingReadsBackTheExactQuery(query: String) async throws {
+        let url = try await capturedRequestURL(forQuery: query)
+
+        let encodedQuery = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery)
+        #expect(Self.formDecodedValue(named: "q", in: encodedQuery) == query)
+    }
+
+    /// Garde-fou contre un correctif trop large (décoder puis réencoder toute
+    /// la query, ou percent-encoder la valeur avant de la confier à
+    /// `URLComponents`) : un « %2B » tapé tel quel par l'utilisateur doit
+    /// arriver au serveur comme les trois caractères « %2B », pas comme « + ».
+    @Test("Un « %2B » tapé littéralement arrive intact au serveur")
+    func literalPercent2BInQueryIsNotDecodedAsPlus() async throws {
+        let url = try await capturedRequestURL(forQuery: "encodage %2B")
+
+        let encodedQuery = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery)
+        #expect(encodedQuery.contains("q=encodage%20%252B"))
+        #expect(Self.formDecodedValue(named: "q", in: encodedQuery) == "encodage %2B")
+    }
+
     // MARK: - search : cas de succès
 
     @Test("Décode une réponse JSON valide avec statut 200")
@@ -209,6 +258,47 @@ struct SearXNGClientTests {
         await #expect(throws: SearXNGClientError.decodingFailed) {
             _ = try await client.search(query: "test", options: SearXNGSearchOptions(), instance: instance)
         }
+    }
+
+    // MARK: - Outils
+
+    /// Lance une recherche sur `query` et renvoie l'URL de la requête telle
+    /// qu'interceptée par `MockURLProtocol`, c'est-à-dire telle qu'`URLSession`
+    /// l'enverrait : on vérifie ainsi que l'encodage survit au passage par
+    /// `URLRequest`, pas seulement la sortie de `buildURL` (qui reste privé).
+    private func capturedRequestURL(forQuery query: String) async throws -> URL {
+        let capturedURL = LockedBox<URL?>(nil)
+        MockURLProtocol.requestHandler = { request in
+            capturedURL.value = request.url
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let body = try JSONEncoder().encode(SearXNGSearchResponse(results: [], suggestions: []))
+            return (response, body)
+        }
+        let client = SearXNGClient(urlSession: Self.makeSession())
+
+        _ = try await client.search(query: query, options: SearXNGSearchOptions(), instance: instance)
+
+        return try #require(capturedURL.value)
+    }
+
+    /// Relit la valeur du paramètre `name` comme le fait RÉELLEMENT SearXNG :
+    /// Flask/werkzeug décode la query string au format
+    /// `application/x-www-form-urlencoded` (même règle que `urllib.parse.parse_qsl`
+    /// de Python) — `&` sépare les paires, le premier `=` sépare nom et valeur,
+    /// `+` vaut une espace, PUIS les `%XX` sont décodés. L'ordre compte : décoder
+    /// d'abord transformerait un `%2B` en `+`, ensuite pris à tort pour une espace.
+    /// `URLComponents.queryItems` ne convient pas ici : il suit la RFC 3986 et
+    /// garde le `+` tel quel, ce qui masque précisément le bug 12.
+    private static func formDecodedValue(named name: String, in percentEncodedQuery: String) -> String? {
+        let formDecode: (Substring) -> String? = { raw in
+            raw.replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+        }
+        for pair in percentEncodedQuery.split(separator: "&") {
+            let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard let rawName = parts.first, formDecode(rawName) == name else { continue }
+            return parts.count > 1 ? formDecode(parts[1]) : ""
+        }
+        return nil
     }
 }
 
