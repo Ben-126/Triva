@@ -74,20 +74,40 @@ struct OpenAICompatibleClientTests {
         }
     }
 
-    @Test("Extrait le message d'erreur de l'API quand le corps en contient un")
-    func decodesAPIErrorMessage() {
+    @Test("Corps d'erreur JSON : le statut est toujours gardé, le message du serveur jamais")
+    func apiErrorKeepsTheStatusAndDropsTheMessage() {
         let json = Data("""
-        {"error":{"message":"Invalid API key"}}
+        {"error":{"message":"Invalid header: Bearer sk-SECRET-42"}}
         """.utf8)
 
-        #expect(OpenAICompatibleClient.decodeErrorMessage(from: json) == "Invalid API key")
+        let failure = OpenAICompatibleClient.failure(statusCode: 401, body: json)
+
+        #expect(failure == .apiError(statusCode: 401, code: nil))
+        #expect(!String(describing: failure).contains("SECRET"))
     }
 
-    @Test("Renvoie nil si le corps ne contient pas de message d'erreur exploitable")
-    func decodeErrorMessageReturnsNilWithoutErrorField() {
-        let json = Data("{}".utf8)
+    @Test("error.code ou error.type reconnu : enum fermé", arguments: [
+        (#"{"error":{"message":"m","type":"invalid_request_error","code":"context_length_exceeded"}}"#, OpenAICompatibleAPIErrorCode.contextLengthExceeded),
+        (#"{"error":{"message":"m","type":"invalid_request_error","code":"invalid_api_key"}}"#, .invalidAPIKey),
+        (#"{"error":{"message":"m","type":"insufficient_quota","code":null}}"#, .insufficientQuota),
+        (#"{"error":{"message":"m","type":"insufficient_quota","code":402}}"#, .insufficientQuota),
+    ])
+    func recognizedCodes(body: String, expected: OpenAICompatibleAPIErrorCode) {
+        #expect(OpenAICompatibleClient.failure(statusCode: 400, body: Data(body.utf8)) == .apiError(statusCode: 400, code: expected))
+    }
 
-        #expect(OpenAICompatibleClient.decodeErrorMessage(from: json) == nil)
+    @Test("Code inconnu, ou numérique (OpenRouter) : enveloppe gardée, sans code")
+    func unknownCodesAreDropped() {
+        let unknown = Data(#"{"error":{"message":"m","type":"weird","code":"Bearer sk-SECRET-42"}}"#.utf8)
+        let numeric = Data(#"{"error":{"message":"m","code":429}}"#.utf8)
+
+        #expect(OpenAICompatibleClient.failure(statusCode: 400, body: unknown) == .apiError(statusCode: 400, code: nil))
+        #expect(OpenAICompatibleClient.failure(statusCode: 429, body: numeric) == .apiError(statusCode: 429, code: nil))
+    }
+
+    @Test("Corps sans enveloppe d'erreur : requestFailed", arguments: ["{}", "<html>Bad Gateway</html>", #"{"error":"texte"}"#, ""])
+    func bodyWithoutEnvelope(body: String) {
+        #expect(OpenAICompatibleClient.failure(statusCode: 502, body: Data(body.utf8)) == .requestFailed(statusCode: 502))
     }
 }
 

@@ -222,12 +222,24 @@ struct SearXNGClientTests {
 
     @Test("Une erreur de transport non-timeout devient SearXNGClientError.transportError")
     func nonTimeoutTransportErrorBecomesTransportError() async throws {
-        MockURLProtocol.errorToThrow = URLError(.notConnectedToInternet)
+        MockURLProtocol.errorToThrow = URLError(.cannotConnectToHost)
         let client = SearXNGClient(urlSession: Self.makeSession())
 
         await #expect(throws: SearXNGClientError.transportError) {
             _ = try await client.search(query: "test", options: SearXNGSearchOptions(), instance: instance)
         }
+    }
+
+    @Test("Appareil hors ligne : le code d'URLError passe, sans l'URL (donc sans la question)")
+    func noConnectionKeepsTheCodeButNotTheURL() async throws {
+        MockURLProtocol.errorToThrow = URLError(.notConnectedToInternet)
+        let client = SearXNGClient(urlSession: Self.makeSession())
+
+        let error = await #expect(throws: URLError.self) {
+            _ = try await client.search(query: "ma question", options: SearXNGSearchOptions(), instance: instance)
+        }
+        #expect(error?.code == .notConnectedToInternet)
+        #expect(error?.failingURL == nil)
     }
 
     @Test(

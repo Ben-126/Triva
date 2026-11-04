@@ -58,6 +58,8 @@ struct TrivaSharedStores {
     /// complètent la liste du bundle, ne la remplacent jamais : voir
     /// `searXNGInstances`.
     let searchDirectory: SearXNGDirectoryStore
+    /// Articles de la dernière visite de Découvrir, partagés par les fenêtres.
+    let discoverCache: any DiscoverContentCaching
     let chatHistory: ChatHistoryStore
     let favorites: FavoritesStore
     /// Trousseau des clés BYOK : le même pour les fournisseurs personnalisés
@@ -87,6 +89,7 @@ struct TrivaSharedStores {
     /// jetable, un conteneur en mémoire et un faux trousseau ; l'app passe par
     /// `live()`.
     ///
+    /// - `discoverCache` : aucun par défaut, seul `live()` écrit sur le disque.
     /// - `searchReliability` et `searchDirectory` sont EN MÉMOIRE par défaut :
     ///   tests et aperçus ne lisent ni n'écrivent les mesures réelles de
     ///   l'appareil (une mesure persistée ferait dépendre un test de la machine
@@ -101,7 +104,8 @@ struct TrivaSharedStores {
         searchInstances: CustomInstanceStore,
         keyStore: any APIKeyStoring,
         searchReliability: InstanceReliabilityStore = InstanceReliabilityStore(),
-        searchDirectory: SearXNGDirectoryStore = SearXNGDirectoryStore()
+        searchDirectory: SearXNGDirectoryStore = SearXNGDirectoryStore(),
+        discoverCache: any DiscoverContentCaching = DiscoverNoCache()
     ) {
         let cloudSelection = CloudProviderSelectionStore(userDefaults: userDefaults)
         self.engineSettings = AIEngineSettingsStore(userDefaults: userDefaults)
@@ -115,6 +119,7 @@ struct TrivaSharedStores {
         self.searchInstances = searchInstances
         self.searchReliability = searchReliability
         self.searchDirectory = searchDirectory
+        self.discoverCache = discoverCache
         self.chatHistory = ChatHistoryStore(container: container)
         self.favorites = FavoritesStore(container: container)
         self.keyStore = keyStore
@@ -138,7 +143,8 @@ struct TrivaSharedStores {
             searchInstances: CustomInstanceStore(),
             keyStore: KeychainAPIKeyStore(),
             searchReliability: .shared,
-            searchDirectory: .shared
+            searchDirectory: .shared,
+            discoverCache: DiscoverDiskCache(language: .device())
         )
     }
 
@@ -175,7 +181,9 @@ struct TrivaSharedStores {
             userDefaults: userDefaults,
             container: container,
             isHistoryStorageVolatile: false,
-            searchInstances: CustomInstanceStore(userDefaults: userDefaults),
+            // Annuaire en mémoire, comme `searchDirectory` ci-dessous : un aperçu
+            // ne lit jamais l'annuaire réel de l'appareil.
+            searchInstances: CustomInstanceStore(userDefaults: userDefaults, directory: SearXNGDirectoryStore()),
             keyStore: KeychainAPIKeyStore()
         )
         stores.engineSettings.selectedOption = engine
@@ -210,8 +218,7 @@ extension TrivaSharedStores {
     }
 
     /// Règle de composition de `searXNGInstances`, sans store : partagée avec
-    /// le repli autonome de Découvrir (`DiscoverViewModel.standalone`), qui n'a
-    /// pas de session à qui demander la liste.
+    /// l'écran des instances (`CustomInstanceStore.automaticInstances`).
     ///
     /// Les masquages de l'utilisateur valent AUSSI pour l'annuaire : une
     /// instance retirée de la liste ne revient pas par lui. Et si l'utilisateur
@@ -228,8 +235,7 @@ extension TrivaSharedStores {
         directory: [URL],
         overrides: SearXNGInstanceOverrides
     ) -> [URL] {
-        let userHidEveryDefault = !bundled.isEmpty && overrides.visibleDefaults(bundled).isEmpty
-        let extras = userHidEveryDefault ? [] : directory
+        let extras = overrides.hidesEveryDefault(of: bundled) ? [] : directory
         return overrides.effectiveInstances(defaults: PublicInstanceList.merging(bundled, with: extras))
     }
 
@@ -271,6 +277,16 @@ extension TrivaSharedStores {
     }
 }
 
+/// Détecte que l'app sert d'hôte aux tests unitaires : xcodebuild y place
+/// `XCTestConfigurationFilePath`, absente d'un lancement normal.
+nonisolated enum TrivaTestHost {
+    static func isHostingUnitTests(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["XCTestConfigurationFilePath"] != nil
+    }
+}
+
 @main
 struct TrivaApp: App {
     /// Créés une seule fois pour toute la durée de vie de l'app et partagés par
@@ -305,12 +321,11 @@ struct TrivaApp: App {
         // SearXNG fiabilisé (R3) : à chaque passage au premier plan, lancement
         // compris (`initial: true`), rafraîchit l'annuaire s'il est dû puis
         // re-sonde les instances écartées dont le délai a expiré — en tâche de
-        // fond, jamais bloquant (voir `SearXNGMaintenance`). Les tests
-        // unitaires tournant DANS l'app (hôte de test), ce passage a lieu aussi
-        // à leur lancement : même effet qu'une ouverture de l'app, limité à un
-        // téléchargement de l'annuaire par jour.
+        // fond, jamais bloquant (voir `SearXNGMaintenance`). Jamais sous les
+        // tests unitaires, qui tournent DANS l'app (hôte de test) : ce serait du
+        // réseau réel et des préférences réelles à chaque lancement de suite.
         .onChange(of: scenePhase, initial: true) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active, !TrivaTestHost.isHostingUnitTests() else { return }
             searXNGMaintenance.sceneDidBecomeActive()
         }
 

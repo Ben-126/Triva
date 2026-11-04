@@ -13,8 +13,9 @@ import Foundation
 /// `generationFailed(description:)` et l'utilisateur lisait le même message,
 /// qu'il s'agisse d'une clé refusée, d'un 429 ou d'une panne.
 ///
-/// Déduite d'un statut HTTP ou d'une erreur DÉJÀ typée, jamais du corps d'une
-/// réponse : un serveur « Personnalisé » quelconque peut y renvoyer l'en-tête
+/// Déduite d'un statut HTTP ou d'une erreur DÉJÀ typée (dont le code d'erreur
+/// FERMÉ `OpenAICompatibleAPIErrorCode`), jamais du texte d'une réponse : un
+/// serveur « Personnalisé » quelconque peut y renvoyer l'en-tête
 /// `Authorization: Bearer <clé>`. Aucun cas ne porte donc de chaîne venue du
 /// réseau, seulement des statuts, affichables sans risque. Même découpage que
 /// `CloudModelListError` (liste des modèles) et `PerplexityAgentError`, pour
@@ -26,7 +27,8 @@ nonisolated enum CloudProviderFailure: Sendable, Equatable {
     /// 401 / 403 : clé refusée, ou sans les droits nécessaires. `nil` quand
     /// l'erreur typée ne donne pas le statut (Claude : `ClaudeError.missingCredential`).
     case apiKeyRejected(statusCode: Int?)
-    /// 429. Chez OpenAI, couvre aussi le crédit épuisé (`insufficient_quota`) ;
+    /// 429 ou 402 (crédit épuisé, OpenRouter). Chez OpenAI, couvre aussi le
+    /// crédit épuisé (`insufficient_quota`) ;
     /// chez Anthropic, la surcharge 529, que `ClaudeForFoundationModels` range
     /// sous `LanguageModelError.rateLimited`. D'où le message à deux pistes.
     case rateLimited
@@ -47,9 +49,20 @@ nonisolated enum CloudProviderFailure: Sendable, Equatable {
         switch statusCode {
         case 401, 403: self = .apiKeyRejected(statusCode: statusCode)
         case 413: self = .contextWindowExceeded
-        case 429: self = .rateLimited
+        case 402, 429: self = .rateLimited
         case 500..<600: self = .serverUnavailable(statusCode: statusCode)
         default: self = .requestRejected(statusCode: statusCode)
+        }
+    }
+
+    /// Classement d'un échec compatible OpenAI : le code reconnu prime sur le
+    /// statut, qui ne distingue pas un contexte dépassé d'un autre 400.
+    init(statusCode: Int, code: OpenAICompatibleAPIErrorCode?) {
+        switch code {
+        case .contextLengthExceeded: self = .contextWindowExceeded
+        case .invalidAPIKey: self = .apiKeyRejected(statusCode: statusCode)
+        case .insufficientQuota: self = .rateLimited
+        case nil: self.init(statusCode: statusCode)
         }
     }
 

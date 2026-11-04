@@ -322,10 +322,17 @@ struct OpenSourceCommonTests {
         }
     }
 
-    @Test("un transport en échec devient `.unavailable`, sans fuite d'URL", arguments: WebSearchCategory.allCases)
+    @Test("appareil hors ligne : `.noConnection` ; autre transport en échec : `.unavailable` ; sans fuite d'URL", arguments: WebSearchCategory.allCases)
     func transportFailure(category: WebSearchCategory) async {
         let requester = OSSTestRequester { _ in throw URLError(.notConnectedToInternet) }
         for provider in Self.allProviders(requester: requester) {
+            let error = await ossThrownError {
+                _ = try await provider.search(query: "swift", options: WebSearchOptions(category: category))
+            }
+            #expect(error as? WebSearchError == .noConnection || error as? WebSearchError == .unsupportedCategory)
+        }
+        let refused = OSSTestRequester { _ in throw URLError(.cannotConnectToHost) }
+        for provider in Self.allProviders(requester: refused) {
             let error = await ossThrownError {
                 _ = try await provider.search(query: "swift", options: WebSearchOptions(category: category))
             }

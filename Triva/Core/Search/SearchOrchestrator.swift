@@ -930,6 +930,7 @@ nonisolated struct SearchOrchestrator: Sendable {
             flavor: flavor,
             query: query,
             webSearchChain: webSearchChain,
+            trustedDomainsOnly: restrictsToTrustedDomains,
             failoverManager: failoverManager
         )
     }

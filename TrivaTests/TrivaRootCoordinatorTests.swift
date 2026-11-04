@@ -210,9 +210,7 @@ struct TrivaRootCoordinatorTests {
     }
 
     /// Liste d'instances VIDE : chargé à travers la session, Découvrir échoue
-    /// aussitôt (`noInstancesConfigured`), sans réseau. Le repli
-    /// `DiscoverViewModel.standalone`, lui, lirait la liste du bundle et
-    /// partirait sur le réseau.
+    /// aussitôt (`noInstancesConfigured`), sans réseau.
     @Test("Découvrir cherche sur la liste d'instances effective de l'app")
     func discoverLoadsThroughTheAppInstanceList() async throws {
         let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores(instances: []))

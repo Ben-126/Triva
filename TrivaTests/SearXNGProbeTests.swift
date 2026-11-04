@@ -109,6 +109,29 @@ struct SearXNGInstanceHealthProbeTests {
         #expect(try await Self.makeProbe().probe(instance).verdict == .failed(.timeout))
     }
 
+    @Test("Sonde lancée hors ligne : aucune instance n'est comptée en panne dans la fiabilité", arguments: [
+        URLError.Code.notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff,
+    ])
+    func deviceOfflineIsNotRecorded(code: URLError.Code) async {
+        let store = InstanceReliabilityStore()
+        ProbeURLProtocol.handler = { _ in throw URLError(code) }
+
+        let results = await InstanceProbeBatch.run([instance], using: Self.makeProbe(), store: store)
+
+        #expect(results[instance]?.isHealthy == false)
+        #expect(store.record(for: instance) == nil)
+    }
+
+    @Test("Instance injoignable, appareil connecté : l'échec reste enregistré")
+    func unreachableInstanceIsStillRecorded() async {
+        let store = InstanceReliabilityStore()
+        ProbeURLProtocol.handler = { _ in throw URLError(.cannotConnectToHost) }
+
+        _ = await InstanceProbeBatch.run([instance], using: Self.makeProbe(), store: store)
+
+        #expect(store.record(for: instance)?.lastFailureReason == .network)
+    }
+
     @Test("La sonde envoie la requête neutre « test », jamais autre chose")
     func probeSendsNeutralQuery() async throws {
         let client = ScriptedInstanceClient()

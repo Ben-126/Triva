@@ -33,6 +33,14 @@ enum DiscoverLanguage: String, Sendable, CaseIterable, Equatable {
             ? .french
             : .english
     }
+
+    /// Langue de contenu de l'appareil. `Locale.preferredLanguages`, jamais
+    /// `Locale.current` : sans localisation française dans le projet, cette
+    /// dernière peut valoir l'anglais sur un appareil réglé en français (voir
+    /// `AnswerExcerpt.swift`).
+    static func device(preferredLanguages: [String] = Locale.preferredLanguages) -> DiscoverLanguage {
+        preferred(for: Locale(identifier: preferredLanguages.first ?? "en"))
+    }
 }
 
 /// Requêtes + domaines sources pour un sujet, dans UNE langue. Port de

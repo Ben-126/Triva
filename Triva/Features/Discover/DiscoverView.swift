@@ -8,249 +8,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - État (ViewModel)
-
-/// État de l'écran Découvrir (tâche 1.8) : chargement, rafraîchissement et
-/// sujet sélectionné, au-dessus de `DiscoverService` (déjà écrit, non modifié).
-///
-/// ## Pourquoi un objet détenu AU-DESSUS de la vue
-/// Un chargement coûte cher : 5 sujets × 3 domaines × 3 à 4 requêtes, soit 45
-/// à 60 combinaisons `site:domaine requête`, chacune pouvant faire DEUX
-/// requêtes SearXNG (catégorie `news`, puis repli sans restriction, voir
-/// `DiscoverService.searchOneCombo`). Jusqu'à ~120 requêtes vers des instances
-/// publiques qui limitent leur débit. En `@State` dans la vue, tout serait
-/// relancé à chaque retour sur l'onglet : en présentation
-/// `NavigationSplitView` (iPad, Mac), changer de destination démonte la vue
-/// (même constat que `SearchSession`, voir `ContentView.swift`). D'où :
-/// - l'intégration crée CE modèle une seule fois, au niveau du shell de
-///   `TrivaRootView`, et le passe à `DiscoverView(model:onSearch:)` ;
-/// - `loadIfNeeded()` ne charge qu'au premier affichage (ou après un échec) ;
-/// - rien ne se recharge tout seul ensuite : seul l'utilisateur rafraîchit
-///   (tirer pour actualiser, ⌘R sur Mac, « Réessayer »).
-///
-/// ## Le chargement survit à la vue
-/// La `Task` de chargement appartient au modèle, pas à la vue : `.task` et
-/// `.refreshable` ne font qu'attendre sa fin (`await task.value`), et annuler
-/// celui qui attend n'annule pas une `Task` non structurée. Quitter l'onglet
-/// en plein chargement ne jette donc pas la centaine de requêtes déjà
-/// parties : le résultat est là au retour. Deux demandes simultanées (tirer
-/// pour actualiser pendant le premier chargement, ⌘R répété) partagent le
-/// même chargement au lieu d'en lancer un second.
-///
-/// ## Échecs
-/// `fetchTrending` ne lève jamais d'erreur : un sujet en échec finit dans
-/// `failedTopics`. « Erreur réseau » veut donc dire « AUCUN sujet n'a rendu
-/// d'article » (ou `fetchContent` a levé, p. ex. liste d'instances
-/// illisible). Un échec partiel n'est jamais une erreur plein écran : la vue
-/// « Tout » montre les sujets qui ont répondu, la puce d'un sujet en échec
-/// mène à un état « Aucun article » local. Le détail d'une erreur n'est
-/// jamais affiché (même règle que `ChatViewModel.userFacingMessage(for:)`).
-///
-/// Isolé au main actor (implicite) et pas `nonisolated` : il manipule
-/// `DiscoverContent`, `DiscoverTopicSection` et `DiscoverArticle`, non
-/// annotés dans `DiscoverService.swift`, donc isolés au main actor, conformance
-/// `Equatable` comprise. La logique lourde n'est pas ici : les requêtes
-/// tournent dans l'acteur `FailoverManager`, ce modèle ne fait qu'attendre.
-@Observable
-@MainActor
-final class DiscoverViewModel {
-    /// Phase de chargement. `.loaded` contient toujours du contenu déjà
-    /// filtré (`sanitized(_:)`) ; il n'est vide que si le catalogue lui-même
-    /// est vide (aucun sujet demandé), ce qui donne l'état « Aucun article ».
-    enum Phase: Equatable, Sendable {
-        /// Jamais chargé : `loadIfNeeded()` n'a pas encore tourné.
-        case idle
-        /// Premier chargement, ou nouvel essai après un échec : rien à
-        /// montrer pendant ce temps.
-        case loading
-        case loaded(DiscoverContent)
-        /// Aucun sujet n'a répondu, ou `fetchContent` a levé une erreur.
-        case failed
-    }
-
-    /// Ce qu'un résultat de chargement fait de l'état. Type nommé plutôt
-    /// qu'un tuple : `update(after:previous:)` est la règle centrale du
-    /// rafraîchissement, et des tests la comparent telle quelle.
-    struct Update: Equatable, Sendable {
-        let phase: Phase
-        let refreshDidFail: Bool
-    }
-
-    /// Repli autonome derrière `DiscoverView()` (sans modèle) : garde l'écran
-    /// compilable et utilisable tant que l'intégration n'a pas injecté le
-    /// modèle de la session. Partagé (`static`) pour ne pas tout recharger à
-    /// chaque remontage de la vue. Deux limites, raisons de préférer
-    /// l'injection : il crée son propre `FailoverManager` à chaque chargement
-    /// (donc sans le cache de dernière instance fonctionnelle de la session),
-    /// et sur Mac toutes les fenêtres partagent son état, sujet sélectionné
-    /// compris.
-    static let standalone = DiscoverViewModel(fetchContent: {
-        // Faute de session à qui la demander, même liste et même mémoire de
-        // fiabilité que la session, relues dans les stores persistés de l'app
-        // (voir `TrivaSharedStores.searXNGInstances`).
-        let instances = TrivaSharedStores.searXNGInstances(
-            bundled: try PublicInstanceList.load(),
-            directory: SearXNGDirectoryStore.shared.refreshedInstances,
-            overrides: SearXNGInstanceOverrides.load(from: .standard)
-        )
-        let failoverManager = FailoverManager(instances: instances, reliability: .shared)
-        return await DiscoverService(failoverManager: failoverManager).fetchTrending()
-    })
-
-    private(set) var phase: Phase = .idle
-    /// Vrai pendant un rafraîchissement lancé alors qu'un contenu est déjà
-    /// affiché : ce contenu reste à l'écran pendant ce temps.
-    private(set) var isRefreshing = false
-    /// Vrai quand le dernier rafraîchissement n'a rien rapporté d'exploitable :
-    /// l'ancien contenu reste affiché, avec une ligne d'avertissement.
-    private(set) var refreshDidFail = false
-    /// Sujet affiché, `nil` pour « Tout ». Ici plutôt qu'en `@State` dans la
-    /// vue : revenir sur l'onglet retrouve le sujet qu'on y avait laissé.
-    var selectedTopic: DiscoverTopic?
-
-    /// Même forme que les closures de `ChatViewModel` : la vue ne sait rien
-    /// du réseau, les tests injectent un contenu factice.
-    private let fetchContent: () async throws -> DiscoverContent
-    @ObservationIgnored private var inFlightLoad: Task<Void, Never>?
-
-    init(
-        selectedTopic: DiscoverTopic? = nil,
-        fetchContent: @escaping () async throws -> DiscoverContent
-    ) {
-        self.selectedTopic = selectedTopic
-        self.fetchContent = fetchContent
-    }
-
-    /// Un chargement est en cours, quel qu'il soit (bouton ⌘R désactivé,
-    /// « Réessayer » désactivé).
-    var isLoading: Bool {
-        if case .loading = phase { return true }
-        return isRefreshing
-    }
-
-    /// Pour `.task` : charge au premier affichage, ou retente après un
-    /// échec (l'utilisateur revient peut-être avec du réseau). Sans effet si
-    /// un contenu est déjà là ou en route.
-    func loadIfNeeded() async {
-        switch phase {
-        case .idle, .failed:
-            await load()
-        case .loading, .loaded:
-            return
-        }
-    }
-
-    /// Pour tirer pour actualiser, ⌘R et « Réessayer » : relance toutes les
-    /// recherches (le service remélange les articles à chaque appel).
-    func refresh() async {
-        await load()
-    }
-
-    /// Un seul chargement à la fois : un appel qui arrive pendant un
-    /// chargement attend celui-ci au lieu d'en lancer un autre.
-    /// `inFlightLoad` est remis à `nil` DANS la `Task`, avant qu'elle ne se
-    /// termine : un appel arrivé juste après la fin repart bien sur un
-    /// chargement neuf au lieu de réattendre l'ancien.
-    private func load() async {
-        if let inFlightLoad {
-            await inFlightLoad.value
-            return
-        }
-        let task = Task {
-            await self.performLoad()
-            self.inFlightLoad = nil
-        }
-        inFlightLoad = task
-        await task.value
-    }
-
-    private func performLoad() async {
-        let previous = phase
-        refreshDidFail = false
-        if case .loaded = previous {
-            isRefreshing = true
-        } else {
-            phase = .loading
-        }
-
-        let outcome: Result<DiscoverContent, any Error>
-        do {
-            outcome = .success(try await fetchContent())
-        } catch {
-            // Détail volontairement abandonné : l'écran n'affiche qu'un
-            // message générique (voir le commentaire de tête).
-            outcome = .failure(error)
-        }
-
-        let update = Self.update(after: outcome, previous: previous)
-        phase = update.phase
-        refreshDidFail = update.refreshDidFail
-        isRefreshing = false
-    }
-
-    // MARK: Règles pures (testables)
-
-    /// Règle centrale du rafraîchissement :
-    /// - contenu exploitable (au moins un sujet garde un article après
-    ///   `sanitized(_:)`, ou catalogue vide) : il remplace l'état ;
-    /// - rien d'exploitable (erreur, ou tous les sujets en échec) alors qu'un
-    ///   contenu était affiché : on GARDE l'ancien et on le signale. Un
-    ///   rafraîchissement hors ligne ne doit pas effacer ce qu'on lisait ;
-    /// - rien d'exploitable sans contenu préalable : `.failed`.
-    static func update(after outcome: Result<DiscoverContent, any Error>, previous: Phase) -> Update {
-        if case .success(let content) = outcome {
-            let usable = sanitized(content)
-            let everyTopicFailed = usable.sections.isEmpty && !usable.failedTopics.isEmpty
-            if !everyTopicFailed {
-                return Update(phase: .loaded(usable), refreshDidFail: false)
-            }
-        }
-        if case .loaded(let previousContent) = previous {
-            return Update(phase: .loaded(previousContent), refreshDidFail: true)
-        }
-        return Update(phase: .failed, refreshDidFail: false)
-    }
-
-    /// Retire les articles inaffichables (voir `isDisplayable(_:)`). Un sujet
-    /// qui n'en garde aucun passe dans `failedTopics` : pour l'écran, c'est
-    /// exactement un sujet qui n'a rien rendu.
-    static func sanitized(_ content: DiscoverContent) -> DiscoverContent {
-        var sections: [DiscoverTopicSection] = []
-        var failedTopics = content.failedTopics
-        for section in content.sections {
-            let articles = section.articles.filter { isDisplayable($0) }
-            if articles.isEmpty {
-                failedTopics.append(section.topic)
-            } else {
-                sections.append(DiscoverTopicSection(topic: section.topic, articles: articles))
-            }
-        }
-        return DiscoverContent(sections: sections, failedTopics: failedTopics)
-    }
-
-    /// Un article s'affiche s'il a un titre et une URL `http`/`https`
-    /// ouvrable : sans l'un ou l'autre, la ligne ne mènerait nulle part.
-    static func isDisplayable(_ article: DiscoverArticle) -> Bool {
-        DiscoverArticlePresentation.articleURL(from: article.url) != nil
-            && !DiscoverArticlePresentation.displayText(article.title).isEmpty
-    }
-
-    /// Annonce VoiceOver d'un changement de phase : la fin d'un chargement ne
-    /// se voit qu'à l'écran (le spinner disparaît), VoiceOver doit l'entendre.
-    /// `nil` pour les phases de chargement, déjà portées par leur libellé.
-    static func announcement(from oldPhase: Phase, to newPhase: Phase) -> String? {
-        switch newPhase {
-        case .loaded:
-            if case .loaded = oldPhase { return "Actualité mise à jour" }
-            return "Actualité chargée"
-        case .failed:
-            return "Actualité indisponible"
-        case .idle, .loading:
-            return nil
-        }
-    }
-}
-
 // MARK: - Mise en page (logique pure, testable)
 
 /// Règles de mise en page du fil : nombre de colonnes, articles montrés par
@@ -330,6 +87,11 @@ nonisolated enum DiscoverLayout {
 /// (le contrôle de rafraîchissement suffit) ; un rafraîchissement qui échoue
 /// garde les articles et l'écrit sur une ligne sous les puces.
 ///
+/// ## Premier chargement sans cache : des places réservées
+/// Chaque sujet a sa place dans l'ordre du catalogue dès le départ, occupée par
+/// des lignes neutres de même gabarit que les vraies (`DiscoverPendingSection`).
+/// Un sujet prêt remplit SA place, sans déplacer ceux qui sont déjà visibles.
+///
 /// ## Plateformes
 /// La largeur décide, pas l'appareil (`DiscoverLayout`) : une colonne sur
 /// iPhone en portrait, deux le plus souvent en paysage, jusqu'à 3 sur iPad et
@@ -339,9 +101,8 @@ nonisolated enum DiscoverLayout {
 /// `TrivaHomeReferenceView` : un grand titre ajouterait une 6e taille de texte
 /// à l'écran (DESIGN.md : 5 au plus).
 ///
-/// ## Intégration (étape suivante, pas ici)
-/// - `DiscoverView(model:onSearch:)`, avec UN `DiscoverViewModel` créé par le
-///   shell de `TrivaRootView` (voir la documentation du modèle) ;
+/// ## Intégration
+/// - UN `DiscoverViewModel` par `TrivaRootCoordinator` (voir sa documentation) ;
 /// - `onSearch` reçoit l'article choisi pour « Chercher dans Triva » ;
 /// - la vue contient son propre `NavigationStack` (titre, barre d'outils) :
 ///   ne pas l'envelopper dans un autre.
@@ -363,6 +124,7 @@ struct DiscoverView: View {
     @State private var isRetryingFromButton = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.calendar) private var calendar
 
     /// Ancre du haut du fil : changer de sujet ramène en haut du nouveau
     /// contenu. Posée sur le fil ENTIER, marges comprises, et pas sur les
@@ -374,13 +136,6 @@ struct DiscoverView: View {
     init(model: DiscoverViewModel, onSearch: ((DiscoverArticle) -> Void)? = nil) {
         self.model = model
         self.onSearch = onSearch
-    }
-
-    /// Repli autonome (voir `DiscoverViewModel.standalone`) : garde l'appel
-    /// actuel `DiscoverView()` de `TrivaRootView` compilable et fonctionnel
-    /// avant l'intégration. Préférer `init(model:onSearch:)`.
-    init(onSearch: ((DiscoverArticle) -> Void)? = nil) {
-        self.init(model: .standalone, onSearch: onSearch)
     }
 
     var body: some View {
@@ -399,18 +154,17 @@ struct DiscoverView: View {
             .navigationTitle("Découvrir")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { backgroundUpdateToolbarItem }
             #elseif os(macOS)
             .toolbar { refreshToolbarItem }
             #endif
             .task {
                 await model.loadIfNeeded()
             }
-            .onChange(of: model.phase) { oldPhase, newPhase in
-                announce(DiscoverViewModel.announcement(from: oldPhase, to: newPhase))
-            }
-            .onChange(of: model.refreshDidFail) { _, didFail in
-                if didFail {
-                    announce("Actualisation impossible")
+            // À la fin du chargement seulement : pas une annonce par sujet reçu.
+            .onChange(of: model.isLoading) { wasLoading, isLoading in
+                if wasLoading && !isLoading {
+                    announce(model.completionAnnouncement)
                 }
             }
         }
@@ -419,12 +173,17 @@ struct DiscoverView: View {
     @ViewBuilder
     private var phaseContent: some View {
         switch model.phase {
-        case .idle, .loading:
-            loadingView
+        case .idle:
+            // Le temps de lire le cache (quelques millisecondes) : un indicateur
+            // ne ferait que clignoter avant les articles.
+            Color.clear
+                .containerRelativeFrame([.horizontal, .vertical])
+        case .loading:
+            feed(.empty)
         case .failed:
             failureView
         case .loaded(let content):
-            if content.sections.isEmpty {
+            if content.sections.isEmpty && model.pendingTopics.isEmpty {
                 emptyView
             } else {
                 feed(content)
@@ -441,8 +200,8 @@ struct DiscoverView: View {
         )
         return VStack(alignment: .leading, spacing: 24) {
             topicChips
-            if model.refreshDidFail {
-                refreshFailureNotice
+            if let notice = model.staleNotice(calendar: calendar) {
+                staleNoticeLabel(notice)
             }
             if let topic = model.selectedTopic {
                 topicArticles(topic, in: content, columns: columns)
@@ -490,8 +249,8 @@ struct DiscoverView: View {
         .accessibilityLabel("Sujets")
     }
 
-    private var refreshFailureNotice: some View {
-        Label("Actualisation impossible. Vérifie ta connexion.", systemImage: "exclamationmark.triangle")
+    private func staleNoticeLabel(_ notice: String) -> some View {
+        Label(notice, systemImage: "exclamationmark.triangle")
             .font(.subheadline)
             .foregroundStyle(.secondary)
     }
@@ -501,8 +260,15 @@ struct DiscoverView: View {
     /// DANS un sujet) : aplaties, deux lignes partageraient un `id`.
     private func overview(_ content: DiscoverContent, columns: Int) -> some View {
         LazyVStack(alignment: .leading, spacing: 32) {
-            ForEach(content.sections) { section in
-                overviewSection(section, columns: columns)
+            ForEach(DiscoverViewModel.overviewSlots(content: content, pending: model.pendingTopics)) { slot in
+                switch slot {
+                case .ready(let section):
+                    overviewSection(section, columns: columns)
+                case .pending(let topicID):
+                    if let topic = DiscoverTopic(rawValue: topicID) {
+                        DiscoverPendingSection(title: title(for: topic), showsHeader: true, columns: columns)
+                    }
+                }
             }
         }
     }
@@ -541,6 +307,8 @@ struct DiscoverView: View {
     private func topicArticles(_ topic: DiscoverTopic, in content: DiscoverContent, columns: Int) -> some View {
         if let section = content.sections.first(where: { $0.topic == topic }) {
             articleGrid(section.articles, columns: columns)
+        } else if model.pendingTopics.contains(topic) {
+            DiscoverPendingSection(title: title(for: topic), showsHeader: false, columns: columns)
         } else {
             topicEmptyState(topic)
         }
@@ -567,20 +335,10 @@ struct DiscoverView: View {
     /// `.tertiary`. Trait `.isHeader` : le rotor « En-têtes » de VoiceOver
     /// saute directement d'un sujet à l'autre.
     private func sectionHeader(for topic: DiscoverTopic) -> some View {
-        Text(title(for: topic))
-            .font(.caption2.weight(.medium))
-            .tracking(1.5)
-            .textCase(.uppercase)
-            .foregroundStyle(.tertiary)
-            .accessibilityAddTraits(.isHeader)
+        DiscoverSectionHeader(title: title(for: topic))
     }
 
     // MARK: États
-
-    private var loadingView: some View {
-        ProgressView("Chargement de l'actualité…")
-            .containerRelativeFrame([.horizontal, .vertical])
-    }
 
     /// « Réessayer » en `.glassProminent` : c'est la seule action de l'écran
     /// dans cet état, donc son action principale (DESIGN.md).
@@ -638,7 +396,24 @@ struct DiscoverView: View {
         .padding(.top, 24)
     }
 
-    // MARK: Barre d'outils (Mac)
+    // MARK: Barre d'outils
+
+    #if os(iOS)
+    /// Mise à jour des articles restaurés au lancement, que rien d'autre ne
+    /// signale : le contrôle de « tirer pour actualiser » n'apparaît pas sans geste.
+    /// Jamais pendant un geste, pour ne pas montrer deux indicateurs à la fois.
+    @ToolbarContentBuilder
+    private var backgroundUpdateToolbarItem: some ToolbarContent {
+        if model.isUpdatingRestoredContent {
+            ToolbarItem(placement: .topBarTrailing) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Actualisation en cours")
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+    }
+    #endif
 
     #if os(macOS)
     /// Remplace le geste « tirer pour actualiser », absent sur Mac. Un
@@ -677,6 +452,81 @@ struct DiscoverView: View {
     private func announce(_ message: String?) {
         guard let message else { return }
         AccessibilityNotification.Announcement(message).post()
+    }
+}
+
+/// Intitulé de section au style des labels de section de la DA (voir
+/// `sectionHeader(for:)`).
+private struct DiscoverSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.caption2.weight(.medium))
+            .tracking(1.5)
+            .textCase(.uppercase)
+            .foregroundStyle(.tertiary)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Place réservée à un sujet encore en route : son intitulé et le même nombre de
+/// lignes que l'aperçu de « Tout », pour que le remplissage ne déplace pas les
+/// sujets suivants. Pour VoiceOver, un seul élément qui dit ce qui se passe.
+private struct DiscoverPendingSection: View {
+    let title: String
+    let showsHeader: Bool
+    let columns: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if showsHeader {
+                DiscoverSectionHeader(title: title)
+            }
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: DiscoverLayout.columnSpacing, alignment: .top),
+                    count: columns
+                ),
+                alignment: .leading,
+                spacing: DiscoverLayout.rowSpacing
+            ) {
+                ForEach(0..<DiscoverLayout.overviewArticleLimit(columnCount: columns), id: \.self) { _ in
+                    DiscoverPlaceholderRow()
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), chargement en cours")
+    }
+}
+
+/// Ligne neutre aux mêmes polices et à la même vignette qu'une vraie
+/// (`DiscoverArticleRow`). Rédaction système et couleur sémantique : ni animation
+/// ni dégradé décoratif (DESIGN.md).
+private struct DiscoverPlaceholderRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: "source.exemple")
+                    .font(.caption)
+                Text(verbatim: "Un titre d'article sur deux lignes, comme la plupart de ceux du fil")
+                    .font(.headline)
+                Text(verbatim: "Un extrait court qui occupe la place habituelle sous le titre de l'article.")
+                    .font(.subheadline)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if !dynamicTypeSize.isAccessibilitySize {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(.quaternary)
+                    .aspectRatio(MediaResultsKind.images.thumbnailAspectRatio, contentMode: .fit)
+                    .frame(width: DiscoverArticleRow.thumbnailWidth)
+            }
+        }
+        .redacted(reason: .placeholder)
     }
 }
 
@@ -727,6 +577,16 @@ private struct DiscoverTopicChip: View {
 #Preview("Découvrir — sujet sans article") {
     DiscoverView(
         model: DiscoverViewModel(selectedTopic: .sports, fetchContent: { DiscoverPreviewData.partialContent })
+    )
+}
+
+#Preview("Découvrir — premier chargement, un sujet prêt") {
+    DiscoverView(
+        model: DiscoverViewModel(loadContent: { onTopicFinished in
+            onTopicFinished(.finance, DiscoverPreviewData.content.sections[1].articles)
+            try await Task.sleep(for: .seconds(3600))
+            return DiscoverPreviewData.content
+        })
     )
 }
 

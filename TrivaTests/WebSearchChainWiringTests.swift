@@ -87,12 +87,13 @@ struct WebSearchChainOrchestratorTests {
     private func makeOrchestrator(
         failoverManager: FailoverManager = WiringFixtures.manager(),
         aiProvider: ChainAIProvider = ChainAIProvider(),
+        responseMode: ResponseMode = .quick,
         chain: WebSearchChain?
     ) -> SearchOrchestrator {
         SearchOrchestrator(
             failoverManager: failoverManager,
             aiProvider: aiProvider,
-            responseMode: .quick,
+            responseMode: responseMode,
             configuration: .cloud,
             scrapeService: NoScrapeService(),
             sourceRanker: SourceRanker(
@@ -235,6 +236,54 @@ struct WebSearchChainOrchestratorTests {
         #expect(result.sources.isEmpty)
         #expect(result.artifacts.searchPerformed)
         #expect(result.artifacts.webSourceKind == .wikipedia)
+    }
+
+    // MARK: Mode Fiable
+
+    @Test("Mode Fiable : l'orchestrateur active le filtre de la chaîne, et les sources viennent de Wikipédia")
+    func reliableModeContinuesTheChain() async throws {
+        let trusted = [ChainFixtures.result("Wiki", url: "https://fr.wikipedia.org/wiki/Tour_Eiffel")]
+        let searxng = Provider(kind: .searxng, outcome: .results(F.found))
+        let wikipedia = Provider(kind: .wikipedia, outcome: .results(trusted))
+        let chain = WebSearchChain(searxng: searxng, openSourceProviders: { _ in [wikipedia] })
+
+        let artifacts = try await makeOrchestrator(responseMode: .reliable, chain: chain).answer(query: "q").artifacts
+
+        #expect(artifacts.webSourceKind == .wikipedia)
+        #expect(artifacts.sources.map(\.url) == trusted.map(\.url))
+    }
+
+    @Test("Mode Rapide : le filtre de la chaîne reste inactif")
+    func quickModeStopsAtTheFirstAnswer() async throws {
+        let searxng = Provider(kind: .searxng, outcome: .results(F.found))
+        let wikipedia = Provider(kind: .wikipedia, outcome: .results(F.found))
+        let chain = WebSearchChain(searxng: searxng, openSourceProviders: { _ in [wikipedia] })
+
+        let artifacts = try await makeOrchestrator(responseMode: .quick, chain: chain).answer(query: "q").artifacts
+
+        #expect(artifacts.webSourceKind == .searxng)
+        #expect(await wikipedia.callCount == 0)
+    }
+
+    @Test("Mode Fiable, rien de fiable nulle part : l'échange finit en .noReliableSources")
+    func reliableModeWithNothingTrustedEndsInNoReliableSources() async throws {
+        let searxng = Provider(kind: .searxng, outcome: .results(F.found))
+        let wikipedia = Provider(kind: .wikipedia, outcome: .results(F.found))
+        let chain = WebSearchChain(searxng: searxng, openSourceProviders: { _ in [wikipedia] })
+        let manager = F.manager()
+        let aiProvider = ChainAIProvider()
+        let viewModel = ChatViewModel(
+            resolveProvider: { aiProvider },
+            resolveFailoverManager: { manager },
+            resolveWebSearchChain: { _ in chain },
+            readResponseMode: { .reliable },
+            generateSuggestions: { _, _ in [] }
+        )
+
+        await viewModel.send(query: "q")
+
+        #expect(viewModel.messages.last?.status == .noReliableSources)
+        #expect(await wikipedia.callCount == 1)
     }
 
     // MARK: Échec total

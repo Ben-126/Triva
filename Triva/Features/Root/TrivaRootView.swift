@@ -331,8 +331,7 @@ private struct TrivaRootShell: View {
             }
         case .discover:
             // UN modèle par fenêtre (celui du coordinateur), chargé à travers
-            // la liste d'instances effective de l'app — et non plus le repli
-            // `DiscoverView()`, partagé par toutes les fenêtres.
+            // la liste d'instances effective de l'app.
             DiscoverView(model: coordinator.discover, onSearch: { coordinator.search($0) })
         case .library:
             LibraryView(

@@ -101,6 +101,18 @@ struct PerplexityAgentClientTests {
         for error in all { #expect(error.errorDescription?.isEmpty == false) }
     }
 
+    @Test("Les messages disent quoi faire", arguments: [
+        (PerplexityAgentError.missingAPIKey, "Aucune clé API Perplexity n'est enregistrée. Ajoute-la dans les Réglages."),
+        (.requestRejected, "Perplexity a refusé la requête. Vérifie le niveau d'effort choisi dans les Réglages."),
+        (.decodingFailed, "La réponse de Perplexity est illisible. Réessaie."),
+        (.generationFailed, "Perplexity n'a pas pu terminer la réponse. Réessaie."),
+    ])
+    @MainActor
+    func actionableMessages(error: PerplexityAgentError, message: String) {
+        #expect(error.errorDescription == message)
+        #expect(ChatViewModel.userFacingMessage(for: error) == message)
+    }
+
     @Test("Annulation préservée, autres erreurs → transportError")
     func transportMapping() {
         #expect(PerplexityAgentClient.mapTransportError(CancellationError()) is CancellationError)

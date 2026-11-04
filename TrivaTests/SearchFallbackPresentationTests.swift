@@ -79,6 +79,41 @@ struct SearchKeyInvitationTests {
         #expect(SearchKeyInvitation(for: error) == nil)
     }
 
+    @Test("Appareil hors ligne : pas d'invitation, même avec une clé illisible ou un délai dépassé", arguments: [
+        [failure(.searxng, .noConnection), failure(.wikipedia, .noConnection)],
+        [failure(.searxng, .timeout), failure(.wikipedia, .noConnection), failure(.marginalia, .unavailable)],
+        [WebSearchSourceFailure(source: .braveSearch, reason: .keychainUnreadable), failure(.searxng, .noConnection)],
+    ])
+    @MainActor
+    func offlineNeverInvites(failures: [WebSearchSourceFailure]) {
+        let error = WebSearchChainError.allSourcesFailed(failures)
+
+        #expect(error.isDeviceOffline)
+        #expect(SearchKeyInvitation(for: error) == nil)
+        #expect(ChatViewModel.userFacingMessage(for: error) == "Pas de connexion à internet. Reconnecte-toi, puis réessaie.")
+    }
+
+    @Test("Une réponse HTTP prouve que le réseau marche : invitation maintenue malgré un .noConnection", arguments: [
+        WebSearchError.unauthorized, .rateLimited, .invalidResponse,
+    ])
+    func anHTTPAnswerIsNotOffline(answer: WebSearchError) throws {
+        let error = WebSearchChainError.allSourcesFailed([failure(.braveSearch, answer), failure(.searxng, .noConnection)])
+
+        #expect(!error.isDeviceOffline)
+        let invitation = try #require(SearchKeyInvitation(for: error))
+        #expect(invitation.actionTitle == SearchKeyInvitation.checkKeysTitle)
+    }
+
+    @Test("Aucune source n'a constaté de coupure : invitation maintenue, ce n'est pas la connexion", arguments: [
+        [failure(.searxng, .unavailable)], [failure(.searxng, .timeout), failure(.wikipedia, .timeout)],
+    ])
+    func noOfflineFailureStillInvites(failures: [WebSearchSourceFailure]) {
+        let error = WebSearchChainError.allSourcesFailed(failures)
+
+        #expect(!error.isDeviceOffline)
+        #expect(SearchKeyInvitation(for: error) != nil)
+    }
+
     @Test("L'explication ne reprend jamais le constat du bandeau")
     func theExplanationDoesNotRepeatTheBanner() throws {
         let error = WebSearchChainError.allSourcesFailed([failure(.searxng)])
@@ -213,6 +248,19 @@ struct ChatViewModelSearchFallbackTests {
         #expect(viewModel.errorDescription == "Aucune source de recherche n'a répondu. Vérifie ta connexion, puis réessaie.")
         let invitation = try #require(viewModel.searchKeyInvitation)
         #expect(invitation.actionTitle == SearchKeyInvitation.addKeyTitle)
+    }
+
+    @Test("Hors ligne : bandeau sur la connexion, aucune invitation")
+    func offlineShowsConnectionMessageWithoutInvitation() async throws {
+        let offline = Provider(kind: .searxng, outcome: .failure(WebSearchError.noConnection))
+        let viewModel = F.makeViewModel(resolveChain: { _ in F.chain(offline) })
+
+        await viewModel.send(query: "q")
+
+        let answer = try #require(viewModel.messages.last)
+        #expect(answer.status == .failed)
+        #expect(viewModel.errorDescription == "Pas de connexion à internet. Reconnecte-toi, puis réessaie.")
+        #expect(viewModel.searchKeyInvitation == nil)
     }
 
     @Test("Clé personnelle en échec dans la chaîne : l'invitation propose de vérifier les clés")

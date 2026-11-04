@@ -95,13 +95,9 @@ struct OpenAICompatibleProvider: AIGenerating {
     ///   `OpenAICompatibleProviderError` déjà formée passe telle quelle.
     /// - `requestFailed(statusCode:)` → `CloudProviderFailure(statusCode:)` ;
     ///   `transportError` (délai dépassé compris) → `.unreachable`.
-    /// - `apiError(message:)` → `generationFailed`, SANS le message : le client
-    ///   ne garde pas le statut quand le corps d'erreur JSON se décode, et le
-    ///   classer en lisant ce texte serait fragile et risqué (un serveur
-    ///   « Personnalisé » peut y renvoyer la clé). LIMITE CONNUE : c'est le cas
-    ///   le plus fréquent (OpenAI, Groq, OpenRouter, DeepSeek… renvoient tous
-    ///   `{"error":{"message":…}}`) ; il restera au message neutre tant que
-    ///   `OpenAICompatibleClient` ne transmettra pas le statut.
+    /// - `apiError(statusCode:code:)` → `CloudProviderFailure(statusCode:code:)` :
+    ///   le client n'a gardé du corps qu'un code fermé, jamais le message du
+    ///   serveur (un serveur « Personnalisé » peut y renvoyer la clé).
     /// - Autre erreur : nom du type seulement, jamais sa description.
     nonisolated static func mapClientError(_ error: any Error, provider: String) -> any Error {
         if error is OpenAICompatibleProviderError || CloudProviderFailure.isCancellation(error) { return error }
@@ -113,8 +109,8 @@ struct OpenAICompatibleProvider: AIGenerating {
             return OpenAICompatibleProviderError.providerFailure(provider: provider, reason: CloudProviderFailure(statusCode: statusCode))
         case .transportError:
             return OpenAICompatibleProviderError.providerFailure(provider: provider, reason: .unreachable)
-        case .apiError:
-            return OpenAICompatibleProviderError.generationFailed(description: "apiError")
+        case .apiError(let statusCode, let code):
+            return OpenAICompatibleProviderError.providerFailure(provider: provider, reason: CloudProviderFailure(statusCode: statusCode, code: code))
         case .decodingFailed:
             return OpenAICompatibleProviderError.generationFailed(description: "decodingFailed")
         }

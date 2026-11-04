@@ -29,7 +29,8 @@ extension ChatViewModel {
 
     private static func pipelineMessage(for error: Error) -> String? {
         if let chainError = error as? WebSearchChainError {
-            // Texte fixe, sans le détail des sources : `SearchKeyInvitation` dit le reste.
+            // Texte fixe, sans le détail des sources : `SearchKeyInvitation` dit le reste. Appareil
+            // hors ligne : le texte parle de la connexion, et il n'y a pas d'invitation.
             return chainError.userFacingMessage
         }
         if let resolverError = error as? ActiveAIProviderResolverError {
@@ -119,9 +120,9 @@ extension ChatViewModel {
     /// Cloud (bug 6) : une cause TYPÉE (`providerFailure` — clé refusée,
     /// débit, contexte, panne, réseau, requête refusée) porte un message qui
     /// nomme le fournisseur (`CloudProviderFailure.userFacingMessage`).
-    /// `generationFailed` = cause non classée, dont l'erreur au statut perdu
-    /// des fournisseurs compatibles OpenAI : message neutre qui n'accuse pas
-    /// la clé d'emblée mais la garde en piste, cause la plus probable en BYOK.
+    /// `generationFailed` = cause non classée (réponse illisible, clé
+    /// inaccessible) : message neutre qui n'accuse pas la clé d'emblée mais la
+    /// garde en piste, cause la plus probable en BYOK.
     /// Clé ABSENTE : cas typé, message précis. `switch` exhaustifs : un
     /// nouveau cas exigera son message.
     private static func cloudMessage(for error: Error) -> String? {

@@ -51,6 +51,7 @@ struct SearXNGInstancesView: View {
             if !store.defaultSectionInstances.isEmpty || store.hiddenDefaultCount > 0 {
                 defaultsSection
             }
+            automaticSection
             actionsSection
         }
         .formStyle(.grouped)
@@ -122,6 +123,24 @@ struct SearXNGInstancesView: View {
         }
     }
 
+    /// Toujours présente, même vide : c'est le seul endroit qui dit que Triva
+    /// complète la liste tout seul, et pourquoi elle ne le fait pas en ce moment.
+    private var automaticSection: some View {
+        Section {
+            let instances = store.automaticInstances
+            if instances.isEmpty {
+                Text(verbatim: automaticEmptyText)
+                    .foregroundStyle(.secondary)
+            } else {
+                instanceRows(instances)
+            }
+        } header: {
+            Text("Ajoutées automatiquement")
+        } footer: {
+            Text(verbatim: automaticFooterText)
+        }
+    }
+
     private var actionsSection: some View {
         Section {
             Button("Tester toutes les instances") {
@@ -172,7 +191,7 @@ struct SearXNGInstancesView: View {
     /// défaut, c'est un masquage réversible (« Revenir à la liste par défaut »).
     @ViewBuilder
     private func removeButton(for instance: URL) -> some View {
-        if store.canRemoveInstance {
+        if store.canRemove(instance) {
             Button(role: .destructive) {
                 remove(instance)
             } label: {
@@ -188,13 +207,28 @@ struct SearXNGInstancesView: View {
     }
 
     private var isTestingEveryInstance: Bool {
-        store.effectiveInstances.allSatisfy { store.connectivity(for: $0) == .testing }
+        store.testableInstances.allSatisfy { store.connectivity(for: $0) == .testing }
     }
 
     private var hiddenCountText: String {
         store.hiddenDefaultCount == 1
             ? "1 instance par défaut masquée."
             : "\(store.hiddenDefaultCount) instances par défaut masquées."
+    }
+
+    private var automaticEmptyText: String {
+        store.overrides.hidesEveryDefault(of: store.defaultInstances)
+            ? "Aucune : tu as retiré toutes les instances par défaut, Triva n'en ajoute donc pas."
+            : "Aucune pour le moment."
+    }
+
+    private var automaticFooterText: String {
+        let source = "Instances publiques vérifiées, tirées de l'annuaire searx.space. Elles sont essayées après les autres."
+        switch store.hiddenAutomaticCount {
+        case 0: return source
+        case 1: return source + " 1 instance masquée."
+        case let count: return source + " \(count) instances masquées."
+        }
     }
 
     private var isConfirmingLocalAddress: Binding<Bool> {
@@ -370,12 +404,20 @@ private actor InstancesPreviewClient: SearXNGSearching {
     }
 }
 
-private func previewInstanceStore(suiteName: String, defaults: [URL], loadFailed: Bool = false) -> CustomInstanceStore {
-    CustomInstanceStore(
+private func previewInstanceStore(
+    suiteName: String,
+    defaults: [URL],
+    loadFailed: Bool = false,
+    directory: [String] = []
+) -> CustomInstanceStore {
+    let directoryStore = SearXNGDirectoryStore()
+    directoryStore.save(SearXNGDirectorySnapshot(instances: directory))
+    return CustomInstanceStore(
         defaultInstances: defaults,
         defaultListLoadFailed: loadFailed,
         userDefaults: UserDefaults(suiteName: suiteName) ?? .standard,
-        client: InstancesPreviewClient()
+        client: InstancesPreviewClient(),
+        directory: directoryStore
     )
 }
 
@@ -390,6 +432,18 @@ private func previewDefaultInstances() -> [URL] {
         SearXNGInstancesView(store: store)
     }
     .task { await store.testAllConnectivity() }
+}
+
+#Preview("Avec des instances de l'annuaire") {
+    NavigationStack {
+        SearXNGInstancesView(
+            store: previewInstanceStore(
+                suiteName: "preview.searxngInstances.directory",
+                defaults: previewDefaultInstances(),
+                directory: ["https://annuaire-un.example", "https://annuaire-deux.example"]
+            )
+        )
+    }
 }
 
 #Preview("Personnalisée") {

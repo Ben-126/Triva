@@ -183,6 +183,13 @@ struct SearXNGWebSearchProviderTests {
         }
     }
 
+    @Test("Une instance a vu l'appareil hors ligne : .noConnection, même mêlée à d'autres motifs")
+    func deviceOfflineWinsOverOtherReasons() {
+        let mapped = SearXNGWebSearchProvider.webSearchError(for: FailoverExhaustedError(reasons: [.accessDenied, .network], deviceOffline: true))
+        #expect(mapped == .noConnection)
+        #expect(SearXNGWebSearchProvider.webSearchError(for: FailoverExhaustedError(reasons: [.network, .network])) == .unavailable)
+    }
+
     @Test("La traduction d'erreur ne laisse rien du serveur : un message fixe, identique à chaque fois")
     func errorMessagesAreFixed() {
         let mapped = SearXNGWebSearchProvider.webSearchError(for: FailoverExhaustedError(reasons: [.timeout, .notJSON]))

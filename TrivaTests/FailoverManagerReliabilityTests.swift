@@ -222,6 +222,57 @@ struct FailoverManagerReliabilityTests {
         #expect(store.record(for: two)?.lastFailureReason == .network)
     }
 
+    @Test("Appareil hors ligne : rien d'enregistré, quel que soit le nombre d'instances", arguments: [1, 2, 3])
+    func deviceOfflineIsNeverRecorded(instanceCount: Int) async {
+        let store = InstanceReliabilityStore()
+        let instances = Array([one, two, three].prefix(instanceCount))
+        let failures: [URL: any Error] = Dictionary(uniqueKeysWithValues: instances.map { ($0, URLError(.notConnectedToInternet)) })
+        let manager = makeManager(client: ScriptedInstanceClient(failures: failures), instances: instances, store: store)
+
+        _ = try? await manager.search(query: "test")
+
+        for instance in instances { #expect(store.record(for: instance) == nil) }
+    }
+
+    @Test("Coupure puis réponse : la coupure n'est pas imputée, le succès est enregistré")
+    func deviceOfflineThenAnAnswer() async throws {
+        let store = InstanceReliabilityStore()
+        let client = ScriptedInstanceClient(failures: [one: URLError(.notConnectedToInternet)])
+        let manager = makeManager(client: client, instances: [one, two], store: store)
+
+        _ = try await manager.search(query: "test")
+
+        #expect(store.record(for: one) == nil)
+        #expect(store.record(for: two)?.successes == 1)
+    }
+
+    @Test("Réponse HTTP d'erreur puis coupure : seule la réponse HTTP est imputée")
+    func anHTTPFailureBeforeACutStaysRecorded() async {
+        let store = InstanceReliabilityStore()
+        let failures: [URL: any Error] = [
+            one: SearXNGClientError.requestFailed(statusCode: 403),
+            two: URLError(.notConnectedToInternet),
+        ]
+        let manager = makeManager(client: ScriptedInstanceClient(failures: failures), instances: [one, two], store: store)
+
+        _ = try? await manager.search(query: "test")
+
+        #expect(store.record(for: one)?.lastFailureReason == .accessDenied)
+        #expect(store.record(for: two) == nil)
+    }
+
+    @Test("Délai dépassé puis coupure, sans réponse : le Wi-Fi est tombé, rien d'imputé")
+    func aTimeoutBeforeACutIsNotRecorded() async {
+        let store = InstanceReliabilityStore()
+        let failures: [URL: any Error] = [one: SearXNGClientError.timeout, two: URLError(.dataNotAllowed)]
+        let manager = makeManager(client: ScriptedInstanceClient(failures: failures), instances: [one, two], store: store)
+
+        _ = try? await manager.search(query: "test")
+
+        #expect(store.record(for: one) == nil)
+        #expect(store.record(for: two) == nil)
+    }
+
     @Test("Un échec réseau unique (une seule instance) est enregistré")
     func singleNetworkFailureIsRecorded() async {
         let store = InstanceReliabilityStore()
@@ -294,6 +345,30 @@ struct FailoverManagerReliabilityTests {
         }
         await #expect(throws: FailoverError.allInstancesUnavailable) {
             _ = try await manager.search(query: "test")
+        }
+    }
+
+    @Test("Appareil hors ligne : signalé à part, et la chaîne entière conclut à une coupure")
+    func offlineReachesTheWholeChain() async throws {
+        let offline = URLError(.notConnectedToInternet)
+        let manager = makeManager(client: ScriptedInstanceClient(failures: [one: offline, two: offline]), instances: [one, two])
+
+        await #expect(throws: FailoverExhaustedError(reasons: [.network, .network], deviceOffline: true)) {
+            _ = try await manager.searchDetailed(query: "test")
+        }
+        let chain = WebSearchChain(searxng: SearXNGWebSearchProvider(failover: manager), openSources: ChainFixtures.offlineOpenSources())
+        let error = await #expect(throws: WebSearchChainError.self) {
+            try await chain.search(query: "test", options: WebSearchOptions())
+        }
+        #expect(error?.isDeviceOffline == true)
+    }
+
+    @Test("Instance injoignable, appareil connecté : pas de coupure signalée")
+    func unreachableInstanceIsNotOffline() async {
+        let manager = makeManager(client: ScriptedInstanceClient(failures: [one: SearXNGClientError.transportError]), instances: [one])
+
+        await #expect(throws: FailoverExhaustedError(reasons: [.network], deviceOffline: false)) {
+            _ = try await manager.searchDetailed(query: "test")
         }
     }
 

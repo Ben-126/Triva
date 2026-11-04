@@ -304,6 +304,14 @@ nonisolated struct SearXNGInstanceOverrides: Codable, Sendable, Equatable {
         addedInstances.isEmpty && hiddenDefaultInstances.isEmpty
     }
 
+    /// L'utilisateur a masqué TOUTES les instances par défaut : il ne veut plus
+    /// d'instance publique choisie pour lui, l'annuaire n'est donc pas ajouté
+    /// (voir `TrivaSharedStores.searXNGInstances`). Toujours faux pour une liste
+    /// par défaut vide (bundle illisible) : là, l'annuaire sert de secours.
+    func hidesEveryDefault(of defaults: [URL]) -> Bool {
+        !defaults.isEmpty && visibleDefaults(defaults).isEmpty
+    }
+
     /// Une entrée illisible (donnée corrompue) est ignorée plutôt que de
     /// faire échouer toute la liste.
     var addedURLs: [URL] {
@@ -500,13 +508,10 @@ nonisolated enum SearXNGInstanceProbe {
 /// en toutes lettres empêche (voir le commentaire de `EngineStatusView` sur
 /// `SearchSession`).
 ///
-/// INTÉGRATION (hors de ce fichier) : `SearchSession.resolveFailoverManager()`
-/// et `DiscoverViewModel.standalone` construisent encore leur
-/// `FailoverManager` avec `PublicInstanceList.load()`. Ils doivent passer par
-/// `effectiveInstances` (store partagé) ou `resolvedInstances(defaults:)`, et
-/// la session doit invalider son `FailoverManager` en cache quand
-/// `effectiveInstances` change — sinon une modification n'agit qu'au prochain
-/// lancement.
+/// Les instances venues de l'annuaire searx.space ne font pas partie de
+/// `effectiveInstances` : la recherche compose sa liste complète dans
+/// `TrivaSharedStores.searXNGInstances`, et l'écran les montre à part (voir
+/// `CustomInstanceStore+Automatic.swift`).
 @Observable
 final class CustomInstanceStore {
     /// Liste du bundle, dans l'ordre du fichier.
@@ -515,6 +520,10 @@ final class CustomInstanceStore {
     /// illisible : un défaut d'empaquetage). Exposé pour être affiché, jamais
     /// avalé en silence.
     let defaultListLoadFailed: Bool
+    /// Annuaire searx.space, source de la section « Ajoutées automatiquement ».
+    /// Pas observable : l'écran relit sa liste à chaque rendu, un rafraîchissement
+    /// terminé en tâche de fond apparaît au prochain affichage.
+    let directory: SearXNGDirectoryStore
     private(set) var overrides: SearXNGInstanceOverrides
     /// État transitoire des tests, non persisté. Indexé par l'URL exacte telle
     /// qu'elle figure dans `effectiveInstances` (c'est elle que l'écran
@@ -527,13 +536,18 @@ final class CustomInstanceStore {
     /// Constructeur de l'app : liste du bundle via `PublicInstanceList`. Nom
     /// du type écrit en toutes lettres (pas `Self.`) : rien ne doit ressembler
     /// à un usage de `self` avant la délégation à `self.init`.
-    convenience init(userDefaults: UserDefaults = .standard, client: any SearXNGSearching = SearXNGClient()) {
+    convenience init(
+        userDefaults: UserDefaults = .standard,
+        client: any SearXNGSearching = SearXNGClient(),
+        directory: SearXNGDirectoryStore = .shared
+    ) {
         let bundled = CustomInstanceStore.loadBundledDefaults()
         self.init(
             defaultInstances: bundled.instances,
             defaultListLoadFailed: bundled.failed,
             userDefaults: userDefaults,
-            client: client
+            client: client,
+            directory: directory
         )
     }
 
@@ -546,10 +560,12 @@ final class CustomInstanceStore {
         defaultInstances: [URL],
         defaultListLoadFailed: Bool = false,
         userDefaults: UserDefaults,
-        client: any SearXNGSearching = SearXNGClient()
+        client: any SearXNGSearching = SearXNGClient(),
+        directory: SearXNGDirectoryStore = SearXNGDirectoryStore()
     ) {
         self.defaultInstances = defaultInstances
         self.defaultListLoadFailed = defaultListLoadFailed
+        self.directory = directory
         self.userDefaults = userDefaults
         self.client = client
         self.overrides = SearXNGInstanceOverrides.load(from: userDefaults)
@@ -627,8 +643,12 @@ final class CustomInstanceStore {
     }
 
     /// Retire une instance : supprimée si elle a été ajoutée, masquée si elle
-    /// vient du bundle (réversible par `resetToDefaults()`).
+    /// vient du bundle ou de l'annuaire (réversible par `resetToDefaults()`).
     func remove(_ url: URL) throws {
+        if isAutomatic(url) {
+            try hideAutomaticInstance(url)
+            return
+        }
         guard contains(url) else { throw CustomInstanceError.notInList }
         guard canRemoveInstance else { throw CustomInstanceError.cannotRemoveLastInstance }
         apply(overrides.removing(url, defaults: defaultInstances))
@@ -644,7 +664,7 @@ final class CustomInstanceStore {
     /// Teste une instance. Un second appel pendant qu'un test est en cours
     /// pour la même instance est ignoré (pas de requêtes en double).
     func testConnectivity(of url: URL) async {
-        guard effectiveInstances.contains(url), connectivityByInstance[url] != .testing else { return }
+        guard testableInstances.contains(url), connectivityByInstance[url] != .testing else { return }
         connectivityByInstance[url] = .testing
         let outcome = await SearXNGInstanceProbe.run(instance: url, client: client)
         record(outcome, for: url)
@@ -655,7 +675,7 @@ final class CustomInstanceStore {
     /// `TaskGroup` tournent hors du main actor ; seul l'enregistrement des
     /// résultats y revient, au fil de l'eau.
     func testAllConnectivity() async {
-        let pending = effectiveInstances.filter { connectivityByInstance[$0] != .testing }
+        let pending = testableInstances.filter { connectivityByInstance[$0] != .testing }
         guard !pending.isEmpty else { return }
         for url in pending {
             connectivityByInstance[url] = .testing
@@ -688,10 +708,10 @@ final class CustomInstanceStore {
 
     /// Point unique de mutation : état observé, persistance, puis purge des
     /// résultats de test d'instances qui ne sont plus dans la liste.
-    private func apply(_ updated: SearXNGInstanceOverrides) {
+    func apply(_ updated: SearXNGInstanceOverrides) {
         overrides = updated
         updated.save(to: userDefaults)
-        let remaining = Set(effectiveInstances)
+        let remaining = Set(testableInstances)
         connectivityByInstance = connectivityByInstance.filter { remaining.contains($0.key) }
     }
 
@@ -701,7 +721,7 @@ final class CustomInstanceStore {
     /// `FailoverManager` face à l'annulation), ou l'instance a été retirée
     /// pendant le test.
     private func record(_ outcome: SearXNGProbeOutcome, for url: URL) {
-        guard !Task.isCancelled, effectiveInstances.contains(url) else {
+        guard !Task.isCancelled, testableInstances.contains(url) else {
             connectivityByInstance[url] = nil
             return
         }

@@ -93,6 +93,9 @@ nonisolated enum WebSearchError: Error, Sendable, Equatable {
     case rateLimited
     /// Source indisponible (5xx, réseau, aucune instance utilisable).
     case unavailable
+    /// L'appareil n'a pas de connexion (`URLError.indicatesNoConnection`) : aucune source n'y peut
+    /// rien, et une clé non plus (`WebSearchChainError.isDeviceOffline`).
+    case noConnection
     /// Réponse illisible ou format inattendu.
     case invalidResponse
     case timeout
@@ -105,6 +108,7 @@ nonisolated enum WebSearchError: Error, Sendable, Equatable {
         case .unauthorized: "La clé de recherche a été refusée."
         case .rateLimited: "La limite de recherches de ce service est atteinte pour le moment."
         case .unavailable: "Ce service de recherche ne répond pas."
+        case .noConnection: "Pas de connexion à internet."
         case .invalidResponse: "La réponse du service de recherche est illisible."
         case .timeout: "Le service de recherche a mis trop de temps à répondre."
         case .unsupportedCategory: "Ce service ne couvre pas ce type de recherche."

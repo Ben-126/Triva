@@ -30,8 +30,8 @@ import Synchronization
 /// Source : https://docs.searxng.org/dev/search_api.html (consultée le 2026-10-27).
 nonisolated enum InstanceFailureReason: String, Codable, Sendable, Equatable, CaseIterable {
     case timeout
-    /// Aucune réponse HTTP : DNS, connexion refusée, TLS, appareil hors ligne. `SearXNGClient`
-    /// ne distingue pas ces cas (tout `URLError` hors délai devient `transportError`).
+    /// Aucune réponse HTTP : DNS, connexion refusée, TLS, appareil hors ligne. Ces cas ne sont pas
+    /// distingués ici : l'appareil hors ligne se dit à part (`FailoverExhaustedError.deviceOffline`).
     case network
     case rateLimited
     case accessDenied
@@ -390,6 +390,8 @@ nonisolated final class InstanceReliabilityStore: Sendable {
             recordSuccess(for: instance, latency: result.latency, at: date)
         case .failed(let reason):
             recordFailure(for: instance, reason: reason, at: date)
+        case .deviceOffline:
+            break
         }
     }
 
@@ -466,6 +468,9 @@ nonisolated struct InstanceProbeResult: Sendable, Equatable {
         /// Vraie réponse JSON avec au moins un résultat.
         case healthy(resultCount: Int)
         case failed(InstanceFailureReason)
+        /// L'appareil n'a pas de connexion (`URLError.indicatesNoConnection`) : l'instance n'est
+        /// pas en cause, ce verdict n'entre pas dans la fiabilité (règle de `FailoverManager`).
+        case deviceOffline
     }
 
     let verdict: Verdict
@@ -528,8 +533,9 @@ nonisolated struct SearXNGInstanceHealthProbe: InstanceProbing {
             // Annulation : `URLSession` la remonte en erreur de transport, qui se lirait à tort
             // comme « Injoignable ». Même prudence que `FailoverManager`.
             if Task.isCancelled { throw CancellationError() }
+            let offline = (error as? URLError)?.indicatesNoConnection == true
             return InstanceProbeResult(
-                verdict: .failed(InstanceFailureReason.classify(error)),
+                verdict: offline ? .deviceOffline : .failed(InstanceFailureReason.classify(error)),
                 latency: start.duration(to: clock.now)
             )
         }

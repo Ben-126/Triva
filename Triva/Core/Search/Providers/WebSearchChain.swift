@@ -51,10 +51,19 @@ import OSLog
 /// honnêtement à l'utilisateur d'où viennent les sources affichées.
 /// - Toutes les sources ont LEVÉ : `WebSearchChainError.allSourcesFailed`, un motif par source.
 ///   Rien n'a marché, l'utilisateur doit le savoir : le chat affiche alors une invitation à
-///   ajouter une clé de recherche (`SearchKeyInvitation`).
+///   ajouter une clé de recherche (`SearchKeyInvitation`), sauf si l'appareil est hors ligne
+///   (`WebSearchChainError.isDeviceOffline`).
 /// - Au moins une a RÉPONDU, toutes à vide : réponse vide, source = la dernière qui a répondu.
 ///   Ce n'est pas un échec, la question n'a simplement aucun résultat ; le prompt de rédaction
 ///   le dit déjà (« Aucune source disponible. »).
+///
+/// MODE FIABLE (`requiringTrustedDomains`, décision de Ben) : une réponse ne suffit à arrêter la
+/// chaîne que si l'un de ses résultats passe le filtre de `SourceRanker`, qui reste le seul à
+/// filtrer ensuite. Sinon, une première source sans domaine fiable donnait « Aucune source fiable »
+/// sans avoir essayé Wikipédia, pourtant fiable. L'ordre ne change pas, mais les sources du début
+/// répondent rarement avec un domaine fiable : les clés et l'étape cloud PAYANTE sont donc plus
+/// souvent sollicitées qu'hors de ce mode. Si rien ne passe, la dernière réponse sort quand même :
+/// le classement la vide, et le chat affiche `.noReliableSources`.
 ///
 /// ANNULATION : vérifiée avant CHAQUE source, donc avant la recherche cloud payante, et une
 /// erreur d'annulation n'est jamais comptée comme un échec de source (même critère que
@@ -92,6 +101,7 @@ nonisolated struct WebSearchChain: Sendable {
     private let unreadableKeySources: [WebSearchSourceKind]
     private let languageIdentifier: any TextLanguageIdentifying
     private let fallbackLanguage: String?
+    private var requiresTrustedDomains = false
 
     /// - Parameters:
     ///   - keyedProviders: sources à clé personnelle, dans l'ordre de préférence.
@@ -143,6 +153,14 @@ nonisolated struct WebSearchChain: Sendable {
         )
     }
 
+    /// Même chaîne, pour le mode de réponse de l'envoi (voir « MODE FIABLE ») : l'orchestrateur connaît
+    /// le mode, `WebSearchChain.assemble` non.
+    func requiringTrustedDomains(_ required: Bool) -> WebSearchChain {
+        var copy = self
+        copy.requiresTrustedDomains = required
+        return copy
+    }
+
     /// Sources à essayer, dans l'ordre, pour une catégorie.
     func providers(for category: WebSearchCategory) -> [any WebSearchProviding] {
         let searxngStep: [any WebSearchProviding] = searxng.map { [SearXNGWithWebFallbackStep(base: $0)] } ?? []
@@ -155,14 +173,15 @@ nonisolated struct WebSearchChain: Sendable {
         providers(for: category).map { $0.kind }
     }
 
-    /// Essaie les sources dans l'ordre jusqu'à la première réponse NON VIDE.
+    /// Essaie les sources dans l'ordre jusqu'à la première réponse NON VIDE ; en mode Fiable, jusqu'à
+    /// la première dont un résultat passe le filtre de domaines.
     ///
     /// Lève `WebSearchChainError.allSourcesFailed` si toutes ont levé, `CancellationError` si la
     /// tâche est annulée ; jamais d'autre erreur.
     @concurrent
     func search(query: String, options: WebSearchOptions) async throws -> WebSearchChainResult {
         var failures = unreadableKeySources.map { WebSearchSourceFailure(source: $0, reason: .keychainUnreadable) }
-        var lastEmptyAnswer: WebSearchChainResult?
+        var lastUnusableAnswer: WebSearchChainResult?
         let localized = localizedOptions(options, query: query)
         for provider in providers(for: options.category) {
             try Task.checkCancellation()
@@ -173,9 +192,9 @@ nonisolated struct WebSearchChain: Sendable {
                     options: Self.usesDetectedLanguage(kind) ? localized : options
                 )
                 let answer = WebSearchChainResult(response: response, source: kind)
-                guard response.results.isEmpty else { return answer }
-                Self.logger.info("Recherche web : \(kind.rawValue, privacy: .public) sans résultat, source suivante")
-                lastEmptyAnswer = answer
+                if isUsable(response) { return answer }
+                Self.logger.info("Recherche web : \(kind.rawValue, privacy: .public) sans résultat retenu, source suivante")
+                lastUnusableAnswer = answer
             } catch {
                 if SearchOrchestrator.isCancellation(error) { throw CancellationError() }
                 let reason = WebSearchSourceFailure.Reason.searchFailed((error as? WebSearchError) ?? .unavailable)
@@ -185,8 +204,14 @@ nonisolated struct WebSearchChain: Sendable {
                 failures.append(WebSearchSourceFailure(source: kind, reason: reason))
             }
         }
-        if let lastEmptyAnswer { return lastEmptyAnswer }
+        if let lastUnusableAnswer { return lastUnusableAnswer }
         throw WebSearchChainError.allSourcesFailed(failures)
+    }
+
+    /// Cette réponse arrête-t-elle la chaîne ? Voir « MODE FIABLE ».
+    private func isUsable(_ response: SearXNGSearchResponse) -> Bool {
+        guard requiresTrustedDomains else { return !response.results.isEmpty }
+        return response.results.contains { SourceRanker.isTrustedDomain($0.url) }
     }
 
     /// Options avec la langue de la question (voir « LANGUE ») ; une langue imposée par
@@ -243,11 +268,32 @@ nonisolated enum WebSearchChainError: Error, Sendable, Equatable, CustomStringCo
     /// motif par source, dans l'ordre : d'abord les clés illisibles, puis l'ordre d'essai.
     case allSourcesFailed([WebSearchSourceFailure])
 
-    var userFacingMessage: String {
-        switch self {
-        case .allSourcesFailed:
-            "Aucune source de recherche n'a répondu. Vérifie ta connexion, puis réessaie."
+    /// L'appareil est hors ligne : une clé de recherche n'y changerait rien (décision de Ben, pas
+    /// d'invitation dans ce cas, `SearchKeyInvitation`).
+    ///
+    /// Une source au moins l'a constaté, et aucune n'a reçu de réponse HTTP qui prouverait le
+    /// contraire (`.unauthorized`, `.rateLimited`, `.invalidResponse`). `.timeout` et `.unavailable`
+    /// restent compatibles : le Wi-Fi qui tombe pendant une requête donne un délai dépassé sur cette
+    /// source, puis `.noConnection` sur les suivantes. Une clé illisible n'a touché aucun réseau.
+    var isDeviceOffline: Bool {
+        guard case .allSourcesFailed(let failures) = self else { return false }
+        let searchErrors = failures.compactMap { failure -> WebSearchError? in
+            guard case .searchFailed(let error) = failure.reason else { return nil }
+            return error
         }
+        return searchErrors.contains(.noConnection) && searchErrors.allSatisfy { error in
+            switch error {
+            case .noConnection, .timeout, .unavailable, .missingKey, .unsupportedCategory: true
+            case .unauthorized, .rateLimited, .invalidResponse: false
+            }
+        }
+    }
+
+    var userFacingMessage: String {
+        if isDeviceOffline {
+            return "Pas de connexion à internet. Reconnecte-toi, puis réessaie."
+        }
+        return "Aucune source de recherche n'a répondu. Vérifie ta connexion, puis réessaie."
     }
 
     var description: String { userFacingMessage }

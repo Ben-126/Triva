@@ -31,14 +31,19 @@ extension SearchOrchestrator {
     /// comme avant. Avec la chaîne, ce repli vit dans son étape SearXNG (`WebSearchChain`), et
     /// toutes les sources en échec lèvent `WebSearchChainError.allSourcesFailed`.
     ///
+    /// `trustedDomainsOnly` (mode Fiable) : la chaîne continue tant qu'aucun résultat ne passe le
+    /// filtre de domaines (`WebSearchChain.requiringTrustedDomains`). Sans chaîne, sans effet.
+    ///
     /// `nonisolated` : tourne sur l'exécuteur de l'orchestrateur (`@concurrent`) ; seuls la
     /// construction de l'action et son aiguillage sautent sur le main actor (types non annotés).
     nonisolated static func seededWebSearch(
         flavor: WebSearchFlavor,
         query: String,
         webSearchChain: WebSearchChain?,
+        trustedDomainsOnly: Bool,
         failoverManager: FailoverManager
     ) async throws -> SeededWebSearch {
+        let webSearchChain = webSearchChain?.requiringTrustedDomains(trustedDomainsOnly)
         let action = await flavor.action(webSearchChain: webSearchChain)
         let first = try await action.searchWeb(query: query, failoverManager: failoverManager)
         guard first.response.results.isEmpty,

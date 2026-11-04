@@ -56,6 +56,11 @@ struct SearXNGClient: SearXNGSearching {
             (data, response) = try await urlSession.data(for: request)
         } catch let error as URLError where error.code == .timedOut {
             throw SearXNGClientError.timeout
+        } catch let error as URLError where error.indicatesNoConnection {
+            // Appareil hors ligne : le code passe tel quel, pour que `FailoverManager` le dise à
+            // la chaîne de repli. `URLError` neuve : l'originale porte l'URL, donc la question.
+            // Côté fiabilité, `InstanceFailureReason.classify` la range en `.network`, comme avant.
+            throw URLError(error.code)
         } catch {
             throw SearXNGClientError.transportError
         }

@@ -30,9 +30,10 @@ import Foundation
 ///
 /// TRADUCTION DES ERREURS (contrat `WebSearchError` : messages fixes, rien du serveur) :
 /// - aucune instance configurée -> `.unavailable` ;
-/// - toutes ont échoué -> `.timeout` si TOUTES ont expiré, `.rateLimited` si TOUTES ont répondu
-///   429, sinon `.unavailable`. `.invalidResponse` n'est pas utilisé : « aucune instance ne sert
-///   du JSON » est, pour l'utilisateur, une source indisponible ;
+/// - toutes ont échoué -> `.noConnection` si l'une a vu l'appareil hors ligne, `.timeout` si
+///   TOUTES ont expiré, `.rateLimited` si TOUTES ont répondu 429, sinon `.unavailable`.
+///   `.invalidResponse` n'est pas utilisé : « aucune instance ne sert du JSON » est, pour
+///   l'utilisateur, une source indisponible ;
 /// - annulation -> `CancellationError` (jamais convertie, sinon `WebSearchChain` passerait à
 ///   la source suivante alors que l'utilisateur vient d'appuyer sur Stop).
 ///
@@ -89,6 +90,7 @@ nonisolated struct SearXNGWebSearchProvider: WebSearchProviding {
         guard let exhausted = error as? FailoverExhaustedError, !exhausted.reasons.isEmpty else {
             return .unavailable
         }
+        if exhausted.deviceOffline { return .noConnection }
         if exhausted.reasons.allSatisfy({ $0 == .timeout }) { return .timeout }
         if exhausted.reasons.allSatisfy({ $0 == .rateLimited }) { return .rateLimited }
         return .unavailable

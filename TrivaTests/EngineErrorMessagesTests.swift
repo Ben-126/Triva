@@ -91,7 +91,7 @@ struct EngineErrorMessagesTests {
     func secretsNeverReachTheMessage() {
         let secret = "sk-SECRET-42"
         let echoingErrors: [any Error] = [
-            OpenAICompatibleProvider.mapClientError(OpenAICompatibleClientError.apiError(message: "Bearer \(secret)"), provider: "Mon LLM"),
+            OpenAICompatibleProvider.mapClientError(OpenAICompatibleClient.failure(statusCode: 400, body: Data(#"{"error":{"message":"Bearer \#(secret)","code":"Bearer \#(secret)"}}"#.utf8)), provider: "Mon LLM"),
             OpenAICompatibleProvider.mapClientError(SecretEchoError(secret: secret), provider: "Mon LLM"),
             CloudBYOKProvider.mapGenerationError(SecretEchoError(secret: secret)),
             CloudBYOKProvider.mapGenerationError(LanguageModelError.guardrailViolation(.init(debugDescription: "Bearer \(secret)"))),

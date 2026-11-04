@@ -20,6 +20,16 @@ enum FailoverError: Error, Sendable, Equatable {
 nonisolated struct FailoverExhaustedError: Error, Sendable, Equatable {
     /// Un motif par instance essayée, dans l'ordre des essais.
     let reasons: [InstanceFailureReason]
+    /// Au moins une instance a échoué parce que l'APPAREIL n'a pas de connexion
+    /// (`URLError.indicatesNoConnection`), ce que `InstanceFailureReason.network` ne distingue pas
+    /// d'une instance injoignable. À part plutôt qu'en nouveau motif : les motifs sont persistés
+    /// par `InstanceReliabilityStore`, et un appareil hors ligne n'y a pas sa place.
+    let deviceOffline: Bool
+
+    init(reasons: [InstanceFailureReason], deviceOffline: Bool = false) {
+        self.reasons = reasons
+        self.deviceOffline = deviceOffline
+    }
 }
 
 /// Essaie une liste d'instances SearXNG, en basculant sur la suivante dès qu'une échoue
@@ -41,6 +51,12 @@ nonisolated struct FailoverExhaustedError: Error, Sendable, Equatable {
 ///   probablement hors ligne : ces échecs ne sont pas enregistrés, sinon une coupure de métro
 ///   ferait écarter de bonnes instances. Dès qu'une instance répond, les échecs précédents
 ///   sont enregistrés (le réseau fonctionne, ces instances-là sont vraiment en cause) ;
+/// - un échec où le système affirme que l'appareil n'a pas de connexion
+///   (`URLError.indicatesNoConnection`) n'est JAMAIS enregistré, même pour une seule instance ou
+///   si une autre répond ensuite : l'instance n'y est pour rien. S'il n'y a eu aucune réponse, les
+///   délais et échecs réseau de la même recherche ne le sont pas non plus (le Wi-Fi qui tombe
+///   pendant une requête donne un délai dépassé, puis la coupure). Une réponse HTTP d'erreur, elle,
+///   reste imputée à son instance ;
 /// - une `Task` annulée n'est JAMAIS un échec d'instance (voir le commentaire dans la boucle).
 actor FailoverManager {
     private let client: any SearXNGSearching
@@ -124,6 +140,7 @@ actor FailoverManager {
                 failures.append(AttemptFailure(
                     instance: instance,
                     reason: InstanceFailureReason.classify(error),
+                    deviceOffline: (error as? URLError)?.indicatesNoConnection == true,
                     date: now()
                 ))
             }
@@ -131,7 +148,7 @@ actor FailoverManager {
 
         cachedInstance = nil
         commit(failures, success: nil)
-        throw FailoverExhaustedError(reasons: failures.map(\.reason))
+        throw FailoverExhaustedError(reasons: failures.map(\.reason), deviceOffline: failures.contains(where: \.deviceOffline))
     }
 
     /// Retente en tâche de fond les instances dont la mise de côté vient de se terminer, avec
@@ -158,6 +175,8 @@ actor FailoverManager {
     private struct AttemptFailure {
         let instance: URL
         let reason: InstanceFailureReason
+        /// L'appareil n'avait pas de connexion : l'instance n'y est pour rien.
+        let deviceOffline: Bool
         let date: Date
     }
 
@@ -175,11 +194,13 @@ actor FailoverManager {
     /// Enregistre les observations d'une recherche, en une fois, une fois son issue connue
     /// (voir l'en-tête pour la règle « hors ligne »).
     private func commit(_ failures: [AttemptFailure], success: (instance: URL, latency: Duration)?) {
-        let looksOffline = success == nil && failures.count >= 2 && failures.allSatisfy { $0.reason == .network }
-        if !looksOffline {
-            for failure in failures {
-                reliability.recordFailure(for: failure.instance, reason: failure.reason, at: failure.date)
-            }
+        let looksOffline = success == nil && (
+            failures.contains(where: \.deviceOffline)
+                || (failures.count >= 2 && failures.allSatisfy { $0.reason == .network })
+        )
+        for failure in failures where !failure.deviceOffline {
+            if looksOffline, failure.reason == .network || failure.reason == .timeout { continue }
+            reliability.recordFailure(for: failure.instance, reason: failure.reason, at: failure.date)
         }
         if let success {
             reliability.recordSuccess(for: success.instance, latency: success.latency, at: now())

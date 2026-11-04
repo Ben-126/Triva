@@ -663,7 +663,7 @@ struct CloudWebSearchErrorTests {
         #expect(error as? WebSearchError == .invalidResponse)
     }
 
-    @Test("Réseau coupé : unavailable ; délai dépassé : timeout", arguments: CloudWebSearchService.allCases)
+    @Test("Réseau coupé : noConnection ; délai dépassé : timeout", arguments: CloudWebSearchService.allCases)
     func transportErrors(service: CloudWebSearchService) async {
         let offline = BYOKTestRequester { _ in throw URLError(.notConnectedToInternet) }
         let slow = BYOKTestRequester { _ in throw URLError(.timedOut) }
@@ -675,7 +675,7 @@ struct CloudWebSearchErrorTests {
             _ = try await CloudWebSearchProvider(service: service, apiKey: "k", requester: slow)
                 .search(query: "x", options: WebSearchOptions())
         }
-        #expect(offlineError as? WebSearchError == .unavailable)
+        #expect(offlineError as? WebSearchError == .noConnection)
         #expect(slowError as? WebSearchError == .timeout)
     }
 

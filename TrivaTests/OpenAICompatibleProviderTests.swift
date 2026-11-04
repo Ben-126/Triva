@@ -188,13 +188,36 @@ struct OpenAICompatibleProviderErrorMappingTests {
         #expect(mapped as? OpenAICompatibleProviderError == .providerFailure(provider: "Groq", reason: .unreachable))
     }
 
-    @Test("apiError : generationFailed SANS le message du serveur, qui peut contenir la clé")
-    func apiErrorNeverKeepsServerMessage() {
+    @Test("apiError sans code reconnu : classé par son statut, comme requestFailed", arguments: sampleStatusMappings)
+    func apiErrorWithoutCodeUsesTheStatus(statusCode: Int, expected: CloudProviderFailure) {
         let mapped = OpenAICompatibleProvider.mapClientError(
-            OpenAICompatibleClientError.apiError(message: "Invalid header: Bearer sk-SECRET-42"),
-            provider: "Mon LLM"
+            OpenAICompatibleClientError.apiError(statusCode: statusCode, code: nil),
+            provider: "Groq"
         )
-        #expect(mapped as? OpenAICompatibleProviderError == .generationFailed(description: "apiError"))
+        #expect(mapped as? OpenAICompatibleProviderError == .providerFailure(provider: "Groq", reason: expected))
+    }
+
+    @Test("Crédit épuisé chez OpenRouter : 402 à code numérique, classé comme une limite")
+    func openRouterPaymentRequired() {
+        let body = Data(#"{"error":{"message":"Insufficient credits","code":402}}"#.utf8)
+        let mapped = OpenAICompatibleProvider.mapClientError(
+            OpenAICompatibleClient.failure(statusCode: 402, body: body),
+            provider: "OpenRouter"
+        )
+        #expect(mapped as? OpenAICompatibleProviderError == .providerFailure(provider: "OpenRouter", reason: .rateLimited))
+    }
+
+    @Test("apiError avec code reconnu : le code prime sur le statut", arguments: [
+        (OpenAICompatibleAPIErrorCode.contextLengthExceeded, 400, CloudProviderFailure.contextWindowExceeded),
+        (.invalidAPIKey, 400, .apiKeyRejected(statusCode: 400)),
+        (.insufficientQuota, 402, .rateLimited),
+    ])
+    func apiErrorCodeWinsOverStatus(code: OpenAICompatibleAPIErrorCode, statusCode: Int, expected: CloudProviderFailure) {
+        let mapped = OpenAICompatibleProvider.mapClientError(
+            OpenAICompatibleClientError.apiError(statusCode: statusCode, code: code),
+            provider: "OpenAI"
+        )
+        #expect(mapped as? OpenAICompatibleProviderError == .providerFailure(provider: "OpenAI", reason: expected))
     }
 
     @Test("Réponse illisible : generationFailed neutre")

@@ -66,11 +66,9 @@ final class TrivaRootCoordinator {
     /// coordinateur : voir « Durée de vie ».
     let session: SearchSession
 
-    /// Modèle de Découvrir, UN par coordinateur, donc par fenêtre — et non plus
-    /// `DiscoverViewModel.standalone`, partagé par toutes les fenêtres (sujet
-    /// sélectionné compris) et construit sur la seule liste SearXNG du bundle.
-    /// Détenu ici plutôt que dans la vue : un chargement coûte jusqu'à ~120
-    /// requêtes, il ne doit pas repartir à chaque retour sur l'onglet (voir la
+    /// Modèle de Découvrir, UN par coordinateur, donc par fenêtre (le sujet
+    /// sélectionné est propre à chacune). Détenu ici plutôt que dans la vue : un
+    /// chargement ne doit pas repartir à chaque retour sur l'onglet (voir la
     /// documentation de `DiscoverViewModel`).
     let discover: DiscoverViewModel
 
@@ -96,9 +94,10 @@ final class TrivaRootCoordinator {
         // Découvrir, qui survit à la vue. Une capture forte garderait la
         // session — conversation et modèle MLX préparé compris, plusieurs Go —
         // en vie jusqu'à la fin des requêtes après la fermeture de la fenêtre.
-        self.discover = DiscoverViewModel(fetchContent: { [weak session] in
+        self.discover = DiscoverViewModel(cache: stores.discoverCache, loadContent: { [weak session] onTopicFinished in
             guard let session else { throw SearchSessionError.sessionEnded }
-            return await DiscoverService(failoverManager: session.resolveFailoverManager()).fetchTrending()
+            return await DiscoverService(failoverManager: session.resolveFailoverManager())
+                .fetchTrending(onTopicFinished: onTopicFinished)
         })
     }
 

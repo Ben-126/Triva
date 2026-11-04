@@ -17,7 +17,19 @@ enum OpenAICompatibleClientError: Error, Sendable, Equatable {
     case requestFailed(statusCode: Int)
     case transportError
     case decodingFailed
-    case apiError(message: String)
+    /// Échec dont le corps est l'enveloppe `{"error":{…}}`, le cas le plus fréquent (OpenAI, Groq,
+    /// OpenRouter, DeepSeek, Mistral). `error.message` n'est JAMAIS gardé : un serveur
+    /// « Personnalisé » peut y renvoyer l'en-tête `Authorization: Bearer <clé>`.
+    case apiError(statusCode: Int, code: OpenAICompatibleAPIErrorCode?)
+}
+
+/// Codes d'erreur reconnus dans `error.code` ou `error.type` : un enum FERMÉ, aucun texte du
+/// serveur n'en sort. Ils précisent ce que le statut seul ne dit pas : le contexte dépassé arrive
+/// en 400, et le crédit épuisé se confond avec une simple limite de débit en 429.
+nonisolated enum OpenAICompatibleAPIErrorCode: String, Sendable, Equatable {
+    case contextLengthExceeded = "context_length_exceeded"
+    case invalidAPIKey = "invalid_api_key"
+    case insufficientQuota = "insufficient_quota"
 }
 
 private struct ChatCompletionRequestBody: Encodable {
@@ -43,8 +55,22 @@ private struct ChatCompletionResponseBody: Decodable {
 }
 
 private struct ChatCompletionErrorBody: Decodable {
+    /// `message` n'est volontairement pas décodé (voir `OpenAICompatibleClientError.apiError`).
+    /// `try?` champ par champ : OpenRouter envoie un `code` NUMÉRIQUE, qui ne doit pas faire
+    /// perdre l'enveloppe, ni l'autre champ.
     struct APIError: Decodable {
-        let message: String
+        let code: String?
+        let type: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case code, type
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            code = try? container.decodeIfPresent(String.self, forKey: .code)
+            type = try? container.decodeIfPresent(String.self, forKey: .type)
+        }
     }
 
     let error: APIError
@@ -91,10 +117,7 @@ struct OpenAICompatibleClient: OpenAICompatibleRequesting {
             throw OpenAICompatibleClientError.transportError
         }
         guard httpResponse.statusCode == 200 else {
-            if let apiMessage = Self.decodeErrorMessage(from: data) {
-                throw OpenAICompatibleClientError.apiError(message: apiMessage)
-            }
-            throw OpenAICompatibleClientError.requestFailed(statusCode: httpResponse.statusCode)
+            throw Self.failure(statusCode: httpResponse.statusCode, body: data)
         }
 
         return try Self.decodeContent(from: data)
@@ -126,7 +149,13 @@ struct OpenAICompatibleClient: OpenAICompatibleRequesting {
         return content
     }
 
-    static func decodeErrorMessage(from data: Data) -> String? {
-        try? JSONDecoder().decode(ChatCompletionErrorBody.self, from: data).error.message
+    /// Erreur d'une réponse d'échec : le statut toujours, le code s'il est reconnu, rien d'autre
+    /// du corps. Logique pure, testable sans réseau.
+    static func failure(statusCode: Int, body: Data) -> OpenAICompatibleClientError {
+        guard let error = try? JSONDecoder().decode(ChatCompletionErrorBody.self, from: body).error else {
+            return .requestFailed(statusCode: statusCode)
+        }
+        let code = [error.code, error.type].lazy.compactMap { $0 }.compactMap(OpenAICompatibleAPIErrorCode.init(rawValue:)).first
+        return .apiError(statusCode: statusCode, code: code)
     }
 }

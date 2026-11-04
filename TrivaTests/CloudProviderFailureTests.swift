@@ -18,6 +18,7 @@ private let statusClassification: [(Int, CloudProviderFailure)] = [
     (401, .apiKeyRejected(statusCode: 401)),
     (403, .apiKeyRejected(statusCode: 403)),
     (413, .contextWindowExceeded),
+    (402, .rateLimited),
     (429, .rateLimited),
     (500, .serverUnavailable(statusCode: 500)),
     (502, .serverUnavailable(statusCode: 502)),
@@ -42,6 +43,13 @@ private let oneOfEachFailure: [CloudProviderFailure] = [
 /// Pure donnée `nonisolated` : suite non isolée, exécutée en parallèle.
 @Suite("CloudProviderFailure (bug 6)")
 struct CloudProviderFailureTests {
+    @Test("402, crédit épuisé : le message renvoie vers le crédit du compte, pas vers le modèle")
+    func paymentRequiredPointsToTheAccountCredit() {
+        let message = CloudProviderFailure(statusCode: 402).userFacingMessage(provider: "OpenRouter")
+        #expect(message.contains("vérifie le crédit de ton compte OpenRouter"))
+        #expect(!message.contains("modèle"))
+    }
+
     @Test("init(statusCode:) classe chaque statut d'échec", arguments: statusClassification)
     func classifiesFailureStatus(statusCode: Int, expected: CloudProviderFailure) {
         #expect(CloudProviderFailure(statusCode: statusCode) == expected)

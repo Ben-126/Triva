@@ -242,7 +242,7 @@ struct BraveSearchProviderTests {
         let offlineError = await byokThrownError { _ = try await offline.search(query: "x", options: WebSearchOptions()) }
         let cancelledError = await byokThrownError { _ = try await cancelled.search(query: "x", options: WebSearchOptions()) }
         #expect(timeoutError as? WebSearchError == .timeout)
-        #expect(offlineError as? WebSearchError == .unavailable)
+        #expect(offlineError as? WebSearchError == .noConnection)
         // Une annulation ne doit PAS devenir `.unavailable` : l'orchestrateur passerait à la source suivante.
         #expect(cancelledError is CancellationError)
     }

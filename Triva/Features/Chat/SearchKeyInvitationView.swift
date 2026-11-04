@@ -25,9 +25,9 @@ import SwiftUI
 /// recherche. « Toutes les sources ont répondu à vide » n'est pas non plus un échec : la question n'a
 /// simplement aucun résultat, et une réponse part quand même (`WebSearchChain`).
 ///
-/// Écart assumé : si l'appareil est hors ligne, toutes les sources échouent aussi, et une clé n'y
-/// changerait rien. Les motifs ne permettent pas de distinguer ce cas d'un blocage général
-/// (`.unavailable` dans les deux), d'où le bandeau, qui parle de la connexion EN PREMIER.
+/// Pas d'invitation non plus si l'appareil est hors ligne (décision de Ben) : toutes les sources
+/// échouent, mais une clé n'y changerait rien, et le bandeau dit déjà de se reconnecter
+/// (`WebSearchChainError.isDeviceOffline`). Le cas se déduit des erreurs reçues.
 ///
 /// `nonisolated` : donnée pure, construite et testée hors de toute vue.
 nonisolated struct SearchKeyInvitation: Sendable, Equatable {
@@ -40,9 +40,12 @@ nonisolated struct SearchKeyInvitation: Sendable, Equatable {
     /// Titre du bouton qui ouvre l'écran des clés.
     let actionTitle: String
 
-    /// `nil` si `error` n'est pas un échec de toutes les sources : pas d'invitation.
+    /// `nil` si `error` n'est pas un échec de toutes les sources, ou si l'appareil est hors ligne :
+    /// pas d'invitation.
     init?(for error: any Error) {
-        guard case .allSourcesFailed(let failures)? = error as? WebSearchChainError else { return nil }
+        guard let chainError = error as? WebSearchChainError,
+              !chainError.isDeviceOffline,
+              case .allSourcesFailed(let failures) = chainError else { return nil }
         let failedKinds = failures.map(\.source)
         // Ordre de préférence, le même que l'écran des clés, quel que soit celui des échecs.
         let failedKeys = BYOKSearchSource.preferenceOrder.filter { failedKinds.contains($0.kind) }

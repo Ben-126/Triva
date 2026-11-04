@@ -44,15 +44,15 @@ nonisolated enum PerplexityAgentError: Error, Sendable, Equatable, LocalizedErro
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey: "Aucune clé API Perplexity n'est enregistrée."
+        case .missingAPIKey: "Aucune clé API Perplexity n'est enregistrée. Ajoute-la dans les Réglages."
         case .keychainUnavailable: "Impossible de lire la clé API Perplexity dans le trousseau."
         case .invalidKey: "Perplexity a refusé la clé API. Vérifie-la dans les réglages."
         case .rateLimited: "Perplexity limite temporairement les requêtes. Réessaie dans un instant."
-        case .requestRejected: "Perplexity a refusé la requête."
+        case .requestRejected: "Perplexity a refusé la requête. Vérifie le niveau d'effort choisi dans les Réglages."
         case .serverError: "Perplexity est momentanément indisponible. Réessaie plus tard."
         case .transportError: "Connexion à Perplexity impossible. Vérifie ta connexion."
-        case .decodingFailed: "La réponse de Perplexity est illisible."
-        case .generationFailed: "Perplexity n'a pas pu terminer la réponse."
+        case .decodingFailed: "La réponse de Perplexity est illisible. Réessaie."
+        case .generationFailed: "Perplexity n'a pas pu terminer la réponse. Réessaie."
         }
     }
 }

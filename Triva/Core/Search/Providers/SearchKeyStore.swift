@@ -276,7 +276,7 @@ nonisolated enum BYOKSearchHTTP {
             switch urlError.code {
             case .cancelled: throw CancellationError()
             case .timedOut: throw WebSearchError.timeout
-            default: throw WebSearchError.unavailable
+            default: throw urlError.indicatesNoConnection ? WebSearchError.noConnection : WebSearchError.unavailable
             }
         } catch {
             throw WebSearchError.unavailable
