@@ -13,7 +13,6 @@ import Foundation
 private final class InMemoryAPIKeyStore: APIKeyStoring, @unchecked Sendable {
     var items: [String: String] = [:]
     var failOnSave = false
-    var failOnSaveForAccount: String?
     var failOnRead = false
     var failOnDelete = false
 
@@ -23,9 +22,7 @@ private final class InMemoryAPIKeyStore: APIKeyStoring, @unchecked Sendable {
     }
 
     func save(apiKey: String, account: String) throws {
-        if failOnSave || failOnSaveForAccount == account {
-            throw KeychainAPIKeyStoreError.unexpectedStatus(-25308)
-        }
+        if failOnSave { throw KeychainAPIKeyStoreError.unexpectedStatus(-25308) }
         items[account] = apiKey
     }
 
@@ -40,10 +37,6 @@ private final class InMemoryAPIKeyStore: APIKeyStoring, @unchecked Sendable {
 struct SearchKeyStoreTests {
     private func makeStore(_ keychain: InMemoryAPIKeyStore = InMemoryAPIKeyStore()) -> (SearchKeyStore, InMemoryAPIKeyStore) {
         (SearchKeyStore(keyStore: keychain, requester: BYOKTestRequester(body: "{}")), keychain)
-    }
-
-    private func google(key: String = "g-key", engine: String? = "cx-1") -> SearchKeyCredentials {
-        SearchKeyCredentials(source: .google, apiKey: key, engineID: engine)
     }
 
     // MARK: Aucune clé
@@ -73,48 +66,34 @@ struct SearchKeyStoreTests {
         #expect(try store.isConfigured(.tavily))
     }
 
-    @Test("Google : deux valeurs, configuré seulement avec la clé ET le cx")
-    func googleNeedsBothValues() throws {
+    @Test("une clé vide laissée dans le trousseau (écrite hors de l'app) ne compte pas comme configurée")
+    func blankStoredKeyIsNotConfigured() throws {
         let (store, keychain) = makeStore()
-        try store.save(google())
+        keychain.items["search.brave.apiKey"] = "  \n"
 
-        #expect(keychain.items["search.google.apiKey"] == "g-key")
-        #expect(keychain.items["search.google.engineID"] == "cx-1")
-        #expect(try store.isConfigured(.google))
-
-        // Clé seule (cx effacé à la main) : pas configuré.
-        keychain.items["search.google.engineID"] = nil
-        #expect(try store.isConfigured(.google) == false)
-        #expect(try store.credentials(for: .google) == nil)
-
-        // cx seul : pas configuré non plus.
-        keychain.items["search.google.engineID"] = "cx-1"
-        keychain.items["search.google.apiKey"] = nil
-        #expect(try store.isConfigured(.google) == false)
+        #expect(try store.isConfigured(.brave) == false)
+        #expect(try store.credentials(for: .brave) == nil)
+        #expect(try store.preferredProvider() == nil)
     }
 
     @Test("les espaces autour de la saisie sont retirés")
     func trimsInput() throws {
         let (store, keychain) = makeStore()
         try store.save(SearchKeyCredentials(source: .brave, apiKey: "  brave-key \n"))
-        try store.save(google(key: " g-key ", engine: " cx-1\n"))
+        try store.save(SearchKeyCredentials(source: .tavily, apiKey: "\ttvly-key "))
 
         #expect(keychain.items["search.brave.apiKey"] == "brave-key")
-        #expect(keychain.items["search.google.apiKey"] == "g-key")
-        #expect(keychain.items["search.google.engineID"] == "cx-1")
+        #expect(keychain.items["search.tavily.apiKey"] == "tvly-key")
     }
 
-    @Test("saisie incomplète : erreur explicite, rien d'écrit")
-    func rejectsIncomplete() {
+    @Test("clé vide ou faite d'espaces : erreur explicite, rien d'écrit", arguments: BYOKSearchSource.allCases)
+    func rejectsEmptyKey(source: BYOKSearchSource) {
         let (store, keychain) = makeStore()
-        #expect(throws: SearchKeyStoreError.incompleteCredentials) {
-            try store.save(SearchKeyCredentials(source: .brave, apiKey: "   "))
+        #expect(throws: SearchKeyStoreError.emptyKey) {
+            try store.save(SearchKeyCredentials(source: source, apiKey: "   "))
         }
-        #expect(throws: SearchKeyStoreError.incompleteCredentials) {
-            try store.save(google(engine: nil))
-        }
-        #expect(throws: SearchKeyStoreError.incompleteCredentials) {
-            try store.save(google(engine: "  "))
+        #expect(throws: SearchKeyStoreError.emptyKey) {
+            try store.save(SearchKeyCredentials(source: source, apiKey: ""))
         }
         #expect(keychain.items.isEmpty)
     }
@@ -149,62 +128,65 @@ struct SearchKeyStoreTests {
         #expect(throws: SearchKeyStoreError.keychainFailure) { try store.delete(.brave) }
     }
 
-    @Test("Google : si le cx échoue à s'écrire, la clé déjà écrite est retirée (pas de demi-configuration)")
-    func googleRollback() {
-        let (store, keychain) = makeStore()
-        keychain.failOnSaveForAccount = "search.google.engineID"
-        #expect(throws: SearchKeyStoreError.keychainFailure) { try store.save(google()) }
-        #expect(keychain.items["search.google.apiKey"] == nil)
-    }
-
     // MARK: Suppression
 
-    @Test("delete retire la clé (et le cx pour Google) sans toucher aux autres sources")
+    @Test("delete retire la clé sans toucher à l'autre source")
     func deleteRemovesOnlyThatSource() throws {
-        let (store, _) = makeStore()
+        let (store, keychain) = makeStore()
         try store.save(SearchKeyCredentials(source: .brave, apiKey: "b"))
-        try store.save(google())
+        try store.save(SearchKeyCredentials(source: .tavily, apiKey: "t"))
 
-        try store.delete(.google)
-        #expect(try store.isConfigured(.google) == false)
+        try store.delete(.tavily)
+        #expect(try store.isConfigured(.tavily) == false)
+        #expect(keychain.items["search.tavily.apiKey"] == nil)
         #expect(try store.isConfigured(.brave))
-        // Supprimer ce qui n'existe pas n'est pas une erreur.
+        // Supprimer ce qui n'existe plus n'est pas une erreur.
         try store.delete(.tavily)
     }
 
     // MARK: Ordre de préférence
 
-    @Test("ordre de préférence : Brave, puis Tavily, puis Google, quel que soit l'ordre d'enregistrement")
+    @Test("ordre de préférence : Brave, puis Tavily, quel que soit l'ordre d'enregistrement")
     func preferenceOrder() throws {
         let (store, _) = makeStore()
-        try store.save(google())
         try store.save(SearchKeyCredentials(source: .tavily, apiKey: "t"))
-        #expect(try store.configuredSources() == [.tavily, .google])
+        #expect(try store.configuredSources() == [.tavily])
         #expect(try store.preferredProvider()?.kind == .tavily)
 
         try store.save(SearchKeyCredentials(source: .brave, apiKey: "b"))
-        #expect(try store.configuredSources() == [.brave, .tavily, .google])
+        #expect(try store.configuredSources() == [.brave, .tavily])
         #expect(try store.preferredProvider()?.kind == .braveSearch)
-        #expect(try store.providersInPreferenceOrder().map(\.kind) == [.braveSearch, .tavily, .googleProgrammableSearch])
+        #expect(try store.providersInPreferenceOrder().map(\.kind) == [.braveSearch, .tavily])
 
         try store.delete(.brave)
         #expect(try store.preferredProvider()?.kind == .tavily)
     }
 
-    @Test("chaque source correspond au bon WebSearchSourceKind")
+    /// Verrou du retrait de l'API de recherche programmable (décision de Ben, 2026-10-28) :
+    /// seules Brave et Tavily demandent une clé, et aucune autre source ne doit réapparaître
+    /// sans décision explicite.
+    @Test("sources à clé : exactement Brave et Tavily, chacune avec le bon WebSearchSourceKind")
     func kinds() {
+        #expect(BYOKSearchSource.allCases == [.brave, .tavily])
         #expect(BYOKSearchSource.brave.kind == .braveSearch)
         #expect(BYOKSearchSource.tavily.kind == .tavily)
-        #expect(BYOKSearchSource.google.kind == .googleProgrammableSearch)
-        #expect(BYOKSearchSource.preferenceOrder == [.brave, .tavily, .google])
+        #expect(BYOKSearchSource.preferenceOrder == [.brave, .tavily])
         #expect(Set(BYOKSearchSource.preferenceOrder) == Set(BYOKSearchSource.allCases))
+    }
+
+    @Test("sources de résultats : la liste complète, sans source retirée")
+    func sourceKindsAreExactlyTheSupportedOnes() {
+        #expect(WebSearchSourceKind.allCases == [
+            .braveSearch, .tavily, .searxng, .cloudProviderWebSearch,
+            .wikipedia, .openAlex, .arXiv, .marginalia,
+        ])
     }
 
     // MARK: Isolation vis-à-vis des clés IA
 
     @Test("aucun compte de recherche ne peut entrer en collision avec un compte de clé IA")
     func noCollisionWithAIAccounts() {
-        let searchAccounts = BYOKSearchSource.allCases.flatMap { [$0.keyAccount, $0.engineIDAccount] }
+        let searchAccounts = BYOKSearchSource.allCases.map(\.keyAccount)
         #expect(Set(searchAccounts).count == searchAccounts.count)
         #expect(searchAccounts.allSatisfy { $0.hasPrefix("search.") })
         for kind in CloudBYOKProviderKind.allCases {
@@ -249,13 +231,14 @@ struct SearchKeyStoreTests {
         #expect(provider.kind == .tavily)
     }
 
-    @Test("makeProvider : une saisie Google sans cx donne un provider qui lève missingKey")
-    func incompleteGoogleProvider() async {
+    @Test("makeProvider : une saisie vide donne un provider qui lève missingKey sans requête", arguments: BYOKSearchSource.allCases)
+    func emptyKeyProvider(source: BYOKSearchSource) async {
         let requester = BYOKTestRequester(body: "{}")
-        let provider = SearchKeyCredentials(source: .google, apiKey: "k", engineID: nil).makeProvider(requester: requester)
+        let provider = SearchKeyCredentials(source: source, apiKey: "  ").makeProvider(requester: requester)
         let error = await byokThrownError { _ = try await provider.search(query: "x", options: WebSearchOptions()) }
         #expect(error as? WebSearchError == .missingKey)
         #expect(requester.requests.isEmpty)
+        #expect(provider.kind == source.kind)
     }
 
     // MARK: Masquage
@@ -275,15 +258,11 @@ struct SearchKeyStoreTests {
     func dumpDoesNotLeak() {
         let brave = BraveSearchProvider(apiKey: "super-secret-value", requester: BYOKTestRequester(body: "{}"))
         let tavily = TavilySearchProvider(apiKey: "super-secret-value", requester: BYOKTestRequester(body: "{}"))
-        let google = GoogleProgrammableSearchProvider(
-            apiKey: "super-secret-value", engineID: "cx-1", requester: BYOKTestRequester(body: "{}")
-        )
-        let credentials = SearchKeyCredentials(source: .google, apiKey: "super-secret-value", engineID: "cx-1")
+        let credentials = SearchKeyCredentials(source: .tavily, apiKey: "super-secret-value")
 
         var output = ""
         dump(brave, to: &output)
         dump(tavily, to: &output)
-        dump(google, to: &output)
         dump(credentials, to: &output)
         #expect(!output.contains("super-secret-value"))
     }

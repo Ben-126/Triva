@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import FoundationModels
 import MLXLMCommon
 import Testing
 @testable import Triva
@@ -114,6 +115,22 @@ struct MLXProviderTests {
             }
         }
         #expect(received.isEmpty)
+    }
+
+    // Fonction pure (bug 6) : aucune session MLX ouverte, aucun modèle chargé.
+    @Test("mapGenerationError : l'annulation ressort intacte, jamais emballée en échec")
+    func mapGenerationErrorKeepsCancellation() {
+        #expect(MLXProvider.mapGenerationError(CancellationError()) is CancellationError)
+    }
+
+    @Test("mapGenerationError : tout le reste reste generationFailed — rien d'inventé, MLX ne type ni contexte ni mémoire")
+    func mapGenerationErrorWrapsEverythingElse() {
+        let capability = LanguageModelError.unsupportedCapability(.init(capability: .toolCalling, debugDescription: "test"))
+        for error: any Error in [capability, URLError(.badServerResponse)] {
+            let mapped = MLXProvider.mapGenerationError(error)
+            let isGenerationFailed = if case .generationFailed? = mapped as? MLXProviderError { true } else { false }
+            #expect(isGenerationFailed, "\(type(of: error)) devrait rester generationFailed")
+        }
     }
 
     private static func makeEntry(

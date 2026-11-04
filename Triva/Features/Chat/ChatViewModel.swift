@@ -37,136 +37,22 @@ enum ChatViewModelError: Error, Sendable, Equatable {
 /// `Task.isCancelled`, vérifié dans LES DEUX `catch` — une annulation n'est
 /// jamais un échec ni une réponse vide. Le jeton `activeExchangeID` empêche un
 /// échange remplacé, qui finit de se dérouler, de toucher l'état du suivant.
+///
+/// Deux extensions, pour garder ce fichier sous les 800 lignes :
+/// `ChatViewModel+Message.swift` (un message du fil) et
+/// `ChatViewModel+ErrorMessages.swift` (messages du bandeau d'erreur).
 @Observable
 @MainActor
 final class ChatViewModel {
-    /// Un message du fil, `Equatable` pour `MessageBubbleView.equatable()`.
-    /// L'affichage y est PRÉ-CALCULÉ (segments, widgets typés).
-    struct Message: Identifiable, Sendable, Equatable {
-        enum Role: Sendable, Equatable {
-            case user
-            case assistant
-        }
-
-        /// Issue d'une réponse : l'historique du classifieur ne garde que les
-        /// succès, `isStreaming` seul ne les distinguait pas.
-        enum Status: Sendable, Equatable {
-            case streaming
-            case completed
-            /// Texte partiel conservé, message dans `errorDescription`.
-            case failed
-            /// Stop, écran quitté, nouvelle conversation.
-            case interrupted
-            /// Décision (c) : mode Fiable sans source fiable, rien de généré.
-            /// Afficher `noReliableSourcesMessage`, proposer `retryInQuickMode`.
-            case noReliableSources
-        }
-
-        /// Fichier joint à la question : un résumé, jamais le texte indexé.
-        struct AttachedFile: Sendable, Equatable, Identifiable {
-            let id: UUID
-            let fileName: String
-            let kind: AttachmentKind
-        }
-
-        /// Widget abouti, au-dessus de la réponse. Typé ici :
-        /// `SearchWidgetOutput` (charge utile existentielle) n'est pas `Equatable`.
-        enum Widget: Sendable, Equatable {
-            case weather(WeatherWidgetData)
-            case calculation(CalculationWidgetData)
-
-            init?(_ output: SearchWidgetOutput) {
-                if let weather = output.weatherData {
-                    self = .weather(weather)
-                } else if let calculation = output.calculationData {
-                    self = .calculation(calculation)
-                } else {
-                    return nil
-                }
-            }
-        }
-
-        let id: UUID
-        let role: Role
-        /// Texte BRUT, balises `<think>`/`<tldr>` comprises : c'est lui qui est
-        /// persisté et mis en favori. La vue affiche `segments`.
-        private(set) var text: String
-        /// `ReasoningSegmenter` appliqué une fois par snapshot (passe linéaire).
-        private(set) var segments: ReasoningSegments
-        /// Pour « A réfléchi pendant N s » ; inconnu pour un message relu.
-        private(set) var reasoningTiming = ReasoningTiming()
-        private(set) var status: Status
-        /// Ordre des citations : `[n]` désigne `sources[n - 1]`.
-        var sources: [SearXNGSearchResult]
-        /// Les N premières sources sont des fichiers joints (pas de lien).
-        var attachmentSourceCount = 0
-        var widgets: [Widget] = []
-        /// À la demande (décision (a)) : `.idle` affiche le bouton.
-        var images: ImageResultsPhase = .idle
-        var videos: VideoResultsPhase = .idle
-        /// Reformulation du classifieur, sujet des recherches médias.
-        var searchQuery: String?
-        /// Seule la dernière réponse terminée en porte.
-        var suggestions: [String] = []
-        var attachedFiles: [AttachedFile] = []
-        /// `id` du `StoredMessage` : SEULE clé des favoris, stable d'un
-        /// lancement à l'autre. `nil` pendant le streaming ou sans historique.
-        var storedMessageID: UUID?
-        var storedConversationID: UUID?
-        /// Diagnostic du validateur de structure, sans UI.
-        var structureReport: ResponseStructureReport?
-
-        var isStreaming: Bool { status == .streaming }
-
-        init(
-            id: UUID = UUID(),
-            role: Role,
-            text: String = "",
-            sources: [SearXNGSearchResult] = [],
-            isStreaming: Bool = false
-        ) {
-            self.id = id
-            self.role = role
-            self.text = text
-            self.sources = sources
-            self.status = isStreaming ? .streaming : .completed
-            self.segments = ReasoningSegmenter.segment(text, isStreaming: isStreaming)
-        }
-
-        /// Snapshot CUMULATIF : il remplace le texte, jamais de concaténation.
-        mutating func apply(snapshot: String, at date: Date) {
-            text = snapshot
-            segments = ReasoningSegmenter.segment(snapshot, isStreaming: true)
-            reasoningTiming = reasoningTiming.updated(for: segments.reasoningPhase, at: date)
-        }
-
-        /// Fin de flux : relâche les fragments retenus et fige la phase (un
-        /// bloc resté ouvert devient `.interrupted`, jamais replié).
-        mutating func finish(_ newStatus: Status, at date: Date) {
-            status = newStatus
-            segments = ReasoningSegmenter.segment(text, isStreaming: false)
-            reasoningTiming = reasoningTiming.updated(for: segments.reasoningPhase, at: date)
-        }
-
-        mutating func attach(_ artifacts: SearchArtifacts) {
-            sources = artifacts.sources
-            attachmentSourceCount = artifacts.attachmentSourceCount
-            widgets = artifacts.widgets.compactMap { Widget($0) }
-            searchQuery = artifacts.searchQuery
-        }
-
-        mutating func markNoReliableSources(searchQuery: String, at date: Date) {
-            self.searchQuery = searchQuery
-            finish(.noReliableSources, at: date)
-        }
-    }
-
     /// Dépendances de l'orchestrateur d'UN envoi : moteur, budget, mode figé.
     struct OrchestratorInputs {
         let failoverManager: FailoverManager
         let provider: any AIGenerating
         let responseMode: ResponseMode
         let configuration: SearchPipelineConfiguration
+        /// Chaîne de repli de la recherche web (RI1b), construite sur ce
+        /// `failoverManager` ; `nil` = SearXNG seul.
+        let webSearchChain: WebSearchChain?
     }
 
     /// Décision (c) de Ben : textes fixes de l'état `.noReliableSources`.
@@ -179,6 +65,9 @@ final class ChatViewModel {
     /// Échec de l'échange : SEULE source du bandeau d'erreur, jamais recopiée
     /// dans la bulle (le même texte deux fois à l'écran).
     private(set) var errorDescription: String?
+    /// Toutes les sources de recherche ont échoué : invitation à gérer ses clés
+    /// de recherche, sous le bandeau. Même durée de vie que `errorDescription`.
+    private(set) var searchKeyInvitation: SearchKeyInvitation?
     /// Échec d'écriture de l'historique ou des favoris : séparé, la réponse a
     /// abouti — n'écrase jamais `errorDescription`.
     private(set) var persistenceErrorDescription: String?
@@ -191,6 +80,7 @@ final class ChatViewModel {
 
     private let resolveProvider: () async throws -> any AIGenerating
     private let resolveFailoverManager: () throws -> FailoverManager
+    private let resolveWebSearchChain: @MainActor (FailoverManager) throws -> WebSearchChain?
     private let resolvePipelineConfiguration: @MainActor () -> SearchPipelineConfiguration
     private let readResponseMode: @MainActor () -> ResponseMode
     private let makeOrchestrator: @MainActor (OrchestratorInputs) -> SearchOrchestrator
@@ -209,6 +99,11 @@ final class ChatViewModel {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "ChatViewModel")
 
     /// - Parameters:
+    ///   - resolveWebSearchChain: chaîne de repli de la recherche web de
+    ///     l'envoi (RI1b), construite sur le `FailoverManager` qu'il vient de
+    ///     résoudre (`SearchSession.resolveWebSearchChain(failoverManager:)`),
+    ///     transmise par `OrchestratorInputs` au `makeOrchestrator` par
+    ///     défaut. `nil` (défaut) : SearXNG seul, comportement d'avant la chaîne.
     ///   - resolvePipelineConfiguration: budget du moteur qui a produit le
     ///     provider (bug 6), `SearchPipelineConfiguration.preset(for:mlxModel:)` ;
     ///     appelée juste après `resolveProvider`, dans le même envoi.
@@ -220,6 +115,7 @@ final class ChatViewModel {
     init(
         resolveProvider: @escaping () async throws -> any AIGenerating,
         resolveFailoverManager: @escaping () throws -> FailoverManager,
+        resolveWebSearchChain: @escaping @MainActor (FailoverManager) throws -> WebSearchChain? = { _ in nil },
         resolvePipelineConfiguration: @escaping @MainActor () -> SearchPipelineConfiguration = { .appleIntelligence },
         readResponseMode: @escaping @MainActor () -> ResponseMode = { ChatViewModel.persistedResponseMode() },
         historyStore: ChatHistoryStore? = nil,
@@ -230,7 +126,8 @@ final class ChatViewModel {
                 failoverManager: inputs.failoverManager,
                 aiProvider: inputs.provider,
                 responseMode: inputs.responseMode,
-                configuration: inputs.configuration
+                configuration: inputs.configuration,
+                webSearchChain: inputs.webSearchChain
             )
         },
         generateSuggestions: @escaping @MainActor (any AIGenerating, [ClassifierChatMessage]) async -> [String] = { provider, history in
@@ -241,6 +138,7 @@ final class ChatViewModel {
     ) {
         self.resolveProvider = resolveProvider
         self.resolveFailoverManager = resolveFailoverManager
+        self.resolveWebSearchChain = resolveWebSearchChain
         self.resolvePipelineConfiguration = resolvePipelineConfiguration
         self.readResponseMode = readResponseMode
         self.historyStore = historyStore
@@ -342,6 +240,7 @@ final class ChatViewModel {
         activeExchangeID = exchangeID
         isGenerating = true
         errorDescription = nil
+        searchKeyInvitation = nil
         suggestionsTask?.cancel()
         for index in messages.indices where !messages[index].suggestions.isEmpty {
             messages[index].suggestions = []
@@ -365,11 +264,13 @@ final class ChatViewModel {
         defer { persistAnswer(answer, exchange: exchange) }
         do {
             let provider = try await resolveProvider()
+            let failoverManager = try resolveFailoverManager()
             let orchestrator = makeOrchestrator(OrchestratorInputs(
-                failoverManager: try resolveFailoverManager(),
+                failoverManager: failoverManager,
                 provider: provider,
                 responseMode: exchange.mode,
-                configuration: resolvePipelineConfiguration()
+                configuration: resolvePipelineConfiguration(),
+                webSearchChain: try resolveWebSearchChain(failoverManager)
             ))
             // `media: []` : images et vidéos À LA DEMANDE (décision (a)).
             let streamingAnswer = try await orchestrator.streamAnswer(
@@ -474,6 +375,7 @@ final class ChatViewModel {
     private func fail(answerID: UUID, exchangeID: UUID, error: any Error) {
         if activeExchangeID == exchangeID {
             errorDescription = Self.userFacingMessage(for: error)
+            searchKeyInvitation = SearchKeyInvitation(for: error)
         }
         finishAnswer(answerID, as: .failed)
     }
@@ -502,6 +404,7 @@ final class ChatViewModel {
         isGenerating = false
         messages = []
         errorDescription = nil
+        searchKeyInvitation = nil
         persistenceErrorDescription = nil
         currentConversationID = nil
         // Par le contrôleur, jamais `store.removeAll()` seul : un fichier en
@@ -852,119 +755,5 @@ final class ChatViewModel {
     /// pas ce que le sélecteur écrit. Rapide par défaut (décision 6 de Ben).
     static func persistedResponseMode(in userDefaults: UserDefaults = .standard) -> ResponseMode {
         ResponseModeSettingsStore(userDefaults: userDefaults).selectedMode
-    }
-
-    // MARK: - Messages d'erreur
-
-    /// Erreur en français clair pour les cas connus ; sinon
-    /// `String(describing:)` (un nom brut mais réel vaut mieux qu'un message
-    /// inventé). Les erreurs des moteurs et du cloud ne sont JAMAIS
-    /// interpolées : leur `generationFailed(description:)` peut porter le
-    /// texte brut d'un serveur BYOK — pour un fournisseur « Personnalisé », un
-    /// serveur quelconque, qui pourrait renvoyer l'en-tête
-    /// `Authorization: Bearer <clé>` dans son JSON d'erreur. Messages fixes.
-    static func userFacingMessage(for error: Error) -> String {
-        pipelineMessage(for: error)
-            ?? engineMessage(for: error)
-            ?? cloudMessage(for: error)
-            ?? String(describing: error)
-    }
-
-    private static func pipelineMessage(for error: Error) -> String? {
-        if let resolverError = error as? ActiveAIProviderResolverError {
-            return resolverMessage(for: resolverError)
-        }
-        if let failoverError = error as? FailoverError {
-            switch failoverError {
-            case .noInstancesConfigured:
-                return "Aucune instance de recherche n'est configurée."
-            case .allInstancesUnavailable:
-                return "Aucune instance de recherche n'a répondu. Réessaie dans un instant."
-            }
-        }
-        if error is ChatViewModelError {
-            return "Le moteur IA n'a renvoyé aucune réponse. Réessaie."
-        }
-        if let sessionError = error as? SearchSessionError {
-            // `switch` exhaustif : un nouveau cas exigera son propre message.
-            switch sessionError {
-            case .sessionEnded:
-                // Fenêtre fermée ou moteur changé en pleine génération (voir `SearchSessionError`).
-                return "Réponse interrompue : la fenêtre a été fermée ou le moteur IA a changé."
-            }
-        }
-        if let historyError = error as? ChatHistoryStoreError {
-            return historyError.userFacingMessage
-        }
-        if let favoritesError = error as? FavoritesStoreError {
-            return favoritesError.userFacingMessage
-        }
-        return nil
-    }
-
-    private static func resolverMessage(for error: ActiveAIProviderResolverError) -> String {
-        switch error {
-        case .noEngineSelected:
-            return "Aucun moteur IA sélectionné. Choisis-en un dans les Réglages."
-        case .appleIntelligenceUnavailable:
-            return "Apple Intelligence n'est pas disponible sur cet appareil."
-        case .noMLXModelSelected:
-            return "Aucun modèle local choisi. Sélectionne un modèle MLX dans les Réglages."
-        case .mlxModelNotInCatalog:
-            return "Le modèle local choisi n'est plus disponible. Choisis-en un autre dans les Réglages."
-        case .noCloudSelectionStored:
-            return "Aucun fournisseur configuré. Va dans Réglages pour en choisir un."
-        case .cloudSelectionUnresolvable:
-            return "Le fournisseur choisi n'est plus disponible. Vérifie tes Réglages."
-        }
-    }
-
-    /// Moteurs sur l'appareil (bug 6) : sans ces cas, un échec affichait
-    /// « generationFailed(description: "exceededContextWindowSize…") ». La
-    /// cause précise n'est pas typée côté provider et analyser la description
-    /// serait fragile : message neutre qui cite la cause la plus fréquente.
-    private static func engineMessage(for error: Error) -> String? {
-        if let appleError = error as? AppleIntelligenceError {
-            switch appleError {
-            case .generationFailed:
-                return "Apple Intelligence n'a pas pu répondre. Si la conversation est longue, commence-en une nouvelle."
-            case .modelNotReady:
-                return "Apple Intelligence se prépare encore sur cet appareil. Réessaie dans quelques minutes."
-            case .deviceNotEligible, .appleIntelligenceNotEnabled, .unavailableForOtherReason:
-                return "Apple Intelligence n'est pas disponible sur cet appareil."
-            }
-        }
-        if let mlxError = error as? MLXProviderError {
-            switch mlxError {
-            case .simulatorUnsupported:
-                // Garde-fou anti-crash de `MLXProvider` (Metal absent du Simulateur).
-                return "Les modèles locaux (MLX) ne fonctionnent pas sur le Simulateur — teste sur un appareil réel."
-            case .generationFailed, .modelNotLoaded:
-                return "Le modèle local n'a pas pu répondre. Si la conversation est longue, commence-en une nouvelle."
-            case .downloadFailed:
-                return "Le téléchargement du modèle local a échoué. Vérifie ta connexion et réessaie."
-            }
-        }
-        return nil
-    }
-
-    /// Cloud (bug 6) : le statut HTTP est perdu dans `generationFailed`, donc
-    /// un message qui n'accuse plus la clé d'emblée (un 429 ou une panne n'a
-    /// rien à voir avec elle) mais la garde en piste, cause la plus probable
-    /// en BYOK. Clé ABSENTE : cas typé, message précis.
-    private static func cloudMessage(for error: Error) -> String? {
-        let missingKey = "Aucune clé API n'est enregistrée pour ce fournisseur. Ajoute-la dans les Réglages."
-        let neutral = "Le fournisseur IA n'a pas pu répondre. Réessaie dans un instant ; si ça continue, vérifie ta clé API dans les Réglages."
-        if let openAIError = error as? OpenAICompatibleProviderError {
-            return openAIError == .missingAPIKey ? missingKey : neutral
-        }
-        if let byokError = error as? CloudBYOKError {
-            return byokError == .missingAPIKey ? missingKey : neutral
-        }
-        if let perplexityError = error as? PerplexityAgentError {
-            // Déjà des messages français fixes (`LocalizedError`).
-            return perplexityError.errorDescription ?? neutral
-        }
-        return nil
     }
 }

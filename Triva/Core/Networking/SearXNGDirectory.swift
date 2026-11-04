@@ -319,6 +319,14 @@ nonisolated enum SearXNGDirectoryRefreshOutcome: Sendable, Equatable {
     case cancelled
 }
 
+/// Rafraîchissement de l'annuaire tel que le voit l'entretien de fond (`SearXNGMaintenance`) :
+/// abstrait pour qu'un test vérifie l'enchaînement d'un passage, et son verrou, avec un faux,
+/// sans réseau. Comme `SearXNGDirectoryRefresher`, ne lève jamais : un échec est une issue
+/// (`.failed`), pas une erreur.
+nonisolated protocol SearXNGDirectoryRefreshing: Sendable {
+    func refreshIfNeeded(now: Date, force: Bool) async -> SearXNGDirectoryRefreshOutcome
+}
+
 /// Rafraîchit en tâche de fond la liste d'instances depuis l'annuaire searx.space.
 ///
 /// - Fréquence : au plus UNE tentative par jour (24 h), succès ou non. Exception : un échec
@@ -326,7 +334,9 @@ nonisolated enum SearXNGDirectoryRefreshOutcome: Sendable, Equatable {
 ///   n'attend que 1 h. Le moindre autre échec (HTTP, format) attend 24 h : insister sur un
 ///   service en difficulté serait discourtois.
 /// - Jamais bloquant : la fonction ne lève rien, et le résultat n'est consommé qu'au prochain
-///   `FailoverManager` construit. À lancer dans une `Task` de priorité `.background`.
+///   `FailoverManager` construit. À lancer dans une `Task` de priorité `.background` : c'est ce
+///   que fait `SearXNGMaintenance`, à chaque passage de l'app au premier plan (la limite d'une
+///   tentative par jour ci-dessus rend ces appels répétés gratuits).
 /// - Vérification : les `maxProbed` meilleurs candidats passent par la sonde (une requête neutre
 ///   « test » chacun), seuls ceux qui répondent en JSON exploitable sont gardés (au plus
 ///   `maxKept`). Puisque l'annuaire ne teste pas le JSON, sans cette étape la liste
@@ -337,7 +347,7 @@ nonisolated enum SearXNGDirectoryRefreshOutcome: Sendable, Equatable {
 /// Vie privée : chaque rafraîchissement expose l'adresse IP de l'appareil à searx.space (un GET) et
 /// aux instances sondées (une requête « test » chacune), sans action de l'utilisateur. Le même
 /// niveau d'exposition qu'une recherche normale, mais à signaler dans les mentions légales.
-nonisolated struct SearXNGDirectoryRefresher: Sendable {
+nonisolated struct SearXNGDirectoryRefresher: Sendable, SearXNGDirectoryRefreshing {
     static let directoryURL = URL(string: "https://searx.space/data/instances.json")!
     static let refreshInterval: TimeInterval = 86_400
     static let transportRetryInterval: TimeInterval = 3_600

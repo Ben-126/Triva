@@ -6,6 +6,7 @@
 //
 
 import Testing
+import Foundation
 import FoundationModels
 @testable import Triva
 
@@ -73,5 +74,67 @@ struct AppleIntelligenceProviderTests {
             }
         }
         #expect(received.isEmpty)
+    }
+}
+
+// MARK: - Erreurs de génération typées (bug 6)
+
+/// Erreurs du SDK OS27 construites par leurs inits PUBLICS : aucune
+/// `LanguageModelSession` n'est ouverte (sur Mac, Foundation Models tournerait
+/// vraiment). Constantes de fichier, non isolées : utilisables comme arguments.
+private let typedFoundationModelsErrors: [(LanguageModelError, AppleIntelligenceGenerationError)] = [
+    (.contextSizeExceeded(.init(contextSize: 4_096, tokenCount: 5_120, debugDescription: "test")), .contextWindowExceeded),
+    (.guardrailViolation(.init(debugDescription: "test")), .guardrailViolation),
+    (.refusal(.init(explanation: "Je ne peux pas répondre.", debugDescription: "test")), .refusal),
+    (.rateLimited(.init(resetDate: nil, debugDescription: "test")), .rateLimited),
+    (.unsupportedLanguageOrLocale(.init(languageCode: Locale.LanguageCode("tlh"), debugDescription: "test")), .unsupportedLanguage),
+    (.timeout(.init(debugDescription: "test")), .timeout),
+]
+
+/// Cas sans objet pour un prompt texte sans outil, image ni schéma.
+private let inapplicableFoundationModelsErrors: [LanguageModelError] = [
+    .unsupportedCapability(.init(capability: .toolCalling, debugDescription: "test")),
+    .unsupportedTranscriptContent(.init(unsupportedContent: [], debugDescription: "test")),
+    .unsupportedGenerationGuide(.init(schemaName: nil, debugDescription: "test")),
+]
+
+private struct UnknownEngineError: Error {}
+
+/// Vrai si `error` est le repli générique `AppleIntelligenceError.generationFailed`.
+private func isGenerationFailed(_ error: any Error) -> Bool {
+    if case .generationFailed? = error as? AppleIntelligenceError { return true }
+    return false
+}
+
+@MainActor
+@Suite("AppleIntelligenceProvider.mapGenerationError (bug 6)")
+struct AppleIntelligenceGenerationErrorMappingTests {
+    @Test("Chaque cause typée du SDK OS27 devient son cas explicite", arguments: typedFoundationModelsErrors)
+    func typedCauseBecomesExplicitCase(error: LanguageModelError, expected: AppleIntelligenceGenerationError) {
+        let mapped = AppleIntelligenceProvider.mapGenerationError(error)
+        #expect(mapped as? AppleIntelligenceGenerationError == expected)
+    }
+
+    @Test("Un cas sans objet pour un prompt texte retombe sur generationFailed", arguments: inapplicableFoundationModelsErrors)
+    func inapplicableCaseFallsBackToGenerationFailed(error: LanguageModelError) {
+        #expect(AppleIntelligenceProvider.generationError(for: error) == nil)
+        #expect(isGenerationFailed(AppleIntelligenceProvider.mapGenerationError(error)))
+    }
+
+    @Test("Ressources du modèle absentes : modelNotReady, la même situation que la disponibilité")
+    func assetsUnavailableBecomesModelNotReady() {
+        let error = SystemLanguageModel.Error.assetsUnavailable(.init(debugDescription: "test"))
+        #expect(AppleIntelligenceProvider.mapGenerationError(error) as? AppleIntelligenceError == .modelNotReady)
+    }
+
+    @Test("L'annulation ressort intacte, jamais emballée en échec de génération")
+    func cancellationPassesThroughUntouched() {
+        #expect(AppleIntelligenceProvider.mapGenerationError(CancellationError()) is CancellationError)
+    }
+
+    @Test("Erreur de session ou inconnue : repli generationFailed")
+    func sessionOrUnknownErrorFallsBack() {
+        #expect(isGenerationFailed(AppleIntelligenceProvider.mapGenerationError(LanguageModelSession.Error.concurrentRequests)))
+        #expect(isGenerationFailed(AppleIntelligenceProvider.mapGenerationError(UnknownEngineError())))
     }
 }

@@ -116,9 +116,11 @@ enum CloudProviderSelectionResolver {
         }
         // Init memberwise volontairement, pas `init(preset:)` : ce dernier
         // fige `preset.defaultModel`, alors que le modèle choisi par
-        // l'utilisateur (`selection.model`) doit toujours primer.
+        // l'utilisateur (`selection.model`) doit toujours primer. Le nom suit
+        // le preset, personnalisé compris, pour les messages d'erreur (bug 6).
         return OpenAICompatibleProvider(
             account: preset.id,
+            providerName: preset.displayName,
             baseURL: preset.baseURL,
             model: selection.model,
             keyStore: keyStore

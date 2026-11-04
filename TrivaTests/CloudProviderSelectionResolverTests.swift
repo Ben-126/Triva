@@ -131,6 +131,35 @@ struct CloudProviderSelectionResolverTests {
         #expect(provider?.model == "mon-modele-choisi")
     }
 
+    /// Le nom porté par le provider est celui des messages d'erreur typés
+    /// (bug 6) : « Clé API refusée par Mon LLM… ». Il doit suivre le preset
+    /// RÉSOLU, personnalisé compris, puisque `makeProvider` n'utilise pas
+    /// `init(preset:)`.
+    @Test("Le provider compatible OpenAI porte le nom affiché du preset, personnalisé compris (bug 6)")
+    func openAICompatibleProviderCarriesPresetDisplayName() throws {
+        let groq = try #require(CloudProviderCatalog.presets.first { $0.id == "groq" })
+        let custom = CloudProviderPreset(
+            id: "custom:abc",
+            displayName: "Mon LLM",
+            baseURL: URL(string: "https://llm.example.com/v1")!,
+            defaultModel: "mon-modele-defaut"
+        )
+
+        let catalogProvider = CloudProviderSelectionResolver.makeProvider(
+            for: CloudProviderSelection(providerID: groq.id, model: groq.defaultModel),
+            customPresets: [],
+            keyStore: MockAPIKeyStore(storedKey: "sk-test")
+        ) as? OpenAICompatibleProvider
+        let customProvider = CloudProviderSelectionResolver.makeProvider(
+            for: CloudProviderSelection(providerID: custom.id, model: "mon-modele-choisi"),
+            customPresets: [custom],
+            keyStore: MockAPIKeyStore(storedKey: "sk-test")
+        ) as? OpenAICompatibleProvider
+
+        #expect(catalogProvider?.providerName == "Groq")
+        #expect(customProvider?.providerName == "Mon LLM")
+    }
+
     @Test("Renvoie nil si le providerID ne correspond à rien")
     func returnsNilForUnknownProviderID() {
         let selection = CloudProviderSelection(providerID: "inconnu", model: "peu importe")

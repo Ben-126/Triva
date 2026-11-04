@@ -231,6 +231,59 @@ struct TrivaRootCoordinatorTests {
         #expect(coordinator.selection == .settings)
     }
 
+    @Test("Chat : « Ajouter une clé de recherche » mène à l'écran des clés, dans les Réglages de la fenêtre")
+    func showSearchKeysOpensTheSearchKeysScreen() throws {
+        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores())
+        #expect(coordinator.settingsPath.isEmpty)
+
+        coordinator.showSearchKeys()
+
+        #expect(coordinator.selection == .settings)
+        #expect(coordinator.settingsPath == [.searchKeys])
+    }
+
+    @Test("Un écran resté poussé (autre destination visitée entre-temps) est remplacé par celui des clés")
+    func showSearchKeysReplacesAPushedScreen() throws {
+        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores())
+        coordinator.settingsPath = [.mlxStorage]
+
+        coordinator.showSearchKeys()
+
+        #expect(coordinator.settingsPath == [.searchKeys])
+    }
+
+    /// « Gérer les clés API » et « Fournisseur et modèle » sont sur la racine des
+    /// Réglages : sans cette remise à zéro, « Configurer une clé API » les
+    /// cacherait derrière l'écran des clés de recherche resté poussé.
+    @Test("« Configurer une clé API » revient à la racine des Réglages, même après l'écran des clés")
+    func showSettingsReturnsToTheSettingsRoot() throws {
+        let coordinator = TrivaRootCoordinator(engine: .cloudBYOK, stores: try makeStores())
+        coordinator.showSearchKeys()
+        coordinator.selection = .search
+
+        coordinator.showSettings()
+
+        #expect(coordinator.selection == .settings)
+        #expect(coordinator.settingsPath.isEmpty)
+    }
+
+    /// Ce que la coquille pose dans l'environnement, appelé comme le fait `ChatView`.
+    @Test("L'action de l'environnement ouvre l'écran des clés, et deux rendus de la coquille donnent la même valeur")
+    func theEnvironmentActionOpensTheSearchKeysScreen() throws {
+        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores())
+        let makeAction = { OpenSearchKeySettingsAction(owner: coordinator) { coordinator.showSearchKeys() } }
+
+        let action = makeAction()
+        action()
+
+        #expect(coordinator.selection == .settings)
+        #expect(coordinator.settingsPath == [.searchKeys])
+        // Sinon, chaque rendu de la coquille réévaluerait `ChatView`.
+        #expect(action == makeAction())
+        let otherWindow = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores())
+        #expect(action != OpenSearchKeySettingsAction(owner: otherWindow, handler: {}))
+    }
+
     private static func makeArticle(title: String) -> DiscoverArticle {
         DiscoverArticle(
             topic: .tech,

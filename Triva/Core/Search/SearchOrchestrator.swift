@@ -48,6 +48,12 @@ nonisolated struct SearchArtifacts: Sendable {
     /// Sujet de recherche effectif : la reformulation autonome du classifieur
     /// (`SearchOrchestrator.effectiveQuery`, bug 1), ou la question.
     let searchQuery: String
+    /// Source web qui a fourni les sources web (RI1b) : `.searxng` sans chaîne
+    /// de repli, la source retenue par `WebSearchChain` sinon. `nil` sans
+    /// recherche web (route sans recherche, fichiers joints seuls). `var` avec
+    /// défaut, seule forme qui garde l'init memberwise compatible avec les
+    /// appels existants (dont les tests) : un ajout, pas une rupture.
+    var webSourceKind: WebSearchSourceKind? = nil
 }
 
 /// Résultat du pipeline (0.7) : le texte généré et ses `artifacts`.
@@ -238,9 +244,12 @@ nonisolated struct SearchPipelineConfiguration: Sendable, Equatable {
 /// 2. EN PARALLÈLE de la route, `WidgetExecutor` lance les widgets que la
 ///    classification demande (météo, calcul ; aucun sinon) ;
 /// 3. recherche web : l'action seedée interroge SearXNG avec la
-///    REFORMULATION (`effectiveQuery`, bug 1) ; une recherche à moteurs
-///    forcés (Reddit, académique) restée vide retombe sur la recherche web
-///    (bug 5) ; les médias demandés par l'appelant partent en même temps ;
+///    REFORMULATION (`effectiveQuery`, bug 1) — ou, quand l'envoi fournit la
+///    chaîne de repli (RI1b, `webSearchChain`), ses sources dans l'ordre :
+///    clé personnelle, SearXNG, recherche du fournisseur cloud, sources
+///    ouvertes ; une recherche à moteurs forcés (Reddit, académique) restée
+///    vide retombe sur la recherche web (bug 5) ; les médias demandés par
+///    l'appelant partent en même temps, sur SearXNG seul ;
 /// 4. `SourceRanker.rank` classe ces résultats (similarité + position +
 ///    domaine, une langue à la fois — décision 3 de Ben), les restreint aux
 ///    domaines fiables en mode Fiable, déduplique et borne au nombre de
@@ -309,6 +318,8 @@ nonisolated struct SearchOrchestrator: Sendable {
     private let mediaSearcher: any MediaSearching
     private let mediaGracePeriod: Duration
     private let maxAttachmentContextCharacters: Int
+    /// Chaîne de repli de la recherche web (RI1b), `nil` = SearXNG seul.
+    private let webSearchChain: WebSearchChain?
 
     /// Attente maximale des médias (1.6) une fois la recherche texte finie :
     /// au-delà, ils valent `.failed` et la réponse part sans eux. Les médias
@@ -372,6 +383,11 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///   - mediaSearcher: `nil` (défaut) -> `SearXNGMediaSearcher` sur le
     ///     même `failoverManager`. Ne sert que si l'appelant demande des médias.
     ///   - mediaGracePeriod: voir `defaultMediaGracePeriod`.
+    ///   - webSearchChain: chaîne de repli de la recherche web (RI1b) : clé
+    ///     personnelle, SearXNG, recherche du fournisseur cloud, sources
+    ///     ouvertes (`WebSearchChain`). Sert aux seules actions web du tour
+    ///     seedé ; les médias restent sur SearXNG (`mediaSearcher`). `nil`
+    ///     (défaut) : SearXNG seul, comportement d'avant la chaîne.
     ///
     /// Budget des fichiers joints : `min(UploadsSearchResultBuilder.defaultMaxTotalCharacters,
     /// configuration.maxScrapedContextCharacters)` — 3 000 caractères sous
@@ -394,10 +410,12 @@ nonisolated struct SearchOrchestrator: Sendable {
         clock: any Clock<Duration> = ContinuousClock(),
         widgets: [any SearchWidget]? = nil,
         mediaSearcher: (any MediaSearching)? = nil,
-        mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod
+        mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod,
+        webSearchChain: WebSearchChain? = nil
     ) {
         self.failoverManager = failoverManager
         self.aiProvider = aiProvider
+        self.webSearchChain = webSearchChain
         self.queryClassifier = queryClassifier ?? QueryClassifier(
             aiProvider: aiProvider,
             maxHistoryMessages: configuration.maxHistoryMessages,
@@ -553,6 +571,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         let searchPerformed: Bool
         let widgets: WidgetExecutionReport
         let media: MediaSearchResults
+        /// `SearchArtifacts.webSourceKind`.
+        let webSourceKind: WebSearchSourceKind?
     }
 
     /// Recherche complète puis prompt final, partagés par `answer` et
@@ -598,7 +618,8 @@ nonisolated struct SearchOrchestrator: Sendable {
             promptComplexity: writerComplexity,
             citableSourceCount: citableCount,
             searchPerformed: research.searchPerformed,
-            searchQuery: research.searchQuery
+            searchQuery: research.searchQuery,
+            webSourceKind: research.webSourceKind
         )
         return PreparedAnswer(prompt: prompt, artifacts: artifacts)
     }
@@ -649,7 +670,8 @@ nonisolated struct SearchOrchestrator: Sendable {
             searchQuery: searchQuery,
             searchPerformed: gathered.searchPerformed,
             widgets: widgets,
-            media: gathered.media
+            media: gathered.media,
+            webSourceKind: gathered.webSourceKind
         )
     }
 
@@ -664,8 +686,12 @@ nonisolated struct SearchOrchestrator: Sendable {
         let scrapedPages: [ScrapedPage]
         let media: MediaSearchResults
         let searchPerformed: Bool
+        /// Source web des `webSources`, `nil` hors recherche web.
+        let webSourceKind: WebSearchSourceKind?
 
-        static let noSearch = GatheredSearch(documents: [], webSources: [], scrapedPages: [], media: .notRequested, searchPerformed: false)
+        static let noSearch = GatheredSearch(
+            documents: [], webSources: [], scrapedPages: [], media: .notRequested, searchPerformed: false, webSourceKind: nil
+        )
     }
 
     /// Recherche web : sources classées, pages scrapées, et documents trouvés
@@ -674,6 +700,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         let documents: [SearXNGSearchResult]
         let sources: [SearXNGSearchResult]
         let scrapedPages: [ScrapedPage]
+        /// Source qui a fourni le tour seedé (RI1b).
+        let webSourceKind: WebSearchSourceKind
     }
 
     /// Mène la recherche d'une route. Aucune ne fait d'appel réseau hors
@@ -688,7 +716,9 @@ nonisolated struct SearchOrchestrator: Sendable {
         case .attachments:
             let uploads = await Self.uploadsAction(for: request.attachments, maxTotalCharacters: maxAttachmentContextCharacters)
             let documents = try await uploads?.search(queries: [searchQuery]) ?? []
-            return GatheredSearch(documents: documents, webSources: [], scrapedPages: [], media: .notRequested, searchPerformed: true)
+            return GatheredSearch(
+                documents: documents, webSources: [], scrapedPages: [], media: .notRequested, searchPerformed: true, webSourceKind: nil
+            )
         case .web(let flavor):
             // Décision (b) de Ben : les fichiers joints sont consultés à CHAQUE
             // question, dès le tour seedé — le mode Rapide n'a pas de planner —,
@@ -710,7 +740,8 @@ nonisolated struct SearchOrchestrator: Sendable {
                 webSources: research.sources,
                 scrapedPages: research.scrapedPages,
                 media: media,
-                searchPerformed: true
+                searchPerformed: true,
+                webSourceKind: research.webSourceKind
             )
         }
     }
@@ -867,10 +898,10 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///    `pagesBackedBySources` : invariant des citations garanti en un
     ///    seul point, quelle que soit l'origine d'une page.
     private func webResearch(flavor: WebSearchFlavor, uploads: UploadsSearchAction?, searchQuery: String) async throws -> WebResearch {
-        let output = try await seededSearch(flavor: flavor, query: searchQuery)
+        let seeded = try await seededSearch(flavor: flavor, query: searchQuery)
         var searchResults: [SearXNGSearchResult] = []
         var seededPages: [ScrapedPage] = []
-        Self.accumulate(output, sources: &searchResults, scrapedPages: &seededPages)
+        Self.accumulate(seeded.output, sources: &searchResults, scrapedPages: &seededPages)
 
         // `searchResults` est encore dans l'ordre rendu par le moteur
         // (`accumulate` conserve l'ordre d'arrivée) : c'est le contrat
@@ -888,29 +919,19 @@ nonisolated struct SearchOrchestrator: Sendable {
 
         let harvest = try await runPlannerLoop(query: searchQuery, sources: sources, uploads: uploads)
         let pages = Self.pagesBackedBySources(seededPages + harvest.pages, sources: sources)
-        return WebResearch(documents: harvest.documents, sources: sources, scrapedPages: pages)
+        return WebResearch(documents: harvest.documents, sources: sources, scrapedPages: pages, webSourceKind: seeded.sourceKind)
     }
 
-    /// Tour seedé, avec le repli du bug 5 : une recherche à moteurs FORCÉS
-    /// restée vide est relancée une fois en recherche web, même requête
-    /// (la reformulation). Un moteur forcé bloqué ou suspendu par l'instance
-    /// fait répondre SearXNG en HTTP 200 `{"results": [], "unresponsive_engines": […]}` :
-    /// un succès pour `FailoverManager` — à raison, l'instance fonctionne —,
-    /// et la réponse partait sans aucune source, là où 0.7 interrogeait
-    /// toujours les moteurs par défaut. Une erreur, elle, remonte comme avant.
-    private func seededSearch(flavor: WebSearchFlavor, query: String) async throws -> SearchActionOutput {
-        let action = await flavor.action
-        let output = try await action.execute(query: query, urls: [], failoverManager: failoverManager, scrapeService: scrapeService)
-        guard Self.isEmptySearch(output), let fallback = await flavor.emptyResultFallback else {
-            return output
-        }
-        return try await fallback.execute(query: query, urls: [], failoverManager: failoverManager, scrapeService: scrapeService)
-    }
-
-    /// Vrai pour une recherche sans aucun résultat (et seulement une recherche).
-    static func isEmptySearch(_ output: SearchActionOutput) -> Bool {
-        if case .searchResults(let results) = output { return results.isEmpty }
-        return false
+    /// Tour seedé, avec le repli du bug 5 (sans chaîne) ou la chaîne de repli
+    /// de la recherche web (RI1b) : logique et documentation dans
+    /// `SearchOrchestrator+WebSearchChain.swift` (`seededWebSearch`).
+    private func seededSearch(flavor: WebSearchFlavor, query: String) async throws -> SeededWebSearch {
+        try await Self.seededWebSearch(
+            flavor: flavor,
+            query: query,
+            webSearchChain: webSearchChain,
+            failoverManager: failoverManager
+        )
     }
 
     /// Boucle planner bornée `2...maxIterations` (donc `maxIterations - 1`

@@ -97,7 +97,7 @@ struct SearXNGClientTests {
         let client = SearXNGClient(urlSession: Self.makeSession())
         let options = SearXNGSearchOptions(
             categories: ["general", "images"],
-            engines: ["google", "bing"],
+            engines: ["duckduckgo", "bing"],
             language: "fr",
             pageNumber: 2,
             timeRange: "month"
@@ -108,7 +108,7 @@ struct SearXNGClientTests {
         let url = try #require(capturedURL.value)
         let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         #expect(items.contains(URLQueryItem(name: "categories", value: "general,images")))
-        #expect(items.contains(URLQueryItem(name: "engines", value: "google,bing")))
+        #expect(items.contains(URLQueryItem(name: "engines", value: "duckduckgo,bing")))
         #expect(items.contains(URLQueryItem(name: "language", value: "fr")))
         #expect(items.contains(URLQueryItem(name: "pageno", value: "2")))
         #expect(items.contains(URLQueryItem(name: "time_range", value: "month")))

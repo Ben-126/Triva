@@ -9,45 +9,41 @@ import Foundation
 
 // MARK: - Sources à clé personnelle
 
-/// Les trois sources de recherche qui exigent une clé de l'utilisateur (BYOK recherche).
+/// Les deux sources de recherche qui exigent une clé de l'utilisateur (BYOK recherche).
+///
+/// Une troisième source, l'API de recherche programmable à deux valeurs (clé + identifiant de
+/// moteur), a été retirée le 2026-10-28 (décision de Ben) : fermée aux nouveaux clients, arrêt
+/// annoncé pour le 2027-01-01. Aucune clé n'a jamais pu en être enregistrée (aucun écran ne
+/// branchait encore `SearchKeyStore`) : rien à nettoyer dans le trousseau.
 ///
 /// `nonisolated` : donnée pure, utilisée aussi bien par les vues que par les providers.
 nonisolated enum BYOKSearchSource: String, Sendable, Equatable, CaseIterable {
     case brave
     case tavily
-    case google
 
-    /// ORDRE DE PRÉFÉRENCE quand plusieurs clés existent : Brave, puis Tavily, puis Google.
+    /// ORDRE DE PRÉFÉRENCE quand les deux clés existent : Brave, puis Tavily.
     ///
     /// Pourquoi cet ordre :
-    /// - Brave : index web indépendant, un seul champ à saisir, quota gratuit mensuel ;
+    /// - Brave : index web indépendant, quota gratuit mensuel, extraits bruts de la page ;
     /// - Tavily : conçu pour alimenter un LLM (extraits déjà nettoyés), mais l'offre gratuite
-    ///   est plus restreinte et un résultat y est un « extrait recomposé », pas un snippet brut ;
-    /// - Google : dernier, car il demande DEUX valeurs (clé + moteur « cx »), l'API n'est plus
-    ///   ouverte aux nouveaux clients et sa fermeture est annoncée pour le 2027-01-01.
-    ///   Voir `GoogleProgrammableSearchProvider`.
-    static let preferenceOrder: [BYOKSearchSource] = [.brave, .tavily, .google]
+    ///   est plus restreinte et un résultat y est un « extrait recomposé », pas un snippet brut.
+    static let preferenceOrder: [BYOKSearchSource] = [.brave, .tavily]
 
     /// Le `WebSearchSourceKind` correspondant, pour dire honnêtement d'où viennent les résultats.
     var kind: WebSearchSourceKind {
         switch self {
         case .brave: .braveSearch
         case .tavily: .tavily
-        case .google: .googleProgrammableSearch
         }
     }
 
     /// Libellé court pour les Réglages.
     var displayName: String { kind.displayName }
 
-    /// Vrai si la source exige un second identifiant en plus de la clé (le « cx » de Google).
-    var requiresEngineID: Bool { self == .google }
-
-    /// Identifiants de compte Keychain. Préfixe `search.` : aucune collision possible avec les
+    /// Identifiant de compte Keychain. Préfixe `search.` : aucune collision possible avec les
     /// comptes des clés IA (`claude`, `openai`… ou les identifiants de fournisseurs personnalisés),
     /// qui vivent de toute façon dans un AUTRE service Keychain (voir `SearchKeyStore.keychainService`).
     var keyAccount: String { "search.\(rawValue).apiKey" }
-    var engineIDAccount: String { "search.\(rawValue).engineID" }
 }
 
 // MARK: - Identifiants
@@ -86,8 +82,7 @@ nonisolated enum SearchKeyValidationOutcome: Sendable, Equatable {
 /// Test d'une clé par une requête minimale.
 ///
 /// Chaque test CONSOMME une requête du quota de l'utilisateur (un crédit Tavily, une requête
-/// Brave ou Google) : les Réglages doivent le déclencher à la demande, jamais en boucle ni à
-/// chaque frappe.
+/// Brave) : les Réglages doivent le déclencher à la demande, jamais en boucle ni à chaque frappe.
 nonisolated protocol SearchKeyValidating: Sendable {
     /// Lève uniquement des `WebSearchError` (et `CancellationError` si la tâche est annulée).
     func validateKey() async throws -> SearchKeyValidationOutcome
@@ -96,40 +91,28 @@ nonisolated protocol SearchKeyValidating: Sendable {
 /// Un provider de recherche qui sait aussi tester sa propre clé.
 typealias KeyedWebSearchProvider = WebSearchProviding & SearchKeyValidating
 
-/// Les valeurs saisies pour une source. Séparé du stockage : les Réglages peuvent TESTER une clé
+/// La clé saisie pour une source. Séparé du stockage : les Réglages peuvent TESTER une clé
 /// avant de l'enregistrer (`makeProvider(...).validateKey()`), sans toucher au Keychain.
 nonisolated struct SearchKeyCredentials: Sendable, Equatable, CustomStringConvertible {
     let source: BYOKSearchSource
+    /// Déjà débarrassée des espaces autour de la saisie (voir `SearchSecret`).
     let apiKey: SearchSecret
-    /// Identifiant du moteur Programmable Search (« cx »), Google uniquement. Public par nature
-    /// (il figure dans le code d'intégration d'une page web), mais rangé avec la clé.
-    let engineID: String?
 
-    init(source: BYOKSearchSource, apiKey: String, engineID: String? = nil) {
+    init(source: BYOKSearchSource, apiKey: String) {
         self.source = source
         self.apiKey = SearchSecret(apiKey)
-        let trimmedEngine = engineID?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.engineID = (trimmedEngine?.isEmpty ?? true) ? nil : trimmedEngine
-    }
-
-    /// Utilisable : une clé non vide, et un « cx » non vide pour Google.
-    var isComplete: Bool {
-        guard !apiKey.isEmpty else { return false }
-        return source.requiresEngineID ? engineID != nil : true
     }
 
     var description: String { "SearchKeyCredentials(\(source.rawValue), clé masquée)" }
 
-    /// Construit le provider de la source. Un « cx » manquant pour Google donne un provider qui
-    /// lèvera `.missingKey` à la recherche : pas de crash sur une saisie incomplète.
+    /// Construit le provider de la source. Une clé vide donne un provider qui lèvera
+    /// `.missingKey` à la recherche, sans envoyer de requête : pas de crash sur une saisie vide.
     func makeProvider(requester: any HTTPDataRequesting = URLSessionDataRequester()) -> any KeyedWebSearchProvider {
         switch source {
         case .brave:
             BraveSearchProvider(apiKey: apiKey.value, requester: requester)
         case .tavily:
             TavilySearchProvider(apiKey: apiKey.value, requester: requester)
-        case .google:
-            GoogleProgrammableSearchProvider(apiKey: apiKey.value, engineID: engineID ?? "", requester: requester)
         }
     }
 }
@@ -138,14 +121,15 @@ nonisolated struct SearchKeyCredentials: Sendable, Equatable, CustomStringConver
 
 /// Erreurs de stockage. Aucune valeur secrète dans ces cas.
 enum SearchKeyStoreError: Error, Sendable, Equatable {
-    /// Clé vide (ou « cx » manquant pour Google) : rien n'est enregistré.
-    case incompleteCredentials
+    /// Clé vide (ou faite seulement d'espaces) : rien n'est enregistré. Le cas plus général
+    /// « il manque une valeur » a disparu avec la seule source qui en demandait deux.
+    case emptyKey
     /// Le Keychain a refusé l'opération. Jamais avalée : l'appelant l'affiche.
     case keychainFailure
 
     var userFacingMessage: String {
         switch self {
-        case .incompleteCredentials: "Il manque une valeur : renseigne la clé (et l'identifiant du moteur pour Google)."
+        case .emptyKey: "Renseigne la clé avant de l'enregistrer."
         case .keychainFailure: "Impossible d'accéder au trousseau de l'appareil."
         }
     }
@@ -164,7 +148,8 @@ enum SearchKeyStoreError: Error, Sendable, Equatable {
 /// préfixe `search.` des comptes : supprimer une clé de recherche ne peut jamais toucher une clé
 /// IA, et inversement (par exemple un futur « tout effacer » côté IA).
 ///
-/// Google compte comme CONFIGURÉ seulement si la clé ET le « cx » sont présents.
+/// Une source compte comme CONFIGURÉE dès que sa clé enregistrée est non vide : une seule valeur
+/// par source, donc ni demi-configuration ni retour arrière à gérer à l'écriture.
 struct SearchKeyStore {
     static let keychainService = "com.benpodrojsky.Triva.searchBYOK"
 
@@ -181,51 +166,38 @@ struct SearchKeyStore {
 
     // MARK: Écriture
 
-    /// Enregistre (ou remplace) les identifiants d'une source. Les espaces autour de la saisie
-    /// sont retirés (un collage depuis un tableau de bord en apporte souvent).
+    /// Enregistre (ou remplace) la clé d'une source. Les espaces autour de la saisie sont
+    /// retirés (un collage depuis un tableau de bord en apporte souvent).
     func save(_ credentials: SearchKeyCredentials) throws {
-        guard credentials.isComplete else { throw SearchKeyStoreError.incompleteCredentials }
-        let source = credentials.source
+        guard !credentials.apiKey.isEmpty else { throw SearchKeyStoreError.emptyKey }
         do {
-            try keyStore.save(apiKey: credentials.apiKey.value, account: source.keyAccount)
+            try keyStore.save(apiKey: credentials.apiKey.value, account: credentials.source.keyAccount)
         } catch {
-            throw SearchKeyStoreError.keychainFailure
-        }
-        guard source.requiresEngineID, let engineID = credentials.engineID else { return }
-        do {
-            try keyStore.save(apiKey: engineID, account: source.engineIDAccount)
-        } catch {
-            // Pas de demi-configuration : on retire la clé qu'on vient d'écrire (au mieux).
-            try? keyStore.deleteAPIKey(account: source.keyAccount)
             throw SearchKeyStoreError.keychainFailure
         }
     }
 
-    /// Supprime tout ce qui concerne une source (clé et, pour Google, « cx »).
+    /// Supprime la clé d'une source. Supprimer une clé absente n'est pas une erreur.
     func delete(_ source: BYOKSearchSource) throws {
-        var failed = false
-        for account in [source.keyAccount, source.engineIDAccount] {
-            do { try keyStore.deleteAPIKey(account: account) } catch { failed = true }
+        do {
+            try keyStore.deleteAPIKey(account: source.keyAccount)
+        } catch {
+            throw SearchKeyStoreError.keychainFailure
         }
-        if failed { throw SearchKeyStoreError.keychainFailure }
     }
 
     // MARK: Lecture
 
-    /// Les identifiants d'une source, ou `nil` si elle n'est pas (entièrement) configurée.
+    /// La clé d'une source, ou `nil` si elle n'est pas configurée (absente ou vide).
     func credentials(for source: BYOKSearchSource) throws -> SearchKeyCredentials? {
         let apiKey: String?
-        var engineID: String?
         do {
             apiKey = try keyStore.apiKey(account: source.keyAccount)
-            if source.requiresEngineID {
-                engineID = try keyStore.apiKey(account: source.engineIDAccount)
-            }
         } catch {
             throw SearchKeyStoreError.keychainFailure
         }
-        let credentials = SearchKeyCredentials(source: source, apiKey: apiKey ?? "", engineID: engineID)
-        return credentials.isComplete ? credentials : nil
+        let credentials = SearchKeyCredentials(source: source, apiKey: apiKey ?? "")
+        return credentials.apiKey.isEmpty ? nil : credentials
     }
 
     func isConfigured(_ source: BYOKSearchSource) throws -> Bool {
@@ -262,14 +234,16 @@ struct SearchKeyStore {
     }
 }
 
-// MARK: - Socle HTTP commun aux trois providers
+// MARK: - Socle HTTP commun aux sources de recherche
 
-/// Fonctions partagées par Brave, Tavily et Google. Réunies ici (et non dans un fichier à part)
-/// parce que la mission R1 est bornée à quatre fichiers sources ; rien n'empêche de les
-/// déplacer dans leur propre fichier à l'intégration.
+/// Fonctions partagées par les sources de recherche : Brave et Tavily (clé personnelle), mais
+/// aussi les sources ouvertes (`OpenSourceSearchChain`) et la recherche des fournisseurs IA
+/// (`CloudWebSearchProvider`). Réunies ici (et non dans un fichier à part) parce que la mission
+/// R1 était bornée à quatre fichiers sources ; rien n'empêche de les déplacer dans leur propre
+/// fichier.
 ///
 /// Réutilise `HTTPDataRequesting` (déjà utilisé par `CloudModelListService`) : `URLFetching` ne
-/// sait ni envoyer d'en-têtes ni poster un corps, or les trois API veulent une clé en en-tête.
+/// sait ni envoyer d'en-têtes ni poster un corps, or les API à clé la veulent en en-tête.
 nonisolated enum BYOKSearchHTTP {
     /// Délai d'inactivité d'une requête, aligné sur `SearXNGClient` (10 s).
     static let timeout: TimeInterval = 10
@@ -280,8 +254,8 @@ nonisolated enum BYOKSearchHTTP {
     ///
     /// CLÉ JAMAIS DIVULGUÉE : l'erreur `URLError` d'origine n'est JAMAIS relayée ni encapsulée. Elle
     /// embarque `failingURL` (et `NSURLErrorFailingURLStringErrorKey`), c'est-à-dire l'URL complète
-    /// avec ses paramètres. Même si aucun des trois providers ne met la clé dans l'URL (en-têtes),
-    /// on garde la règle : seul un `WebSearchError` à message fixe sort d'ici.
+    /// avec ses paramètres. Même si aucun provider à clé ne la met dans l'URL (en-têtes), on
+    /// garde la règle : seul un `WebSearchError` à message fixe sort d'ici.
     ///
     /// ANNULATION : une annulation (`CancellationError` ou `URLError.cancelled`) ressort en
     /// `CancellationError`, comme `CloudModelListService` et `SearchOrchestrator.isCancellation`.
@@ -315,8 +289,8 @@ nonisolated enum BYOKSearchHTTP {
         return data
     }
 
-    /// Correspondance statut HTTP -> erreur, valable pour les trois sources. Chaque provider
-    /// l'affine avec ses codes propres (422 Brave, 432/433 Tavily, motifs Google).
+    /// Correspondance statut HTTP -> erreur, valable pour toutes les sources. Chaque provider
+    /// l'affine avec ses codes propres (422 Brave, 432/433 Tavily).
     static func defaultError(forStatus status: Int) -> WebSearchError {
         switch status {
         case 401, 403: .unauthorized

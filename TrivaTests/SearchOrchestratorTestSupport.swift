@@ -12,7 +12,8 @@ extension SearchOrchestrator {
     /// Init historique, réglage par réglage : ses défauts SONT le préréglage
     /// `.cloud`. Réservé aux tests (déplacé hors de l'app le 2026-11-01) : l'app
     /// passe toujours par `init(…configuration:…)`, avec le budget du moteur actif.
-    /// `writerComplexity` y règle aussi le classifieur.
+    /// `writerComplexity` y règle aussi le classifieur. `webSearchChain` : chaîne
+    /// de repli de la recherche web (RI1b), `nil` = SearXNG seul.
     @MainActor
     init(
         failoverManager: FailoverManager,
@@ -32,7 +33,8 @@ extension SearchOrchestrator {
         clock: any Clock<Duration> = ContinuousClock(),
         widgets: [any SearchWidget]? = nil,
         mediaSearcher: (any MediaSearching)? = nil,
-        mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod
+        mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod,
+        webSearchChain: WebSearchChain? = nil
     ) {
         let configuration = SearchPipelineConfiguration(
             promptComplexity: writerComplexity,
@@ -55,7 +57,8 @@ extension SearchOrchestrator {
             clock: clock,
             widgets: widgets,
             mediaSearcher: mediaSearcher,
-            mediaGracePeriod: mediaGracePeriod
+            mediaGracePeriod: mediaGracePeriod,
+            webSearchChain: webSearchChain
         )
     }
 }

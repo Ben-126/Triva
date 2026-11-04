@@ -27,7 +27,10 @@ import SwiftData
 /// - historique et favoris : `revision` est un compteur PAR INSTANCE — deux
 ///   instances, et la Bibliothèque ne voit plus les écritures du chat ;
 /// - instances SearXNG : une liste modifiée dans les Réglages n'atteindrait
-///   jamais la recherche des autres fenêtres.
+///   jamais la recherche des autres fenêtres ;
+/// - fiabilité et annuaire SearXNG (R3) : une mémoire par fenêtre ferait
+///   réapprendre à chacune quelles instances sont mortes, en payant leurs
+///   délais une fois de plus.
 ///
 /// Un `struct` de références immuables plutôt qu'une classe observable : rien
 /// ici ne change après la construction. Ce sont les stores qui changent, et ils
@@ -44,6 +47,17 @@ struct TrivaSharedStores {
     let cloudSelection: CloudProviderSelectionStore
     let customProviders: CustomProviderStore
     let searchInstances: CustomInstanceStore
+    /// Mémoire de fiabilité des instances SearXNG (R3) : ce que chaque recherche
+    /// a appris de chaque instance (latence, motif du dernier échec, mise de
+    /// côté). La lisent et la nourrissent tous les `FailoverManager` de l'app
+    /// (une session par fenêtre, Découvrir, l'entretien de fond) ; celle de
+    /// `live()` est persistée, ce savoir survit donc au redémarrage.
+    let searchReliability: InstanceReliabilityStore
+    /// Instances vérifiées de l'annuaire searx.space (R3), rafraîchies en
+    /// tâche de fond au plus une fois par jour (`SearXNGMaintenance`). Elles
+    /// complètent la liste du bundle, ne la remplacent jamais : voir
+    /// `searXNGInstances`.
+    let searchDirectory: SearXNGDirectoryStore
     let chatHistory: ChatHistoryStore
     let favorites: FavoritesStore
     /// Trousseau des clés BYOK : le même pour les fournisseurs personnalisés
@@ -72,12 +86,22 @@ struct TrivaSharedStores {
     /// propre clé, sans recouvrement possible. Les tests passent un domaine
     /// jetable, un conteneur en mémoire et un faux trousseau ; l'app passe par
     /// `live()`.
+    ///
+    /// - `searchReliability` et `searchDirectory` sont EN MÉMOIRE par défaut :
+    ///   tests et aperçus ne lisent ni n'écrivent les mesures réelles de
+    ///   l'appareil (une mesure persistée ferait dépendre un test de la machine
+    ///   qui le lance). Seul `live()` passe les stores persistés `.shared` — et
+    ///   surtout pas un second store construit sur `UserDefaults.standard` : deux
+    ///   stores sur la même clé, chacun avec sa copie en mémoire, écraseraient
+    ///   mutuellement leurs écritures.
     init(
         userDefaults: UserDefaults,
         container: ModelContainer,
         isHistoryStorageVolatile: Bool,
         searchInstances: CustomInstanceStore,
-        keyStore: any APIKeyStoring
+        keyStore: any APIKeyStoring,
+        searchReliability: InstanceReliabilityStore = InstanceReliabilityStore(),
+        searchDirectory: SearXNGDirectoryStore = SearXNGDirectoryStore()
     ) {
         let cloudSelection = CloudProviderSelectionStore(userDefaults: userDefaults)
         self.engineSettings = AIEngineSettingsStore(userDefaults: userDefaults)
@@ -89,6 +113,8 @@ struct TrivaSharedStores {
             keyStore: keyStore
         )
         self.searchInstances = searchInstances
+        self.searchReliability = searchReliability
+        self.searchDirectory = searchDirectory
         self.chatHistory = ChatHistoryStore(container: container)
         self.favorites = FavoritesStore(container: container)
         self.keyStore = keyStore
@@ -98,7 +124,8 @@ struct TrivaSharedStores {
     /// Les stores réels : `UserDefaults.standard`, base SwiftData sur disque
     /// (`TrivaModelContainer.shared`, avec son repli en mémoire si le fichier
     /// est illisible), trousseau réel, liste SearXNG du bundle plus les
-    /// modifications de l'utilisateur.
+    /// modifications de l'utilisateur, mémoire de fiabilité et annuaire SearXNG
+    /// persistés (les instances `.shared`, uniques dans l'app).
     ///
     /// La base est donc ouverte dès le lancement, et non plus à la première
     /// visite de la Bibliothèque : quelques millisecondes, et le chat en a de
@@ -109,7 +136,9 @@ struct TrivaSharedStores {
             container: TrivaModelContainer.shared,
             isHistoryStorageVolatile: TrivaModelContainer.isUsingVolatileFallback,
             searchInstances: CustomInstanceStore(),
-            keyStore: KeychainAPIKeyStore()
+            keyStore: KeychainAPIKeyStore(),
+            searchReliability: .shared,
+            searchDirectory: .shared
         )
     }
 
@@ -154,12 +183,116 @@ struct TrivaSharedStores {
     }
 }
 
+// MARK: - Recherche SearXNG fiabilisée (R3)
+
+extension TrivaSharedStores {
+    /// Liste d'instances SearXNG réellement essayée par la Recherche, Découvrir
+    /// et l'entretien de fond, dans l'ordre de priorité (que `FailoverManager`
+    /// affine ensuite par fiabilité mesurée) :
+    /// 1. les instances ajoutées par l'utilisateur (Réglages > Recherche > Avancé) ;
+    /// 2. la liste du bundle, dans l'ordre du fichier — elle peut commencer par
+    ///    une instance personnelle, qui doit rester devant toute instance
+    ///    publique ;
+    /// 3. les instances vérifiées de l'annuaire searx.space qui n'y figurent pas
+    ///    déjà.
+    ///
+    /// C'est `PublicInstanceList.loadMerged()` (bundle puis annuaire) avec les
+    /// personnalisations de l'utilisateur par-dessus, sans relire le fichier du
+    /// bundle à chaque recherche (`CustomInstanceStore` l'a lu au lancement).
+    /// Relue à chaque appel : un rafraîchissement de l'annuaire terminé en tâche
+    /// de fond est pris en compte à la recherche suivante, sans relancer l'app.
+    var searXNGInstances: [URL] {
+        Self.searXNGInstances(
+            bundled: searchInstances.defaultInstances,
+            directory: searchDirectory.refreshedInstances,
+            overrides: searchInstances.overrides
+        )
+    }
+
+    /// Règle de composition de `searXNGInstances`, sans store : partagée avec
+    /// le repli autonome de Découvrir (`DiscoverViewModel.standalone`), qui n'a
+    /// pas de session à qui demander la liste.
+    ///
+    /// Les masquages de l'utilisateur valent AUSSI pour l'annuaire : une
+    /// instance retirée de la liste ne revient pas par lui. Et si l'utilisateur
+    /// a masqué TOUTES les instances par défaut pour ne garder que les siennes,
+    /// l'annuaire n'est pas ajouté du tout : il a dit ne vouloir aucune instance
+    /// publique choisie pour lui, l'annuaire ne doit pas en réintroduire en
+    /// douce (choix de confidentialité soumis à Ben, rapport RI1a).
+    ///
+    /// Liste du bundle illisible (`bundled` vide, défaut d'empaquetage déjà
+    /// signalé par les Réglages) : l'annuaire est ajouté quand même, la
+    /// recherche fonctionne plutôt que d'échouer faute d'instance.
+    nonisolated static func searXNGInstances(
+        bundled: [URL],
+        directory: [URL],
+        overrides: SearXNGInstanceOverrides
+    ) -> [URL] {
+        let userHidEveryDefault = !bundled.isEmpty && overrides.visibleDefaults(bundled).isEmpty
+        let extras = userHidEveryDefault ? [] : directory
+        return overrides.effectiveInstances(defaults: PublicInstanceList.merging(bundled, with: extras))
+    }
+
+    /// `FailoverManager` neuf sur `instances`, branché sur la mémoire de
+    /// fiabilité de l'app. Point de construction des managers de l'app : un
+    /// manager construit sans elle repartirait d'une mémoire vide, en mémoire
+    /// seulement, et paierait à nouveau le délai de chaque instance morte.
+    func makeFailoverManager(instances: [URL]) -> FailoverManager {
+        FailoverManager(instances: instances, reliability: searchReliability)
+    }
+
+    /// Entretien de fond (`SearXNGMaintenance`) branché sur CES stores : le
+    /// rafraîchisseur écrit dans `searchDirectory` (et non dans son défaut
+    /// `.shared` : aperçus et tests ne touchent jamais l'annuaire réel), la
+    /// re-sonde lit et nourrit `searchReliability`.
+    ///
+    /// Le rafraîchisseur ne reçoit PAS `searchReliability` (son paramètre
+    /// `reliability` reste `nil`), volontairement : sinon, chaque instance de
+    /// l'annuaire validée par la sonde serait enregistrée comme ayant répondu,
+    /// donc « bonne », et passerait devant une instance personnelle encore
+    /// « neutre » (jamais essayée : premier lancement, mesure effacée). Une
+    /// instance qui répond étant gardée en cache par le `FailoverManager`,
+    /// l'instance personnelle ne serait alors plus jamais essayée tant que
+    /// l'instance publique répond. Sans ce lien, les instances de l'annuaire
+    /// entrent « neutres », APRÈS la liste du bundle, et seule une vraie
+    /// recherche (ou la re-sonde) les fait monter.
+    ///
+    /// - Parameters: `requester` et `prober` : réseau réel par défaut, faux
+    ///   dans les tests (aucun appel réseau depuis un test).
+    func makeSearXNGMaintenance(
+        requester: any HTTPDataRequesting = URLSessionDataRequester(),
+        prober: any InstanceProbing = SearXNGInstanceHealthProbe()
+    ) -> SearXNGMaintenance {
+        SearXNGMaintenance(
+            refresher: SearXNGDirectoryRefresher(requester: requester, prober: prober, store: searchDirectory),
+            prober: prober,
+            makeFailoverManager: { [self] in makeFailoverManager(instances: searXNGInstances) }
+        )
+    }
+}
+
 @main
 struct TrivaApp: App {
     /// Créés une seule fois pour toute la durée de vie de l'app et partagés par
     /// toutes les fenêtres (voir `TrivaSharedStores`). `@State` : SwiftUI en
     /// garde la propriété pour toute la vie de l'app.
-    @State private var stores = TrivaSharedStores.live()
+    @State private var stores: TrivaSharedStores
+    /// Entretien de fond de la liste SearXNG (annuaire, re-sonde), UN pour
+    /// toute l'app : c'est lui qui garantit un seul passage à la fois, quel
+    /// que soit le nombre de fenêtres.
+    @State private var searXNGMaintenance: SearXNGMaintenance
+    /// Lue au niveau de l'`App`, la phase est celle de l'ENSEMBLE des scènes :
+    /// `.active` dès qu'une fenêtre de l'app est au premier plan.
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Initialiseur explicite plutôt que deux valeurs par défaut : l'entretien
+    /// doit être branché sur les MÊMES stores que les fenêtres, et une valeur
+    /// par défaut de propriété ne peut pas en lire une autre.
+    init() {
+        let stores = TrivaSharedStores.live()
+        _stores = State(initialValue: stores)
+        _searXNGMaintenance = State(initialValue: stores.makeSearXNGMaintenance())
+    }
 
     var body: some Scene {
         // `TrivaRootView` est la racine depuis la coquille de navigation V1 :
@@ -168,6 +301,17 @@ struct TrivaApp: App {
         // garde son nom mais n'héberge plus que la destination "Recherche".
         WindowGroup {
             TrivaRootView(stores: stores)
+        }
+        // SearXNG fiabilisé (R3) : à chaque passage au premier plan, lancement
+        // compris (`initial: true`), rafraîchit l'annuaire s'il est dû puis
+        // re-sonde les instances écartées dont le délai a expiré — en tâche de
+        // fond, jamais bloquant (voir `SearXNGMaintenance`). Les tests
+        // unitaires tournant DANS l'app (hôte de test), ce passage a lieu aussi
+        // à leur lancement : même effet qu'une ouverture de l'app, limité à un
+        // téléchargement de l'annuaire par jour.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            guard phase == .active else { return }
+            searXNGMaintenance.sceneDidBecomeActive()
         }
 
         // Fenêtre Réglages macOS (⌘,) — DÉCISION I4a : OUI.

@@ -20,7 +20,7 @@ import Foundation
 /// Les moteurs sont forcés plutôt que la catégorie `science` / `social media` parce que c'est
 /// ce que fait le web (parité), et qu'une catégorie dépend de la configuration de chaque
 /// instance. Écart connu : une instance qui a désactivé ces moteurs renvoie peu ou pas de
-/// résultat ; l'orchestrateur retombe alors sur la source suivante de la chaîne.
+/// résultat ; `WebSearchChain` retombe alors sur la source suivante.
 ///
 /// - `language` : transmis tel quel (« fr », « en »), après nettoyage ; SearXNG accepte le code
 ///   court.
@@ -33,7 +33,7 @@ import Foundation
 /// - toutes ont échoué -> `.timeout` si TOUTES ont expiré, `.rateLimited` si TOUTES ont répondu
 ///   429, sinon `.unavailable`. `.invalidResponse` n'est pas utilisé : « aucune instance ne sert
 ///   du JSON » est, pour l'utilisateur, une source indisponible ;
-/// - annulation -> `CancellationError` (jamais convertie, sinon l'orchestrateur passerait à
+/// - annulation -> `CancellationError` (jamais convertie, sinon `WebSearchChain` passerait à
 ///   la source suivante alors que l'utilisateur vient d'appuyer sur Stop).
 ///
 /// CONCURRENCE : `nonisolated` + `@concurrent` ; `FailoverManager` est un acteur, donc `Sendable`.

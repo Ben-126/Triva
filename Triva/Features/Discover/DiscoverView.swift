@@ -85,7 +85,15 @@ final class DiscoverViewModel {
     /// et sur Mac toutes les fenêtres partagent son état, sujet sélectionné
     /// compris.
     static let standalone = DiscoverViewModel(fetchContent: {
-        let failoverManager = FailoverManager(instances: try PublicInstanceList.load())
+        // Faute de session à qui la demander, même liste et même mémoire de
+        // fiabilité que la session, relues dans les stores persistés de l'app
+        // (voir `TrivaSharedStores.searXNGInstances`).
+        let instances = TrivaSharedStores.searXNGInstances(
+            bundled: try PublicInstanceList.load(),
+            directory: SearXNGDirectoryStore.shared.refreshedInstances,
+            overrides: SearXNGInstanceOverrides.load(from: .standard)
+        )
+        let failoverManager = FailoverManager(instances: instances, reliability: .shared)
         return await DiscoverService(failoverManager: failoverManager).fetchTrending()
     })
 

@@ -323,6 +323,11 @@ private struct TrivaRootShell: View {
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
+                // Lue par `ChatView`, sous `EngineStatusView`, qui n'a pas à
+                // la connaître (voir `EnvironmentValues.openSearchKeySettings`).
+                .environment(\.openSearchKeySettings, OpenSearchKeySettingsAction(owner: coordinator) {
+                    coordinator.showSearchKeys()
+                })
             }
         case .discover:
             // UN modèle par fenêtre (celui du coordinateur), chargé à travers
@@ -356,7 +361,8 @@ private struct TrivaRootShell: View {
                 mlxSelectionStore: stores.mlxSelection,
                 cloudSelectionStore: stores.cloudSelection,
                 customProviderStore: stores.customProviders,
-                instanceStore: stores.searchInstances
+                instanceStore: stores.searchInstances,
+                navigationPath: $coordinator.settingsPath
             )
         }
     }

@@ -8,8 +8,9 @@
 import SwiftUI
 
 /// Écran Réglages (1.15) : le moteur IA actif et son changement, les clés API
-/// BYOK et le choix fournisseur/modèle, l'espace occupé par les modèles MLX,
-/// et — repliée par défaut, section « Avancé » — la liste d'instances SearXNG.
+/// BYOK et le choix fournisseur/modèle, les clés de recherche personnelles et
+/// — repliée par défaut, groupe « Avancé » — la liste d'instances SearXNG,
+/// l'espace occupé par les modèles MLX.
 ///
 /// Composants système (`Form`, lignes de navigation) plutôt que du verre :
 /// c'est l'écran où l'app doit ressembler au reste du système. Seule
@@ -30,6 +31,12 @@ import SwiftUI
 /// - `AIEngineSelectionView` est présentée en feuille, enveloppée d'une pile
 ///   qui lui ajoute le bouton « Annuler » qu'elle n'a pas (écran conçu pour
 ///   l'accueil, où l'on ne peut pas renoncer).
+///
+/// La pile de navigation peut être INJECTÉE (`navigationPath`) : le chat ouvre
+/// ainsi directement l'écran des clés de recherche
+/// (`TrivaRootCoordinator.showSearchKeys()`). Sans injection, la pile est
+/// locale : fenêtre Réglages macOS, qui n'appartient à aucune fenêtre
+/// principale, et aperçus.
 ///
 /// Les stores sont INJECTÉS : `TrivaApp` les crée une seule fois et les
 /// partage entre fenêtres (macOS). Les valeurs par défaut ne servent qu'aux
@@ -60,6 +67,9 @@ struct SettingsView: View {
     /// la coquille sous elle, en pleine animation.
     @State private var pendingEngine: AIEngineOption?
     @State private var isAdvancedExpanded = false
+    /// Pile injectée, `nil` : `localNavigationPath`. Voir le commentaire de tête.
+    private let injectedNavigationPath: Binding<[SettingsRoute]>?
+    @State private var localNavigationPath: [SettingsRoute] = []
 
     init(
         selectedEngine: AIEngineOption? = nil,
@@ -67,7 +77,8 @@ struct SettingsView: View {
         mlxSelectionStore: MLXModelSelectionStore = MLXModelSelectionStore(),
         cloudSelectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore(),
         customProviderStore: CustomProviderStore = CustomProviderStore(),
-        instanceStore: CustomInstanceStore = CustomInstanceStore()
+        instanceStore: CustomInstanceStore = CustomInstanceStore(),
+        navigationPath: Binding<[SettingsRoute]>? = nil
     ) {
         self.selectedEngine = selectedEngine
         self.onSelectEngine = onSelectEngine
@@ -75,17 +86,18 @@ struct SettingsView: View {
         _cloudSelectionStore = State(initialValue: cloudSelectionStore)
         _customProviderStore = State(initialValue: customProviderStore)
         _instanceStore = State(initialValue: instanceStore)
+        injectedNavigationPath = navigationPath
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: injectedNavigationPath ?? $localNavigationPath) {
             Form {
                 if let selectedEngine {
                     engineSection(for: selectedEngine)
                 }
                 apiKeySection
+                searchSection
                 storageSection
-                advancedSection
             }
             .formStyle(.grouped)
             .navigationTitle("Réglages")
@@ -129,17 +141,20 @@ struct SettingsView: View {
         }
     }
 
-    private var storageSection: some View {
-        Section("Stockage") {
-            NavigationLink("Modèles MLX", value: SettingsRoute.mlxStorage)
-        }
-    }
-
-    /// Repliée par défaut : la liste d'instances ne concerne que ceux qui
+    /// Tout ce qui décide où partent les recherches, quel que soit le moteur IA.
+    ///
+    /// Les clés de recherche en premier : c'est le réglage qui change quelque
+    /// chose pour la plupart des gens, et l'invitation du chat y mène. La liste
+    /// d'instances reste repliée par défaut : elle ne concerne que ceux qui
     /// hébergent leur propre instance. La valeur affichée dit d'un coup d'œil
-    /// si la liste a été modifiée.
-    private var advancedSection: some View {
-        Section {
+    /// si elle a été modifiée.
+    ///
+    /// Pas d'état des clés sur la ligne : il faudrait lire le trousseau à
+    /// chaque rendu (le piège décrit dans `BYOKProvidersView`). L'écran poussé
+    /// le dit, source par source.
+    private var searchSection: some View {
+        Section("Recherche") {
+            NavigationLink("Clés de recherche", value: SettingsRoute.searchKeys)
             DisclosureGroup("Avancé", isExpanded: $isAdvancedExpanded) {
                 NavigationLink(value: SettingsRoute.searxngInstances) {
                     LabeledContent(
@@ -148,6 +163,12 @@ struct SettingsView: View {
                     )
                 }
             }
+        }
+    }
+
+    private var storageSection: some View {
+        Section("Stockage") {
+            NavigationLink("Modèles MLX", value: SettingsRoute.mlxStorage)
         }
     }
 
@@ -165,6 +186,8 @@ struct SettingsView: View {
             MLXStorageView(mlxSelectionStore: mlxSelectionStore, activeEngine: selectedEngine)
         case .searxngInstances:
             SearXNGInstancesView(store: instanceStore)
+        case .searchKeys:
+            SearchKeysView()
         }
     }
 
@@ -246,16 +269,20 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Types internes à l'écran
+// MARK: - Destinations
 
 /// Destinations poussées dans la pile des Réglages. `nonisolated` : sous
 /// `-default-isolation=MainActor`, un `Hashable` hérité du main actor serait
 /// une conformance isolée, qu'une API générique de navigation peut refuser.
-private nonisolated enum SettingsRoute: Hashable {
+/// Interne, et non plus privé : `TrivaRootCoordinator` en détient la pile.
+nonisolated enum SettingsRoute: Hashable {
     case cloudModelPicker
     case mlxStorage
     case searxngInstances
+    case searchKeys
 }
+
+// MARK: - Types internes à l'écran
 
 /// Feuilles présentées par les Réglages (une à la fois).
 private nonisolated enum SettingsSheet: String, Identifiable {

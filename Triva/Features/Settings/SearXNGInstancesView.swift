@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Écran « Instances SearXNG » (1.15, section « Avancé » des Réglages) : voir
+/// Écran « Instances SearXNG » (1.15, Réglages > Recherche > Avancé) : voir
 /// et éditer la liste d'instances que la recherche essaie, dans l'ordre.
 ///
 /// Toute la logique vit dans `CustomInstanceStore` (validation, surcouche

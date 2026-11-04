@@ -14,8 +14,7 @@ import Foundation
 ///
 /// Cette fabrique est volontairement PURE : elle dit quelles sources essayer et dans quel
 /// ordre, rien de plus. La boucle de repli (essayer la suivante sur `.unavailable`,
-/// `.rateLimited`, `.timeout`…, s'arrêter sur une annulation) appartient à l'orchestrateur,
-/// qui la branche à l'intégration.
+/// `.rateLimited`, `.timeout`…, s'arrêter sur une annulation) appartient à `WebSearchChain`.
 ///
 /// ORDRES CHOISIS (et pourquoi)
 /// - `general` : Wikipédia puis Marginalia. Wikipédia est la plus stable (infrastructure

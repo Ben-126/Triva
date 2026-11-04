@@ -165,6 +165,11 @@ final class SearchSession {
     /// longtemps que la conversation, pas que la vue qui l'affiche.
     let draft: SearchDraft
 
+    /// Clés de recherche personnelles (Brave, Tavily), lues à chaque envoi par
+    /// `resolveWebSearchChain(failoverManager:)`. Service Keychain SÉPARÉ de
+    /// `stores.keyStore` (clés IA, `SearchKeyStore.keychainService`).
+    let searchKeyStore: SearchKeyStore
+
     /// Erreur de disponibilité d'Apple Intelligence (voir
     /// `refreshAppleIntelligenceAvailabilityIfNeeded`).
     private(set) var appleIntelligenceError: AppleIntelligenceError?
@@ -190,17 +195,25 @@ final class SearchSession {
     /// `FailoverManager` de la session, avec la liste d'instances qui l'a
     /// construit. En recréer un à chaque recherche jetterait son cache de
     /// dernière instance fonctionnelle ; le garder quand la liste a changé
-    /// (Réglages > Avancé) ferait ignorer la modification jusqu'au prochain
-    /// lancement.
+    /// (Réglages > Recherche > Avancé, ou annuaire searx.space rafraîchi en tâche de fond)
+    /// ferait ignorer la modification jusqu'au prochain lancement.
     @ObservationIgnored private var cachedFailoverManager: CachedFailoverManager?
 
-    /// Pas de valeurs par défaut : seule la coquille de `TrivaRootView` crée
-    /// une session, avec les stores de l'app ; les aperçus et les tests passent
-    /// leurs propres stores (`TrivaSharedStores.preview()`, ou un jeu jetable).
-    init(engine: AIEngineOption, stores: TrivaSharedStores) {
+    /// Pas de valeurs par défaut pour le moteur et les stores : seule la
+    /// coquille de `TrivaRootView` crée une session, avec les stores de l'app ;
+    /// les aperçus et les tests passent leurs propres stores
+    /// (`TrivaSharedStores.preview()`, ou un jeu jetable).
+    ///
+    /// `searchKeyStore` a un défaut, le vrai trousseau des clés de recherche :
+    /// `TrivaSharedStores` n'en porte pas encore (RI1b n'avait pas
+    /// `TrivaApp.swift` dans son périmètre). Il n'est lu qu'à l'ENVOI : les
+    /// aperçus et les tests qui n'envoient rien n'y touchent jamais, ceux qui
+    /// envoient injectent un faux trousseau.
+    init(engine: AIEngineOption, stores: TrivaSharedStores, searchKeyStore: SearchKeyStore = SearchKeyStore()) {
         self.engine = engine
         self.stores = stores
         self.draft = SearchDraft()
+        self.searchKeyStore = searchKeyStore
     }
 
     /// Modèle MLX validé (0.5) pour la sélection courante, `nil` tant qu'aucun
@@ -305,6 +318,10 @@ final class SearchSession {
                 guard let self else { throw SearchSessionError.sessionEnded }
                 return self.resolveFailoverManager()
             },
+            resolveWebSearchChain: { [weak self] failoverManager in
+                guard let self else { throw SearchSessionError.sessionEnded }
+                return self.resolveWebSearchChain(failoverManager: failoverManager)
+            },
             // Session disparue : l'envoi a déjà échoué sur `resolveProvider`,
             // ce repli (le budget le plus serré) n'est jamais utilisé.
             resolvePipelineConfiguration: { [weak self] in
@@ -367,19 +384,56 @@ final class SearchSession {
     }
 
     /// `FailoverManager` construit sur la liste d'instances SearXNG EFFECTIVE
-    /// (`stores.searchInstances` : liste du bundle plus les modifications de
-    /// l'utilisateur, Réglages > Avancé), réutilisé tant que cette liste ne
-    /// change pas. Interne pour les tests. Une liste vide n'est pas une erreur
-    /// ici : `FailoverManager.search` la signale (`noInstancesConfigured`),
-    /// avec un message français déjà prévu par `ChatViewModel`.
+    /// (`stores.searXNGInstances` : ajouts de l'utilisateur, liste du bundle,
+    /// puis instances vérifiées de l'annuaire searx.space, masquages appliqués)
+    /// et branché sur la mémoire de fiabilité PARTAGÉE de l'app
+    /// (`stores.searchReliability`, persistée) ; réutilisé tant que cette liste
+    /// ne change pas. Reconstruire un manager ne perd plus que son cache de
+    /// dernière instance : ce qu'il avait appris de chaque instance vit dans le
+    /// store partagé, que la session suivante (ou une autre fenêtre) retrouve.
+    /// Interne pour les tests. Une liste vide n'est pas une erreur ici :
+    /// `FailoverManager.search` la signale (`noInstancesConfigured`), avec un
+    /// message français déjà prévu par `ChatViewModel`.
     func resolveFailoverManager() -> FailoverManager {
-        let instances = stores.searchInstances.effectiveInstances
+        let instances = stores.searXNGInstances
         if let cachedFailoverManager, cachedFailoverManager.instances == instances {
             return cachedFailoverManager.manager
         }
-        let manager = FailoverManager(instances: instances)
+        let manager = stores.makeFailoverManager(instances: instances)
         cachedFailoverManager = CachedFailoverManager(instances: instances, manager: manager)
         return manager
+    }
+
+    /// Chaîne de repli de la recherche web pour un envoi (RI1b) : clés de
+    /// recherche personnelles, SearXNG sur `failoverManager` (celui que
+    /// `ChatViewModel` vient de résoudre), recherche du fournisseur cloud,
+    /// sources ouvertes (`WebSearchChain.assemble`). Interne pour les tests.
+    ///
+    /// Reconstruite à chaque envoi, jamais mise en cache, comme les providers
+    /// Apple Intelligence et cloud (voir « Des caches qui se revalident
+    /// seuls ») : une clé ajoutée ou retirée, une sélection cloud changée
+    /// ailleurs, vaut dès la question suivante. La recherche cloud dépend de
+    /// `engine`, le moteur FIGÉ de cette session (bug 10), jamais d'un store
+    /// relu : une session Apple Intelligence ne l'utilise jamais, même si une
+    /// autre fenêtre a enregistré une sélection cloud avec sa clé.
+    func resolveWebSearchChain(failoverManager: FailoverManager) -> WebSearchChain {
+        WebSearchChain.assemble(
+            engine: engine,
+            cloudSelection: stores.cloudSelection.selection,
+            cloudKeyStore: stores.keyStore,
+            searchKeys: searchKeyStore,
+            failoverManager: failoverManager,
+            fallbackLanguage: Self.fallbackSearchLanguage()
+        )
+    }
+
+    /// Langue de la recherche quand celle de la question n'est pas reconnue (noms propres, mots
+    /// isolés, voir « LANGUE » de `WebSearchChain`) : la langue de l'appareil, avec la règle FR/EN de
+    /// Découvrir (`DiscoverLanguage.preferred`). `Locale.preferredLanguages`, jamais
+    /// `Locale.current` : sans localisation française dans le projet, cette dernière peut valoir
+    /// l'anglais sur un appareil réglé en français (voir `AnswerExcerpt.swift`).
+    static func fallbackSearchLanguage(preferredLanguages: [String] = Locale.preferredLanguages) -> String {
+        DiscoverLanguage.preferred(for: Locale(identifier: preferredLanguages.first ?? "en")).rawValue
     }
 
     /// Provider MLX préparé pour le modèle ACTUELLEMENT sélectionné.

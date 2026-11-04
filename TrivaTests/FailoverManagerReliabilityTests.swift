@@ -101,7 +101,7 @@ struct FailoverManagerReliabilityTests {
         // A : one échoue, two répond (mis en cache).
         _ = try await manager.search(query: "A")
         // B : two (cache) échoue à son tour, one échoue encore -> one est mise de côté.
-        await client.setFailures([one: SearXNGClientError.timeout, two: SearXNGClientError.timeout])
+        client.setFailures([one: SearXNGClientError.timeout, two: SearXNGClientError.timeout])
         await #expect(throws: FailoverError.allInstancesUnavailable) {
             _ = try await manager.search(query: "B")
         }
@@ -109,18 +109,18 @@ struct FailoverManagerReliabilityTests {
 
         // C : 10 s plus tard, two répond ; one, encore de côté, n'est PAS essayée.
         clock.advance(10)
-        await client.setFailures([one: SearXNGClientError.timeout])
-        let callsBeforeC = await client.calledInstances.count
+        client.setFailures([one: SearXNGClientError.timeout])
+        let callsBeforeC = client.calledInstances.count
         _ = try await manager.search(query: "C")
-        let callsInC = await client.calledInstances.dropFirst(callsBeforeC)
+        let callsInC = client.calledInstances.dropFirst(callsBeforeC)
         #expect(Array(callsInC) == [two])
 
         // D : le délai est écoulé, two retombe en panne, one est retentée et répond.
         clock.advance(700)
-        await client.setFailures([two: SearXNGClientError.timeout])
-        let callsBeforeD = await client.calledInstances.count
+        client.setFailures([two: SearXNGClientError.timeout])
+        let callsBeforeD = client.calledInstances.count
         _ = try await manager.search(query: "D")
-        let callsInD = await client.calledInstances.dropFirst(callsBeforeD)
+        let callsInD = client.calledInstances.dropFirst(callsBeforeD)
         #expect(Array(callsInD) == [two, one])
         #expect(store.tier(for: one, at: clock.now) == .neutral)
         #expect(store.record(for: one)?.consecutiveFailures == 0)

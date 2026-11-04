@@ -15,18 +15,21 @@ import Foundation
 /// requête : le scoring qu'il applique ensuite (`BOOSTED_DOMAINS`,
 /// similarité cosinus, dédoublonnage par embedding) est hors scope de 1.2,
 /// réservé à `SourceRanker` (1.3) — cette action renvoie les résultats bruts
-/// de SearXNG, non triés.
-struct WebSearchAction: SearchAction {
+/// de la source qui a répondu, non triés.
+///
+/// Chaîne de repli (RI1b) : catégorie `.general`, voir `WebSearchingAction`.
+/// Sans chaîne, SearXNG seul, comme avant.
+struct WebSearchAction: WebSearchingAction {
     let name = "webSearch"
     let descriptionForPlanner = "Recherche web générale : à utiliser pour toute question nécessitant des informations à jour ou externes, sans domaine particulier."
+    let webSearchCategory: WebSearchCategory = .general
+    let webSearchChain: WebSearchChain?
 
-    func execute(
-        query: String,
-        urls: [String],
-        failoverManager: FailoverManager,
-        scrapeService: any ScrapeServing
-    ) async throws -> SearchActionOutput {
-        let response = try await failoverManager.search(query: query)
-        return .searchResults(response.results)
+    init(webSearchChain: WebSearchChain? = nil) {
+        self.webSearchChain = webSearchChain
+    }
+
+    func searchSearXNGOnly(query: String, failoverManager: FailoverManager) async throws -> SearXNGSearchResponse {
+        try await failoverManager.search(query: query)
     }
 }

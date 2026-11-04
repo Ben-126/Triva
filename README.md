@@ -27,11 +27,17 @@ Ta clé API n'est **jamais envoyée nulle part par Triva** : elle est stockée u
 Quand tu poses une question, Triva :
 
 1. **analyse ta question** pour décider quel type de recherche elle demande (web, académique, discussions), ou si elle n'a besoin d'aucune recherche ;
-2. **interroge des instances SearXNG publiques** — un moteur de recherche open source qui ne t'espionne pas — avec bascule automatique si une instance ne répond pas ;
+2. **cherche des sources**, en passant à la suivante tant qu'il n'y a ni réponse ni résultat :
+   1. ta **clé de recherche personnelle**, si tu en as ajouté une : Brave Search, puis Tavily ;
+   2. des **instances SearXNG publiques** — un moteur de recherche open source qui ne t'espionne pas — avec bascule automatique si une instance ne répond pas ;
+   3. la **recherche web de ton fournisseur IA**, seulement avec le moteur « Clé API personnelle », si ton fournisseur en propose une (il te la facture) ;
+   4. des **sources ouvertes, sans clé** : Wikipédia, OpenAlex, arXiv et Marginalia, selon le type de question ;
 3. **lit les pages les plus utiles** en entier quand les extraits ne suffisent pas ;
 4. **rédige une réponse** à partir de ces sources, affichée au fil de l'eau, avec la liste des sources consultées.
 
-Tout ce travail d'analyse et de lecture tourne dans l'app elle-même.
+Tout ce travail d'analyse et de lecture tourne dans l'app elle-même. Quand les résultats ne viennent pas de SearXNG, une ligne sous les sources dit quel service les a fournis. Si aucune source ne répond, Triva te le dit et te propose d'ajouter une clé.
+
+**Clé Brave ou Tavily (facultatif).** Une clé personnelle donne des résultats plus fiables que les instances publiques, quel que soit ton moteur IA. Tes recherches partent alors d'abord chez ce service, directement. Tu l'ajoutes dans Réglages > Recherche > Clés de recherche : Triva la teste avant de l'enregistrer dans le Trousseau de ton appareil, et chaque test consomme une requête de ton quota.
 
 ## Où en est le projet
 
@@ -41,6 +47,7 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Le choix du moteur IA (Apple Intelligence, MLX local, clé API perso), avec catalogue MLX, téléchargement et essai
 - La configuration BYOK multi-fournisseurs, fournisseurs personnalisés compris
 - La recherche de bout en bout : analyse de la question, recherche multi-étapes, tri fin des sources (une langue à la fois), lecture des pages, réponse en streaming
+- La recherche avec ta propre clé Brave ou Tavily, et des sources de secours (recherche de ton fournisseur IA, Wikipédia, OpenAlex, arXiv, Marginalia) quand les instances SearXNG publiques ne répondent pas
 - Des réponses structurées avec citations numérotées cliquables, et le suivi de conversation
 - Trois modes de réponse : Rapide, Approfondie, Fiable (sources de référence uniquement — sinon Triva le dit et propose de relancer en Rapide)
 - Les widgets météo et calculatrice
@@ -53,7 +60,6 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - iPhone, iPad (barre latérale, plusieurs fenêtres) et Mac
 
 **En cours (fin de V1)**
-- La recherche avec ta propre clé Brave ou Tavily, et des sources ouvertes de secours (Wikipédia, OpenAlex, arXiv) quand les instances SearXNG publiques ne répondent pas
 - Les essais sur le terrain et la relecture finale
 
 ## Configuration requise
@@ -67,5 +73,5 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 
 - Aucune télémétrie, aucun tracking
 - Aucune donnée envoyée à un serveur intermédiaire
-- Les clés API restent en local, dans le Trousseau de ton appareil
+- Les clés API et les clés de recherche restent en local, dans le Trousseau de ton appareil
 - Uniquement des widgets qui ne demandent ni clé API ni compte — pas de service tiers caché derrière une fonctionnalité en apparence gratuite

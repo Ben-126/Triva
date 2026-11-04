@@ -44,17 +44,21 @@ nonisolated struct FailoverExhaustedError: Error, Sendable, Equatable {
 /// - une `Task` annulée n'est JAMAIS un échec d'instance (voir le commentaire dans la boucle).
 actor FailoverManager {
     private let client: any SearXNGSearching
-    private let instances: [URL]
-    private let reliability: InstanceReliabilityStore
+    /// Liste reçue, dans son ordre de priorité. Lecture seule, exposée (comme `reliability`)
+    /// pour que l'assemblage de l'app et ses tests vérifient sur QUELLE liste et QUELLE
+    /// mémoire un manager a été construit, sans lancer de recherche réseau.
+    let instances: [URL]
+    let reliability: InstanceReliabilityStore
     private let now: @Sendable () -> Date
     private let maxBenchedAttempts: Int
     private var cachedInstance: URL?
 
     /// - Parameters:
-    ///   - reliability: mémoire de fiabilité. Par défaut un store EN MÉMOIRE, vide : le
-    ///     comportement de l'app ne change pas tant que l'appelant ne passe pas
-    ///     `InstanceReliabilityStore.shared` (persisté) — et les tests n'écrivent jamais dans
-    ///     les vraies préférences.
+    ///   - reliability: mémoire de fiabilité. Par défaut un store EN MÉMOIRE, vide : les tests
+    ///     et les aperçus n'écrivent jamais dans les vraies préférences. L'app, elle, passe le
+    ///     store persisté et partagé (`InstanceReliabilityStore.shared`) par
+    ///     `TrivaSharedStores.makeFailoverManager(instances:)` : un manager construit sans lui
+    ///     repartirait d'une mémoire vide à chaque fois.
     ///   - now: horloge injectable, pour tester la mise de côté sans attendre.
     ///   - maxBenchedAttempts: nombre d'instances mises de côté tentées en dernier recours.
     init(

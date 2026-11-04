@@ -9,8 +9,8 @@ import Foundation
 
 // MARK: - Erreurs
 
-/// Erreurs de l'édition de la liste d'instances SearXNG (1.15, section
-/// « Avancé » des Réglages).
+/// Erreurs de l'édition de la liste d'instances SearXNG (1.15, Réglages >
+/// Recherche > Avancé).
 ///
 /// `nonisolated` : levées par la validation pure (`SearXNGInstanceAddress`),
 /// appelable depuis n'importe quel contexte, et comparées avec `==` par des

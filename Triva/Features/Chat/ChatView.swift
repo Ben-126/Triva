@@ -142,7 +142,8 @@ nonisolated enum ChatScrollFollowing {
 /// Erreurs : `ChatViewModel.errorDescription` est la SEULE source du bandeau
 /// d'erreur d'échange (jamais recopié dans une bulle, pour ne pas le
 /// dupliquer) ; `persistenceErrorDescription` (historique, favoris) a sa
-/// propre ligne et ne l'écrase jamais.
+/// propre ligne et ne l'écrase jamais. Sous le bandeau, quand toutes les
+/// sources de recherche ont échoué : `SearchKeyInvitationView`.
 ///
 /// Ne crée jamais son `ChatViewModel` lui-même : reçu en paramètre, pour que
 /// l'appelant (`ContentView.swift`) reste seul responsable de résoudre le
@@ -190,6 +191,8 @@ struct ChatView: View {
     /// géométrie (aucun défilement programmatique pendant un geste).
     @State private var scrollPhase: ScrollPhase = .idle
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Voir `EnvironmentValues.openSearchKeySettings`.
+    @Environment(\.openSearchKeySettings) private var openSearchKeySettings
     @FocusState private var isDraftFocused: Bool
 
     /// Repli tant que `TrivaSharedStores` ne porte pas le store du mode :
@@ -328,6 +331,10 @@ struct ChatView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .accessibilityElement(children: .combine)
+                    }
+
+                    if let invitation = viewModel.searchKeyInvitation, let openSearchKeySettings {
+                        SearchKeyInvitationView(invitation: invitation, onOpen: { openSearchKeySettings() })
                     }
 
                     Color.clear
@@ -668,6 +675,16 @@ private final class PreviewAIProvider: AIGenerating {
     func generate(prompt: String) async throws -> String { response }
 }
 
+/// Source de recherche factice en panne, pour l'aperçu de l'invitation : la
+/// chaîne de repli lève alors `WebSearchChainError.allSourcesFailed`.
+private struct PreviewFailingSearchProvider: WebSearchProviding {
+    let kind: WebSearchSourceKind = .searxng
+
+    func search(query: String, options: WebSearchOptions) async throws -> SearXNGSearchResponse {
+        throw WebSearchError.unavailable
+    }
+}
+
 private func previewViewModel(response: String, sources: [SearXNGSearchResult]) -> ChatViewModel {
     ChatViewModel(
         resolveProvider: { PreviewAIProvider(response: response) },
@@ -730,6 +747,21 @@ private final class FlakyFailoverManagerFactory: @unchecked Sendable {
         }
         return FailoverManager(client: PreviewSearXNGClient(results: []), instances: [])
     }
+}
+
+#Preview("Toutes les sources en échec — invitation") {
+    let viewModel = ChatViewModel(
+        resolveProvider: { PreviewAIProvider(response: "Jamais affiché.") },
+        resolveFailoverManager: {
+            FailoverManager(client: PreviewSearXNGClient(results: []), instances: [PreviewSearXNGClient.instance])
+        },
+        resolveWebSearchChain: { _ in
+            WebSearchChain(searxng: PreviewFailingSearchProvider(), openSourceProviders: { _ in [] })
+        }
+    )
+    return ChatView(viewModel: viewModel)
+        .environment(\.openSearchKeySettings, OpenSearchKeySettingsAction(owner: viewModel, handler: {}))
+        .task { await viewModel.send(query: "Quelle est la hauteur de la tour Eiffel ?") }
 }
 
 #Preview("Erreur — après un échange déjà réussi") {

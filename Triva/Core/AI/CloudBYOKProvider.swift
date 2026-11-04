@@ -21,6 +21,11 @@ enum CloudBYOKProviderKind: String, Sendable, CaseIterable, Equatable {
 enum CloudBYOKError: Error, Sendable, Equatable {
     /// Aucune clé API trouvée en Keychain pour ce fournisseur.
     case missingAPIKey
+    /// Échec TYPÉ (bug 6) — clé refusée, débit, contexte, réseau — classé par
+    /// `CloudBYOKProvider.mapGenerationError`. `provider` = nom des Réglages.
+    case providerFailure(provider: String, reason: CloudProviderFailure)
+    /// Échec non classé. Ne porte jamais le texte d'un serveur (voir
+    /// `mapGenerationError`), seulement un nom de type ou une erreur locale.
     case generationFailed(description: String)
 }
 
@@ -58,10 +63,8 @@ struct CloudBYOKProvider: AIGenerating {
             let session = LanguageModelSession(model: languageModel)
             let response = try await session.respond(to: prompt)
             return response.content
-        } catch let error as CloudBYOKError {
-            throw error
         } catch {
-            throw CloudBYOKError.generationFailed(description: String(describing: error))
+            throw Self.mapGenerationError(error)
         }
     }
 
@@ -89,10 +92,8 @@ struct CloudBYOKProvider: AIGenerating {
                         continuation.yield(snapshot.content)
                     }
                     continuation.finish()
-                } catch let error as CloudBYOKError {
-                    continuation.finish(throwing: error)
                 } catch {
-                    continuation.finish(throwing: CloudBYOKError.generationFailed(description: String(describing: error)))
+                    continuation.finish(throwing: Self.mapGenerationError(error))
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
@@ -113,5 +114,44 @@ struct CloudBYOKProvider: AIGenerating {
             throw CloudBYOKError.missingAPIKey
         }
         return apiKey
+    }
+
+    // MARK: - Erreurs typées (bug 6)
+
+    /// Nom affiché dans les messages d'erreur : celui des Réglages.
+    nonisolated static let providerName = "Claude"
+
+    /// Erreur du package `ClaudeForFoundationModels` → erreur de ce provider.
+    /// L'annulation ressort INTACTE (critère de `CloudProviderFailure.isCancellation`) ;
+    /// une `CloudBYOKError` déjà formée passe telle quelle.
+    ///
+    /// Le repli ne garde que le NOM DU TYPE, jamais `String(describing:)` : la
+    /// description d'un `APIError` du package porte le message du serveur.
+    nonisolated static func mapGenerationError(_ error: any Error) -> any Error {
+        if error is CloudBYOKError || CloudProviderFailure.isCancellation(error) { return error }
+        if let reason = failureReason(for: error) {
+            return CloudBYOKError.providerFailure(provider: providerName, reason: reason)
+        }
+        return CloudBYOKError.generationFailed(description: String(reflecting: type(of: error)))
+    }
+
+    /// Correspondances lues dans l'`ErrorMapper` du package (version épinglée
+    /// par le projet) : 429 et surcharge 529 → `LanguageModelError.rateLimited` ;
+    /// 413 ou requête invalide « context » → `.contextSizeExceeded` ;
+    /// `URLError.timedOut` → `.timeout` ; 401 → `ClaudeError.missingCredential`,
+    /// qui veut dire « clé refusée » puisque `readAPIKey()` a déjà écarté la
+    /// clé absente ; les autres `URLError` passent tels quels. Les 403, 5xx,
+    /// 400 et 404 restent un `APIError` de visibilité `package`, impossible à
+    /// reconnaître ici sans lire son texte : `nil`, repli générique.
+    nonisolated static func failureReason(for error: any Error) -> CloudProviderFailure? {
+        if case .missingCredential? = error as? ClaudeError { return .apiKeyRejected(statusCode: nil) }
+        if error is URLError { return .unreachable }
+        guard let modelError = error as? LanguageModelError else { return nil }
+        switch modelError {
+        case .rateLimited: return .rateLimited
+        case .contextSizeExceeded: return .contextWindowExceeded
+        case .timeout: return .unreachable
+        default: return nil
+        }
     }
 }

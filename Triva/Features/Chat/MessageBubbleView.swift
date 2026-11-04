@@ -224,6 +224,9 @@ nonisolated enum MessageBubblePresentation {
         var webSourceCount = 0
         /// Une recherche d'images ou de vidéos a déjà été lancée.
         var isMediaSearchStarted = false
+        /// Service qui a fourni les sources web, `nil` sans recherche web ou
+        /// pour un message relu (non persisté).
+        var webSourceKind: WebSearchSourceKind?
     }
 
     /// Une bulle sans rien dedans (échec ou arrêt avant le moindre texte, la
@@ -261,6 +264,19 @@ nonisolated enum MessageBubblePresentation {
         if answer.isMediaSearchStarted { return true }
         let isSettled = answer.state == .completed || answer.state == .interrupted
         return isSettled && answer.hasBody && answer.webSourceCount > 0
+    }
+
+    /// La ligne discrète sous les sources (mission RI2) : d'où viennent les
+    /// résultats, quand ce n'est pas SearXNG, le cas normal, qui n'a rien à
+    /// signaler. Triva dit honnêtement quel service a répondu : l'utilisateur
+    /// qui lit une réponse tirée de Wikipédia seule doit pouvoir le savoir.
+    ///
+    /// `webSourceCount`, pas `sourceCount` : la source est connue même quand
+    /// elle a répondu à vide. Une réponse tirée des seuls fichiers joints n'a
+    /// donc aucun résultat de ce service à annoncer.
+    static func resultsOriginLabel(_ answer: AnswerSnapshot) -> String? {
+        guard let kind = answer.webSourceKind, kind != .searxng, answer.webSourceCount > 0 else { return nil }
+        return "Résultats\u{00A0}: \(kind.displayName)"
     }
 }
 
@@ -334,7 +350,8 @@ struct MessageBubbleView: View, Equatable {
             hasBody: !message.segments.body.isEmpty,
             sourceCount: message.sources.count,
             webSourceCount: max(0, message.sources.count - message.attachmentSourceCount),
-            isMediaSearchStarted: !isIdle(message.images) || !isIdle(message.videos)
+            isMediaSearchStarted: !isIdle(message.images) || !isIdle(message.videos),
+            webSourceKind: message.webSourceKind
         )
     }
 
@@ -455,7 +472,17 @@ private struct AnswerBubble: View {
             }
 
             if !message.sources.isEmpty {
-                SourcesListView(sources: message.sources)
+                VStack(alignment: .leading, spacing: 8) {
+                    SourcesListView(sources: message.sources)
+
+                    // Rôle de la légende de confidentialité (DESIGN.md) : une
+                    // précision factuelle, sans verre ni icône.
+                    if let origin = MessageBubblePresentation.resultsOriginLabel(answer) {
+                        Text(origin)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
 
             if canToggleFavorite {
@@ -569,6 +596,17 @@ private let previewSources: [SearXNGSearchResult] = [
     ))
     .padding(20)
     .preferredColorScheme(.dark)
+}
+
+#Preview("Réponse — résultats d'une source de secours") {
+    var message = ChatViewModel.Message(
+        role: .assistant,
+        text: "La capitale du Japon est **Tokyo**[1].",
+        sources: previewSources
+    )
+    message.webSourceKind = .wikipedia
+    return MessageBubbleView(message: message)
+        .padding(20)
 }
 
 #Preview("Réponse — aucune source fiable") {

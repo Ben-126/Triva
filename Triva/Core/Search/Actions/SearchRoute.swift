@@ -17,14 +17,16 @@ nonisolated enum WebSearchFlavor: Sendable, Equatable {
     /// Forums et discussions (`SocialSearchAction`).
     case discussion
 
-    /// Action du tour seedé. `@MainActor` : les actions sont des types non
-    /// annotés (`Actions/`), leur init est isolé au main actor.
+    /// Action du tour seedé, branchée sur la chaîne de repli de l'envoi
+    /// (RI1b) ou, sans chaîne, sur SearXNG seul (`WebSearchingAction`).
+    /// `@MainActor` : les actions sont des types non annotés (`Actions/`),
+    /// leur init est isolé au main actor.
     @MainActor
-    var action: any SearchAction {
+    func action(webSearchChain: WebSearchChain?) -> any WebSearchingAction {
         switch self {
-        case .general: WebSearchAction()
-        case .academic: AcademicSearchAction()
-        case .discussion: SocialSearchAction()
+        case .general: WebSearchAction(webSearchChain: webSearchChain)
+        case .academic: AcademicSearchAction(webSearchChain: webSearchChain)
+        case .discussion: SocialSearchAction(webSearchChain: webSearchChain)
         }
     }
 
@@ -35,11 +37,18 @@ nonisolated enum WebSearchFlavor: Sendable, Equatable {
     /// réponse valide, la relancer doublerait la latence pour rien.
     /// Énumération exhaustive exprès : une future famille à moteurs forcés
     /// devra choisir son repli.
+    ///
+    /// SANS chaîne seulement. Avec elle, ce repli a lieu DANS l'étape SearXNG
+    /// de la chaîne (`WebSearchChain`), avant la recherche cloud payante ;
+    /// relancer ensuite toute la chaîne en général redemanderait les mêmes
+    /// sources (clé personnelle, cloud payant, SearXNG général déjà essayé)
+    /// pour ne gagner qu'une source ouverte.
     @MainActor
-    var emptyResultFallback: (any SearchAction)? {
+    func emptyResultFallback(webSearchChain: WebSearchChain?) -> (any WebSearchingAction)? {
+        guard webSearchChain == nil else { return nil }
         switch self {
-        case .academic, .discussion: WebSearchAction()
-        case .general: nil
+        case .academic, .discussion: return WebSearchAction()
+        case .general: return nil
         }
     }
 }

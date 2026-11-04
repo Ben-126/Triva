@@ -54,7 +54,7 @@ struct KeychainAPIKeyStore: APIKeyStoring {
 
     func save(apiKey: String, account: String) throws {
         let data = Data(apiKey.utf8)
-        var query = baseQuery(account: account)
+        let query = baseQuery(account: account)
 
         let addStatus = SecItemAdd(query.merging([kSecValueData as String: data]) { _, new in new } as CFDictionary, nil)
         if addStatus == errSecSuccess {

@@ -130,7 +130,7 @@ actor MLXProvider: AIGenerating {
             let response = try await loaded.makeSession().respond(to: prompt)
             return response.content
         } catch {
-            throw MLXProviderError.generationFailed(description: String(describing: error))
+            throw Self.mapGenerationError(error)
         }
     }
 
@@ -155,11 +155,26 @@ actor MLXProvider: AIGenerating {
                     }
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: MLXProviderError.generationFailed(description: String(describing: error)))
+                    continuation.finish(throwing: Self.mapGenerationError(error))
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Erreur de génération → erreur de ce provider (bug 6). Rien de plus à
+    /// typer, vérifié dans les sources de `mlx-swift-lm` (MLXFoundationModels) :
+    /// `MLXLanguageModel` ne lève aucune erreur de contexte ni de mémoire (seulement
+    /// `unsupportedCapability` / `unsupportedGenerationGuide`, sans objet pour un
+    /// prompt texte), et le protocole `LanguageModel` n'expose pas de taille de
+    /// contexte : le framework ne peut pas lever `contextSizeExceeded` pour un
+    /// backend tiers. Rien d'inventé donc — seule l'annulation ressort INTACTE
+    /// (même raison que `AppleIntelligenceProvider.mapGenerationError`).
+    /// `nonisolated` : appelée depuis l'acteur ET depuis la tâche non isolée de
+    /// `streamGenerate`.
+    nonisolated static func mapGenerationError(_ error: any Error) -> any Error {
+        if error is CancellationError { return error }
+        return MLXProviderError.generationFailed(description: String(describing: error))
     }
 
     /// À appeler quand l'utilisateur annule un téléchargement ou abandonne ce

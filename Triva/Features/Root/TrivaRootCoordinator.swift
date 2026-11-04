@@ -53,6 +53,14 @@ final class TrivaRootCoordinator {
     /// Bibliothèque, rien n'est rouvert automatiquement.
     var selection: TrivaRootDestination = .search
 
+    /// Pile de navigation des Réglages de cette fenêtre. Détenue ici pour
+    /// qu'une action d'un autre espace puisse ouvrir un écran précis des
+    /// Réglages (`showSearchKeys()`) : en présentation sidebar, `SettingsView`
+    /// n'existe même pas tant qu'on n'est pas sur cette destination. Elle
+    /// survit donc aussi à un changement de destination, comme le faisait déjà
+    /// la barre d'onglets, où chaque onglet garde sa pile.
+    var settingsPath: [SettingsRoute] = []
+
     /// Session de la Recherche (conversation en cours, brouillon de la barre
     /// de saisie, caches du moteur). Une seule pour toute la vie du
     /// coordinateur : voir « Durée de vie ».
@@ -78,7 +86,7 @@ final class TrivaRootCoordinator {
         let session = SearchSession(engine: engine, stores: stores)
         self.session = session
         // Découvrir cherche sur la liste d'instances EFFECTIVE (bundle +
-        // modifications de Réglages > Avancé) et à travers le
+        // modifications de Réglages > Recherche > Avancé) et à travers le
         // `FailoverManager` de la session : son cache de « dernière instance
         // qui répond » sert ainsi aux deux espaces, et une liste modifiée est
         // prise en compte au chargement suivant (le cache se revalide seul,
@@ -142,8 +150,19 @@ final class TrivaRootCoordinator {
 
     /// Recherche > « Configurer une clé API » (moteur cloud sans fournisseur
     /// choisi) : les Réglages de la MÊME fenêtre, où se trouvent « Gérer les
-    /// clés API » et « Fournisseur et modèle ».
+    /// clés API » et « Fournisseur et modèle ». Sur leur écran racine : ces
+    /// deux lignes ne seraient pas visibles sous un écran resté poussé.
     func showSettings() {
+        settingsPath = []
+        selection = .settings
+    }
+
+    /// Recherche > « Ajouter une clé de recherche » (toutes les sources ont
+    /// échoué, voir `SearchKeyInvitationView`) : l'écran des clés de recherche,
+    /// dans les Réglages de la MÊME fenêtre. Le retour mène à leur racine,
+    /// comme si on y était arrivé à la main.
+    func showSearchKeys() {
+        settingsPath = [.searchKeys]
         selection = .settings
     }
 

@@ -11,8 +11,8 @@ import Foundation
 /// 2026-10-08 : quatre sources de secours, toutes en V1, pour ne jamais dépendre des seules
 /// instances SearXNG publiques, dont la plupart bloquent désormais les clients sans JavaScript).
 ///
-/// Chaîne de repli prévue (câblée dans l'orchestrateur à l'intégration) :
-/// 1. clé de recherche personnelle (Brave / Tavily / Google Programmable Search) si présente ;
+/// Chaîne de repli (`WebSearchChain`, assemblée à chaque envoi par `SearchSession`) :
+/// 1. clé de recherche personnelle (Brave / Tavily) si présente ;
 /// 2. SearXNG (instances testées et classées par fiabilité) ;
 /// 3. recherche web intégrée du fournisseur IA cloud, si l'utilisateur en a une clé ;
 /// 4. sources ouvertes sans clé (Wikipédia, OpenAlex, arXiv, Marginalia).
@@ -30,10 +30,14 @@ nonisolated protocol WebSearchProviding: Sendable {
 }
 
 /// D'où viennent les résultats affichés.
+///
+/// Pas de source « API de recherche programmable » : retirée le 2026-10-28 (décision de Ben),
+/// l'API est fermée aux nouveaux clients et son arrêt est annoncé pour le 2027-01-01. Aucune
+/// donnée persistée ne portait ce cas (rien n'était encore branché), le retirer ne casse donc
+/// aucun décodage.
 nonisolated enum WebSearchSourceKind: String, Sendable, Equatable, CaseIterable, Codable {
     case braveSearch
     case tavily
-    case googleProgrammableSearch
     case searxng
     case cloudProviderWebSearch
     case wikipedia
@@ -46,7 +50,6 @@ nonisolated enum WebSearchSourceKind: String, Sendable, Equatable, CaseIterable,
         switch self {
         case .braveSearch: "Brave Search"
         case .tavily: "Tavily"
-        case .googleProgrammableSearch: "Google"
         case .searxng: "SearXNG"
         case .cloudProviderWebSearch: "Recherche du fournisseur IA"
         case .wikipedia: "Wikipédia"
