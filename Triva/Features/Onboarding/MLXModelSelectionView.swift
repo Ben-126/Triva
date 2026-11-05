@@ -366,10 +366,25 @@ struct MLXModelSelectionView: View {
                 }
             }
         }
+        .fullCatalogSheetFrame()
     }
 
     private static func formattedSize(_ bytes: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+}
+
+private extension View {
+    /// Sur Mac, une feuille prend la taille idéale de son contenu, et une `List`
+    /// n'en a pas : sans taille plancher, la liste a une hauteur nulle et la feuille
+    /// paraît vide. Sans effet sur iPhone et iPad.
+    @ViewBuilder
+    func fullCatalogSheetFrame() -> some View {
+        #if os(macOS)
+        frame(minWidth: 520, idealWidth: 560, minHeight: 560, idealHeight: 640)
+        #else
+        self
+        #endif
     }
 }
 

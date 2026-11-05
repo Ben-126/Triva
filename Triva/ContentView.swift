@@ -565,6 +565,10 @@ struct EngineStatusView: View {
     }
 
     @State private var showingMLXSelection = false
+    /// Force une relecture du `body` une fois le chat préparé. Constaté sur Mac au lancement : la
+    /// création de `chatViewModel` ne relançait pas toujours le `body`, et seul le badge restait,
+    /// sans barre de saisie, jusqu'au moindre autre changement d'état.
+    @State private var chatPrepared = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -580,6 +584,7 @@ struct EngineStatusView: View {
     }
 
     var body: some View {
+        let _ = chatPrepared
         VStack(alignment: .leading, spacing: 12) {
             header
 
@@ -610,10 +615,11 @@ struct EngineStatusView: View {
                 showingMLXSelection = false
             }
         }
-        .onAppear {
+        .task {
             session.refreshAppleIntelligenceAvailabilityIfNeeded()
             session.loadMLXCatalogIfNeeded()
             session.ensureChatViewModel()
+            chatPrepared = true
         }
     }
 
