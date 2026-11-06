@@ -320,4 +320,11 @@ struct CloudModelListServiceTests {
         #expect(key.hasPrefix("openai|"))
         #expect(key != CloudModelListService.cacheKey(providerID: "openai", apiKey: "sk-autre"))
     }
+
+    /// `URLCache` écrit les en-têtes de la requête sur disque : avec un cache, la clé API finirait
+    /// en clair dans `Cache.db`, hors du Keychain (constaté sur `GET /v1/models`, mission Q2).
+    @Test("Le requêteur HTTP, qui porte les clés API, ne garde aucun cache")
+    func dataRequesterSessionHasNoCache() {
+        #expect(URLSessionDataRequester.uncachedSession.configuration.urlCache == nil)
+    }
 }

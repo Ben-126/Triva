@@ -217,7 +217,7 @@ struct DiscoverViewModelCacheTests {
         #expect(model.refreshDidFail)
         let notice = model.staleNotice(calendar: .current)
         #expect(notice?.hasPrefix("Actualisation impossible.") == true)
-        #expect(notice?.contains("il y a 3 heures") == true, "\(notice ?? "nil")")
+        #expect(notice?.contains("il\u{00A0}y\u{00A0}a\u{00A0}3\u{00A0}heures") == true, "\(notice ?? "nil")")
         #expect(await cache.saveCount == 0)
         #expect(await cache.current == original)
         #expect(model.completionAnnouncement == "Actualisation impossible")
@@ -445,8 +445,19 @@ struct DiscoverStaleNoticeTests {
     func oldContentShowsAge() {
         #expect(
             DiscoverStaleNotice.text(refreshDidFail: true, staleTitles: [], oldestDate: now.addingTimeInterval(-3 * 3_600), now: now, calendar: calendar)
-                == "Actualisation impossible. Dernière mise à jour : il y a 3 heures."
+                == "Actualisation impossible. Dernière mise à jour\u{00A0}: il\u{00A0}y\u{00A0}a\u{00A0}3\u{00A0}heures."
         )
+    }
+
+    /// Vu à l'écran : « il / y a 8 minutes » sur iPhone 18 Pro, « il y a / 8 minutes » sur iPad mini.
+    /// Aucune espace ordinaire ne doit rester dans l'expression, ni devant le « : ».
+    @Test("l'âge ne se coupe pas : espaces insécables dans toute l'expression et devant le deux-points")
+    func ageExpressionDoesNotBreak() throws {
+        let text = try #require(
+            DiscoverStaleNotice.text(refreshDidFail: true, staleTitles: [], oldestDate: now.addingTimeInterval(-8 * 60), now: now, calendar: calendar)
+        )
+        #expect(text.hasSuffix("jour\u{00A0}: il\u{00A0}y\u{00A0}a\u{00A0}8\u{00A0}minutes."))
+        #expect(!text.contains("jour :"))
     }
 
     @Test("plusieurs sujets : liste en français, accord au pluriel")
@@ -458,6 +469,6 @@ struct DiscoverStaleNoticeTests {
             now: now,
             calendar: calendar
         )
-        #expect(text == "Finance et Sport n'ont pas pu être actualisés. Dernière mise à jour : il y a 3 heures.")
+        #expect(text == "Finance et Sport n'ont pas pu être actualisés. Dernière mise à jour\u{00A0}: il\u{00A0}y\u{00A0}a\u{00A0}3\u{00A0}heures.")
     }
 }

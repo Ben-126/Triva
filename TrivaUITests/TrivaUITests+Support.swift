@@ -202,7 +202,13 @@ extension TrivaUITests {
 
     // MARK: - Navigation
 
-    var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    var isPad: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        false
+        #endif
+    }
 
     /// Ouvre un espace et attend sa marque. Barre d'onglets si elle existe (iPhone, fenêtre iPad
     /// étroite), sinon sidebar : c'est la largeur de la fenêtre qui décide, pas l'appareil.

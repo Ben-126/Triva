@@ -327,6 +327,12 @@ struct DiscoverView: View {
                 DiscoverArticleRow(article: article, onSearch: onSearch)
             }
         }
+        // Le tout premier rendu se fait à une colonne (`availableWidth` vaut 0, voir plus haut). En
+        // passant à deux, la grille gardait des hauteurs de rangée périmées : le bouton « Afficher
+        // les N autres articles » recouvrait le texte du 2e rang pendant 5 à 8 s, jusqu'à la première
+        // mise à jour du modèle (filmé sur iPad Pro, vu aussi sur Mac, mission Q2). Une nouvelle
+        // identité par nombre de colonnes force une vraie mesure.
+        .id(columns)
     }
 
     /// Intitulé de section au style des labels de section de la DA

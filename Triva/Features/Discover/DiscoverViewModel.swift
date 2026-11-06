@@ -405,6 +405,13 @@ nonisolated enum DiscoverStaleNotice {
     /// En dessous, l'âge n'apprend rien (« Maintenant ») : on ne l'écrit pas.
     static let minimumMeaningfulAge: TimeInterval = 60
 
+    /// Espace insécable, dans toute l'expression de l'âge et devant le « : » (typographie française).
+    /// Le retour à la ligne tombait en plein milieu : « il / y a 8 minutes » sur iPhone 18 Pro,
+    /// « il y a / 8 minutes » sur iPad mini, en taille normale (constaté à l'écran, mission Q2). Si une
+    /// très grande taille de texte ne loge pas l'expression sur une ligne, le système la coupe tout de
+    /// même : le texte reste lisible, et ce cas est bien plus rare que la coupure évitée ici.
+    private static let nonBreakingSpace = "\u{00A0}"
+
     static func text(
         refreshDidFail: Bool,
         staleTitles: [String],
@@ -427,6 +434,8 @@ nonisolated enum DiscoverStaleNotice {
             return refreshDidFail ? "\(failure) Vérifie ta connexion." : failure
         }
         let age = RelativeDateLabel.text(for: oldestDate, relativeTo: now, calendar: calendar)
-        return "\(failure) Dernière mise à jour : \(age.lowercased(with: RelativeDateLabel.locale))."
+            .lowercased(with: RelativeDateLabel.locale)
+            .replacingOccurrences(of: " ", with: nonBreakingSpace)
+        return "\(failure) Dernière mise à jour\(nonBreakingSpace): \(age)."
     }
 }

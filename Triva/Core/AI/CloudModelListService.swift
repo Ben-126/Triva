@@ -78,9 +78,24 @@ nonisolated protocol HTTPDataRequesting: Sendable {
 }
 
 nonisolated struct URLSessionDataRequester: HTTPDataRequesting {
+    /// Session SANS AUCUN cache, parce que ces requêtes portent des clés API en en-tête
+    /// (`Authorization`, `x-api-key`, `x-goog-api-key`, `X-Subscription-Token`). Avec
+    /// `URLSession.shared`, `URLCache` écrit chaque GET cachable dans
+    /// `Library/Caches/<bundle>/Cache.db`, EN-TÊTES DE LA REQUÊTE COMPRIS : la clé se retrouvait en
+    /// clair dans le bac à sable, hors du Keychain (constaté sur `GET /v1/models`, mission Q2).
+    /// `.ephemeral` n'écrit rien sur disque ; `urlCache = nil` retire aussi le cache mémoire. Le
+    /// prix est nul en pratique : chaque recherche est différente, et les sources ouvertes qui
+    /// passent aussi par ici n'avaient rien à réutiliser. Créée UNE fois : une `URLSession`
+    /// configurée non invalidée n'est jamais libérée.
+    static let uncachedSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }()
+
     private let urlSession: URLSession
 
-    init(urlSession: URLSession = .shared) {
+    init(urlSession: URLSession = URLSessionDataRequester.uncachedSession) {
         self.urlSession = urlSession
     }
 

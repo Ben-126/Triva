@@ -615,6 +615,13 @@ struct EngineStatusView: View {
                 session.selectMLXModel(chosen)
                 showingMLXSelection = false
             }
+            #if os(macOS)
+            // Une feuille Mac ne se ferme ni d'un geste ni d'un clic à côté : sans ce bouton, seul
+            // Échap permettait d'en sortir sans choisir de modèle (constaté, mission Q2).
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                mlxSelectionCloseBar
+            }
+            #endif
         }
         .task {
             session.refreshAppleIntelligenceAvailabilityIfNeeded()
@@ -623,6 +630,26 @@ struct EngineStatusView: View {
             chatPrepared = true
         }
     }
+
+    #if os(macOS)
+    /// Même barre que les feuilles des Réglages (`SettingsView.sheetCloseBar`) : fond opaque et
+    /// séparateur, car la liste défile derrière ; Échap ferme aussi.
+    private var mlxSelectionCloseBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                Spacer()
+                Button("Fermer") {
+                    showingMLXSelection = false
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .background(.background)
+    }
+    #endif
 
     /// Le chat s'affiche quand le moteur est prêt — ou, même s'il ne l'est
     /// pas, dès que le fil contient des messages : une conversation rouverte
@@ -707,7 +734,11 @@ struct EngineStatusView: View {
                     .accessibilityIdentifier("search.changeEngine")
             }
         }
-        .frame(maxWidth: contentMaxWidth)
+        // Calé à gauche dans la colonne, comme `TrivaHomeReferenceView` et le chat juste en dessous.
+        // Sans `alignment`, le bloc épousait son contenu et se centrait : le badge flottait à 76 pt du
+        // bord sur iPhone au lieu de 20, et sautait de place dès qu'une carte « Modèle actif » remplissait
+        // la colonne (constaté sur les captures iPhone, iPad et Mac, mission Q2).
+        .frame(maxWidth: contentMaxWidth ?? .infinity, alignment: .leading)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
     }
