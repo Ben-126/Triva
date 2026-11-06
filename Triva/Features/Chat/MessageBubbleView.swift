@@ -413,6 +413,7 @@ private struct QuestionBubble: View {
                 attachedFileNames: attachedFiles.map(\.fileName)
             ))
             .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("chat.question")
         }
     }
 
@@ -464,6 +465,7 @@ private struct AnswerBubble: View {
             } else if MessageBubblePresentation.showsProgress(answer, displayedBodyIsEmpty: bodyText.isEmpty) {
                 ProgressView()
                     .accessibilityLabel(MessageBubblePresentation.progressAccessibilityLabel)
+                    .accessibilityIdentifier("chat.answerProgress")
             }
 
             if !bodyText.isEmpty {
@@ -533,6 +535,7 @@ private struct FavoriteButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isFavorite ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        .accessibilityIdentifier("chat.favorite")
         #if os(macOS)
         .help(title)
         #endif

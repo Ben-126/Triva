@@ -7,6 +7,7 @@
 
 import Foundation
 import OSLog
+import SwiftUI
 
 /// Coordination des cinq espaces d'UNE fenêtre (mission I4b) : la destination
 /// affichée, et les actions qui font passer d'un espace à l'autre — ouvrir
@@ -56,10 +57,12 @@ final class TrivaRootCoordinator {
     /// Pile de navigation des Réglages de cette fenêtre. Détenue ici pour
     /// qu'une action d'un autre espace puisse ouvrir un écran précis des
     /// Réglages (`showSearchKeys()`) : en présentation sidebar, `SettingsView`
-    /// n'existe même pas tant qu'on n'est pas sur cette destination. Elle
-    /// survit donc aussi à un changement de destination, comme le faisait déjà
-    /// la barre d'onglets, où chaque onglet garde sa pile.
-    var settingsPath: [SettingsRoute] = []
+    /// n'existe même pas tant qu'on n'est pas sur cette destination. La barre
+    /// d'onglets garde l'écran poussé d'une destination à l'autre, comme chaque
+    /// onglet garde sa pile ; en sidebar, la colonne commune le referme (constaté,
+    /// QA Q1). `NavigationPath`, pas `[SettingsRoute]` : voir le détail de
+    /// `TrivaRootShell.splitView`.
+    var settingsPath = NavigationPath()
 
     /// Session de la Recherche (conversation en cours, brouillon de la barre
     /// de saisie, caches du moteur). Une seule pour toute la vie du
@@ -152,7 +155,7 @@ final class TrivaRootCoordinator {
     /// clés API » et « Fournisseur et modèle ». Sur leur écran racine : ces
     /// deux lignes ne seraient pas visibles sous un écran resté poussé.
     func showSettings() {
-        settingsPath = []
+        settingsPath = NavigationPath()
         selection = .settings
     }
 
@@ -161,7 +164,7 @@ final class TrivaRootCoordinator {
     /// dans les Réglages de la MÊME fenêtre. Le retour mène à leur racine,
     /// comme si on y était arrivé à la main.
     func showSearchKeys() {
-        settingsPath = [.searchKeys]
+        settingsPath = NavigationPath([SettingsRoute.searchKeys])
         selection = .settings
     }
 

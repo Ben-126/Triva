@@ -114,9 +114,12 @@ struct SearXNGClientTests {
         #expect(items.contains(URLQueryItem(name: "time_range", value: "month")))
     }
 
-    @Test("Envoie le header Accept application/json")
-    func sendsAcceptHeader() async throws {
-        let capturedHeader = LockedBox<String?>(nil)
+    /// Régression mesurée le 2026-11-05 : `Accept: application/json` fait répondre 429 au limiteur
+    /// de SearXNG (`botdetection/http_accept.py`, voir la doc de `SearXNGClient`), sur toutes les
+    /// instances où il est actif. Sans en-tête, `URLSession` envoie `*/*`, comme le web.
+    @Test("N'impose aucun en-tête Accept : le limiteur de SearXNG refuse ce qui exclut text/html")
+    func doesNotSendAcceptHeader() async throws {
+        let capturedHeader = LockedBox<String?>("non capturé")
         MockURLProtocol.requestHandler = { request in
             capturedHeader.value = request.value(forHTTPHeaderField: "Accept")
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
@@ -127,7 +130,7 @@ struct SearXNGClientTests {
 
         _ = try await client.search(query: "test", options: SearXNGSearchOptions(), instance: instance)
 
-        #expect(capturedHeader.value == "application/json")
+        #expect(capturedHeader.value == nil)
     }
 
     // MARK: - buildURL : encodage du « + » (bug 12 de la revue V1)

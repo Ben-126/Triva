@@ -85,10 +85,17 @@ struct SourcesListView: View {
         }
 
         if let url = URL(string: source.url), let host = url.host, !host.isEmpty {
+            // `.plain` et `.leading`, constatés indispensables à l'écran (QA Q1, iOS 27) : le style
+            // automatique d'un `Link` pose l'accent comme couleur de premier plan, et `.primary` /
+            // `.secondary`, hiérarchiques, en héritent (titres et URL en bleu) ; il centre aussi
+            // tout texte sur plusieurs lignes.
             Link(destination: url) { content }
+                .buttonStyle(.plain)
+                .multilineTextAlignment(.leading)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(source.title), \(host)")
                 .accessibilityAddTraits(.isLink)
+                .accessibilityIdentifier("source.link")
         } else {
             // URL non résoluble en `URL` (rare, mais pas impossible pour un
             // résultat de recherche mal formé) : pas de `Link` tapable dans ce

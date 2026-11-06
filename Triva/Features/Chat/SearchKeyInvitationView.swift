@@ -126,6 +126,7 @@ struct SearchKeyInvitationView: View {
                 Button(invitation.actionTitle, systemImage: "key", action: onOpen)
                     .font(.subheadline)
                     .buttonStyle(.glass)
+                    .accessibilityIdentifier("chat.searchKeyInvitation")
             }
         }
     }

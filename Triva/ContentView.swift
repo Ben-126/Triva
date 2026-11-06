@@ -596,6 +596,7 @@ struct EngineStatusView: View {
                     .frame(maxWidth: contentMaxWidth ?? .infinity, alignment: .leading)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 20)
+                    .accessibilityIdentifier("search.setupRequirement")
             }
 
             if let chatViewModel = session.chatViewModel,
@@ -661,11 +662,13 @@ struct EngineStatusView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
+                        .accessibilityIdentifier("search.engineBadge")
 
                     Text(engine.privacyBadge.caption)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 4)
+                        .accessibilityIdentifier("search.engineCaption")
                 }
 
                 if engine == .mlxLocal, session.validatedMLXModel == nil {
@@ -673,6 +676,7 @@ struct EngineStatusView: View {
                         showingMLXSelection = true
                     }
                     .buttonStyle(.glassProminent)
+                    .accessibilityIdentifier("search.chooseMLXModel")
                 }
 
                 // Même rôle que « Choisir un modèle MLX » pour le moteur cloud
@@ -682,6 +686,7 @@ struct EngineStatusView: View {
                 if session.setupRequirement == .cloudProvider {
                     Button("Configurer une clé API", action: onOpenSettings)
                         .buttonStyle(.glassProminent)
+                        .accessibilityIdentifier("search.configureAPIKey")
                 }
 
                 if engine == .mlxLocal, let validatedMLXModel = session.validatedMLXModel {
@@ -699,6 +704,7 @@ struct EngineStatusView: View {
 
                 Button("Changer de moteur", action: onChangeEngine)
                     .buttonStyle(.glass)
+                    .accessibilityIdentifier("search.changeEngine")
             }
         }
         .frame(maxWidth: contentMaxWidth)

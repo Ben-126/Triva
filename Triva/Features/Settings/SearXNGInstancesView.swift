@@ -132,7 +132,7 @@ struct SearXNGInstancesView: View {
                 Text(verbatim: automaticEmptyText)
                     .foregroundStyle(.secondary)
             } else {
-                instanceRows(instances)
+                instanceRows(instances, rowIdentifier: "searxng.row.automatic")
             }
         } header: {
             Text("Ajoutées automatiquement")
@@ -151,6 +151,7 @@ struct SearXNGInstancesView: View {
                 Button("Revenir à la liste par défaut", role: .destructive) {
                     isConfirmingReset = true
                 }
+                .accessibilityIdentifier("searxng.reset")
                 .confirmationDialog(
                     "Revenir à la liste par défaut\u{00A0}?",
                     isPresented: $isConfirmingReset,
@@ -167,7 +168,7 @@ struct SearXNGInstancesView: View {
         }
     }
 
-    private func instanceRows(_ instances: [URL]) -> some View {
+    private func instanceRows(_ instances: [URL], rowIdentifier: String = "searxng.row") -> some View {
         ForEach(instances, id: \.self) { instance in
             SearXNGInstanceRow(
                 address: SearXNGInstanceAddress.displayAddress(for: instance),
@@ -175,6 +176,7 @@ struct SearXNGInstancesView: View {
                 connectivity: store.connectivity(for: instance),
                 onTest: { test(instance) }
             )
+            .accessibilityIdentifier(rowIdentifier)
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 removeButton(for: instance)
             }

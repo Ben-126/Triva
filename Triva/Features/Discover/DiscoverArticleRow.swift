@@ -174,6 +174,7 @@ struct DiscoverArticleRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(MediaResultsPresentation.accessibilityLabel(title: title, domain: domain))
             .accessibilityHint("Ouvre l'article dans ton navigateur")
+            .accessibilityIdentifier("discover.article")
             .accessibilityRemoveTraits(.isButton)
             .accessibilityAddTraits(.isLink)
             .accessibilityActions { searchAccessibilityAction }

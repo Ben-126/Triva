@@ -257,6 +257,7 @@ struct ChatView: View {
                 }
                 .disabled(viewModel.messages.isEmpty)
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+                .accessibilityIdentifier("chat.newConversation")
                 #if os(macOS)
                 .help("Nouvelle conversation")
                 #endif
@@ -324,6 +325,7 @@ struct ChatView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("chat.persistenceError")
                     }
 
                     if let errorDescription = viewModel.errorDescription {
@@ -331,6 +333,7 @@ struct ChatView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("chat.error")
                     }
 
                     if let invitation = viewModel.searchKeyInvitation, let openSearchKeySettings {
@@ -350,6 +353,17 @@ struct ChatView: View {
             // Une conversation rouverte (Bibliothèque, favori) s'ouvre sur
             // sa fin, comme Messages.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
+            // Sur iPhone, le clavier cache la barre d'onglets, et Retour ENVOIE dès qu'un brouillon
+            // existe : sans ces gestes, impossible de quitter l'écran sans envoyer ni tout effacer,
+            // ou de lire la réponse (constaté à l'écran, QA Q1). Un fil vide ne défile pas, d'où le
+            // toucher, avec `.contentShape` pour sa zone vide. `.immediately` : `.interactively` exige
+            // de glisser jusqu'au clavier. iOS seulement : sur Mac, sélectionner du texte dans le fil
+            // ne doit pas retirer le focus du champ.
+            #if os(iOS)
+            .scrollDismissesKeyboard(.immediately)
+            .contentShape(.rect)
+            .simultaneousGesture(TapGesture().onEnded { isDraftFocused = false })
+            #endif
             .mask(topFadeMask(containerHeight: containerGeometry.size.height))
             .onScrollPhaseChange { oldPhase, newPhase, context in
                 scrollPhase = newPhase
@@ -482,9 +496,14 @@ struct ChatView: View {
                     TextField("Pose ta question…", text: draftBinding)
                         .focused($isDraftFocused)
                         .onSubmit(send)
+                        .accessibilityIdentifier("chat.input")
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                        // PAS `.interactive()`, écart assumé avec DESIGN.md (« Barre de recherche ») :
+                        // le verre interactif volait le toucher au menu du mode de réponse, ouvert
+                        // par-dessus ce champ. Sur iPhone, toucher « Fiable » ne faisait rien, et le
+                        // menu restait ouvert (constaté à l'écran, QA Q1).
+                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
                     sendButton
                 }
@@ -514,6 +533,7 @@ struct ChatView: View {
         .buttonStyle(.glassProminent)
         .disabled(viewModel.isGenerating ? false : isSendDisabled)
         .accessibilityLabel(viewModel.isGenerating ? "Arrêter la génération" : "Envoyer")
+        .accessibilityIdentifier("chat.send")
         // Échap arrête la génération (clavier matériel, Mac et iPad) ; rien
         // le reste du temps, pour ne jamais envoyer par accident.
         .keyboardShortcut(viewModel.isGenerating ? KeyboardShortcut.cancelAction : nil)
@@ -621,6 +641,7 @@ private struct ChatTranscriptRow: View {
                 }
                 .font(.subheadline)
                 .buttonStyle(.glass)
+                .accessibilityIdentifier("chat.retryQuickMode")
             }
         }
     }

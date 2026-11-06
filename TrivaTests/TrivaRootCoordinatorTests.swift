@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 import Testing
 @testable import Triva
 
@@ -237,17 +238,17 @@ struct TrivaRootCoordinatorTests {
         coordinator.showSearchKeys()
 
         #expect(coordinator.selection == .settings)
-        #expect(coordinator.settingsPath == [.searchKeys])
+        #expect(coordinator.settingsPath == NavigationPath([SettingsRoute.searchKeys]))
     }
 
     @Test("Un écran resté poussé (autre destination visitée entre-temps) est remplacé par celui des clés")
     func showSearchKeysReplacesAPushedScreen() throws {
         let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores())
-        coordinator.settingsPath = [.mlxStorage]
+        coordinator.settingsPath = NavigationPath([SettingsRoute.mlxStorage])
 
         coordinator.showSearchKeys()
 
-        #expect(coordinator.settingsPath == [.searchKeys])
+        #expect(coordinator.settingsPath == NavigationPath([SettingsRoute.searchKeys]))
     }
 
     /// « Gérer les clés API » et « Fournisseur et modèle » sont sur la racine des
@@ -275,7 +276,7 @@ struct TrivaRootCoordinatorTests {
         action()
 
         #expect(coordinator.selection == .settings)
-        #expect(coordinator.settingsPath == [.searchKeys])
+        #expect(coordinator.settingsPath == NavigationPath([SettingsRoute.searchKeys]))
         // Sinon, chaque rendu de la coquille réévaluerait `ChatView`.
         #expect(action == makeAction())
         let otherWindow = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores())

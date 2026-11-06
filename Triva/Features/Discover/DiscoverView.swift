@@ -355,6 +355,7 @@ struct DiscoverView: View {
             .disabled(model.isLoading)
         }
         .containerRelativeFrame([.horizontal, .vertical])
+        .accessibilityIdentifier("discover.failure")
     }
 
     private var emptyView: some View {
@@ -364,6 +365,7 @@ struct DiscoverView: View {
             description: Text("Reviens un peu plus tard.")
         )
         .containerRelativeFrame([.horizontal, .vertical])
+        .accessibilityIdentifier("discover.empty")
     }
 
     /// « Réessayer » relance TOUS les sujets : le service ne sait charger que
@@ -498,6 +500,7 @@ private struct DiscoverPendingSection: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title), chargement en cours")
+        .accessibilityIdentifier("discover.pending")
     }
 }
 
@@ -555,6 +558,7 @@ private struct DiscoverTopicChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("discover.chip")
     }
 }
 

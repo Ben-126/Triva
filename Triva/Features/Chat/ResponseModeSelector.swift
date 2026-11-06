@@ -120,6 +120,7 @@ struct ResponseModeSelector: View {
         .accessibilityLabel(ResponseModeSelectorPresentation.controlTitle)
         .accessibilityValue(selection.title)
         .accessibilityHint(selection.explanation)
+        .accessibilityIdentifier("chat.responseMode")
         #if os(macOS)
         // Seulement sur macOS : sur iOS, l'infobulle doublerait l'indice VoiceOver.
         .help(ResponseModeSelectorPresentation.helpText(for: selection))

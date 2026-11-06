@@ -510,6 +510,7 @@ struct CitationView: View {
                 lastTapLocation = value.location
             })
             .accessibilityLabel(CitationPresentation.accessibilityText(fromRendered: rendered))
+            .accessibilityIdentifier("citation.text")
             .accessibilityActions {
                 ForEach(CitationPresentation.citedSources(in: parsed, sources: sources)) { cited in
                     Button(CitationPresentation.accessibilityActionName(for: cited)) {

@@ -53,12 +53,12 @@ struct AIEngineSelectionView: View {
                         engineCard(
                             option: .appleIntelligence,
                             title: "Apple Intelligence",
-                            subtitle: "Gratuit, sur l'appareil. Nécessite un iPhone/Mac compatible avec Apple Intelligence activé."
+                            subtitle: "Gratuit, sur l'appareil. Nécessite un appareil compatible avec Apple Intelligence activé."
                         )
                         engineCard(
                             option: .mlxLocal,
                             title: "Modèle local (MLX)",
-                            subtitle: "Gratuit, sur l'appareil. Un modèle adapté à la puissance de ton appareil te sera proposé au choix (0.5)."
+                            subtitle: "Gratuit, sur l'appareil. Un modèle adapté à la puissance de ton appareil te sera proposé au choix."
                         )
                         engineCard(
                             option: .cloudBYOK,
@@ -73,12 +73,14 @@ struct AIEngineSelectionView: View {
                 }
                 .buttonStyle(.glassProminent)
                 .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("engine.continue")
 
                 if let onCancel {
                     Button("Annuler", action: onCancel)
                         .buttonStyle(.glass)
                         .keyboardShortcut(.cancelAction)
                         .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("engine.cancel")
                 }
             }
             .frame(maxWidth: contentMaxWidth)
@@ -142,6 +144,7 @@ struct AIEngineSelectionView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("engine.card.\(option.rawValue)")
     }
 }
 

@@ -29,6 +29,14 @@ nonisolated protocol SearXNGSearching: Sendable {
 /// Client HTTP réel vers une instance SearXNG publique.
 /// Port direct de `searchSearxng` (src/lib/searxng.ts) : `GET {instance}/search?format=json`,
 /// timeout de 10s, mêmes paramètres de requête.
+///
+/// AUCUN EN-TÊTE `Accept`, exprès : `URLSession` envoie alors `*/*`, comme le `fetch` du web (qui
+/// n'en pose pas non plus). Le limiteur de SearXNG répond 429 à toute requête `/search` dont
+/// l'`Accept` exclut `text/html` (`searx/botdetection/http_accept.py`), et il est actif sur toutes
+/// les instances publiques dont la configuration se lit (31 sur 31, `/config`, mesuré le
+/// 2026-11-05). Avec `Accept: application/json`, aucune des 39 instances mesurées n'a servi de
+/// JSON, pas même les 2 qui le servent à `*/*` : l'annuaire finissait à `.noneVerified`, et ce 429,
+/// qui ne dit rien de l'IP ni du débit, s'affichait « Trop de requêtes » dans les Réglages.
 struct SearXNGClient: SearXNGSearching {
     private let urlSession: URLSession
     private let timeoutInterval: TimeInterval
@@ -47,8 +55,7 @@ struct SearXNGClient: SearXNGSearching {
             throw SearXNGClientError.invalidURL
         }
 
-        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let request = URLRequest(url: url, timeoutInterval: timeoutInterval)
 
         let data: Data
         let response: URLResponse

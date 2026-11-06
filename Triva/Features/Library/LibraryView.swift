@@ -410,6 +410,7 @@ private struct LibraryContentView: View {
             .buttonStyle(.plain)
             #endif
             .accessibilityHint("Ouvre la conversation")
+            .accessibilityIdentifier("library.row")
         } else {
             label
         }

@@ -91,6 +91,32 @@ struct ScrapeServiceTests {
         #expect(result.contains("<p>Contenu réel</p>"))
     }
 
+    /// Forme réelle de fr.wikipedia.org (mesurée le 2026-11-05) : `data-mw` porte du wikicode avec
+    /// ses balises. Le `>` de la valeur fermait la balise pour `<[^>]+>`, et le wikicode devenait
+    /// le « contenu » de la page, à la place de l'introduction.
+    @Test("Une valeur data-* qui contient des balises ne fuit pas dans le texte (data-mw de Wikipédia)")
+    func stripNonContentTagsRemovesMarkupInDataAttributes() {
+        let html = """
+        <div class="mw-content"><span typeof="mw:Transclusion" data-mw='{"parts":[{"wt":"{{Lien web|titre=Source}}.</ref>"},{"wt":"[[Fichier:x.svg]]</div>"}]}'></span>
+        <p>La tour Eiffel est une tour de fer puddlé de 330 mètres de hauteur située à Paris.</p></div>
+        """
+
+        let (_, content) = ScrapeService.extractMainContent(fromHTML: html)
+
+        #expect(content.contains("La tour Eiffel est une tour de fer puddlé"))
+        #expect(!content.contains("Lien web"))
+        #expect(!content.contains("Fichier"))
+    }
+
+    @Test("Une valeur data-* sans balise, citée dans le texte d'une documentation, reste intacte")
+    func stripNonContentTagsKeepsPlainDataAttributeText() {
+        let html = #"<p>Écris data-role="menu" dans la balise pour activer le menu déroulant du site.</p>"#
+
+        let result = ScrapeService.stripNonContentTags(html)
+
+        #expect(result.contains(#"data-role="menu""#))
+    }
+
     @Test("Retire nav, footer, aside et l'en-tête du site ; <form> déballé (balises et champs retirés, contenu gardé)")
     func stripNonContentTagsRemovesStructuralContainers() {
         let html = """

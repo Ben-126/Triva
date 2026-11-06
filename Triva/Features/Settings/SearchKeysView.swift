@@ -93,16 +93,19 @@ private struct SearchKeySection: View {
             #endif
             .disabled(entry.isTesting)
             .onSubmit(submitDraft)
+            .accessibilityIdentifier("searchKeys.field.\(source.rawValue)")
 
         Button(action: submitDraft) {
             SearchKeyTestLabel(title: "Tester et enregistrer", isTesting: entry.isTesting)
         }
         .disabled(!entry.canSubmit(draft: draft))
+        .accessibilityIdentifier("searchKeys.save.\(source.rawValue)")
 
         if let keyPageURL = source.keyPageURL {
             Link(destination: keyPageURL) {
                 Label("Obtenir une clé \(source.displayName)", systemImage: "arrow.up.forward.square")
             }
+            .accessibilityIdentifier("searchKeys.link.\(source.rawValue)")
         }
     }
 

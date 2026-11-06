@@ -12,9 +12,9 @@ extension AIEngineOption {
     var privacyBadge: (icon: String, text: String, caption: String) {
         switch self {
         case .appleIntelligence:
-            ("lock.fill", "Apple Intelligence · Sur l'appareil", "Aucune donnée envoyée à un serveur")
+            ("lock.fill", "Apple Intelligence · Sur l'appareil", "Aucune IA cloud utilisée")
         case .mlxLocal:
-            ("lock.fill", "Modèle local (MLX) · Sur l'appareil", "Aucune donnée envoyée à un serveur")
+            ("lock.fill", "Modèle local (MLX) · Sur l'appareil", "Aucune IA cloud utilisée")
         case .cloudBYOK:
             ("key.fill", "Clé API personnelle", "Envoyé directement à ton fournisseur — jamais à un serveur Triva")
         }

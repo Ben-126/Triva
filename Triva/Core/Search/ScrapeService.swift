@@ -450,7 +450,14 @@ nonisolated struct ScrapeService: ScrapeServing {
     }
 
     /// Retire le non-contenu AVANT la sélection (« unlikely candidates » de
-    /// Readability, portable sans DOM) : 1. commentaires d'abord (un `<nav>`
+    /// Readability, portable sans DOM) : 0. valeurs `data-*` contenant `<` ou
+    /// `>` — BUG corrigé (mesuré le 2026-11-05 sur Wikipédia) : `data-mw` y
+    /// porte le wikicode des modèles, balises comprises ; `<[^>]+>` s'arrêtait
+    /// au premier `>` de la valeur et la suite passait pour du texte, si bien
+    /// que les 4 000 caractères retenus n'étaient que du wikicode, sans
+    /// l'introduction. Une valeur sans balise reste : `data-role="menu"`, cité
+    /// dans une documentation, est du contenu ;
+    /// 1. commentaires d'abord (un `<nav>`
     /// commenté ne s'apparie pas avec le `</nav>` réel suivant) ; 2. éléments
     /// à texte brut (script/style/noscript/template) ; 3. `<head>` (seul son
     /// `<title>` compte, extrait à part ; Readability ne lit que `<body>`),
@@ -465,7 +472,8 @@ nonisolated struct ScrapeService: ScrapeServing {
     /// `<div>`). Nom suivi d'un blanc, `/` ou `>` : `<style-guide>` n'est pas
     /// un `<style>`.
     static func stripNonContentTags(_ html: String) -> String {
-        var result = replacing(commentRegex, in: html, with: "")
+        var result = replacing(markupInDataAttributeRegex, in: html, with: "")
+        result = replacing(commentRegex, in: result, with: "")
         result = replacing(rawTextElementRegex, in: result, with: "")
         result = replacing(nonContentElementRegex, in: result, with: "")
         result = replacing(formWrapperRegex, in: result, with: "")
@@ -773,6 +781,7 @@ nonisolated struct ScrapeService: ScrapeServing {
 
     private static let markup: NSRegularExpression.Options = [.dotMatchesLineSeparators, .caseInsensitive]
     private static let titleRegex = compile("<title(?=[\\s>])[^>]*>(.*?)</title\\s*>", markup)
+    private static let markupInDataAttributeRegex = compile("\\sdata-[\\w.:-]+\\s*=\\s*(?:\"[^\"]*[<>][^\"]*\"|'[^']*[<>][^']*')", [.caseInsensitive])
     private static let commentRegex = compile("<!--.*?-->", [.dotMatchesLineSeparators])
     private static let rawTextElementRegex = compile("<(script|style|noscript|template)(?=[\\s/>])[^>]*>.*?</\\1\\s*>", markup)
     private static let nonContentElementRegex = compile("<(head|svg|nav|footer|aside|select|textarea)(?=[\\s/>])[^>]*>.*?</\\1\\s*>", markup)

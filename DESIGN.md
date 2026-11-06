@@ -139,8 +139,8 @@ refléter la vérité selon le moteur**, jamais un texte figé :
 
 | Moteur | Icône | Texte | Légende |
 |---|---|---|---|
-| `.appleIntelligence` | `lock.fill` | "Apple Intelligence · Sur l'appareil" | "Aucune donnée envoyée à un serveur" |
-| `.mlxLocal` | `lock.fill` | "Modèle local (MLX) · Sur l'appareil" | "Aucune donnée envoyée à un serveur" |
+| `.appleIntelligence` | `lock.fill` | "Apple Intelligence · Sur l'appareil" | "Aucune IA cloud utilisée" |
+| `.mlxLocal` | `lock.fill` | "Modèle local (MLX) · Sur l'appareil" | "Aucune IA cloud utilisée" |
 | `.cloudBYOK` | `key.fill` | "Clé API personnelle" | "Envoyé directement à ton fournisseur — jamais à un serveur Triva" |
 
 La mention "sur l'appareil" ne doit **jamais** apparaître pour `.cloudBYOK` : c'est faux

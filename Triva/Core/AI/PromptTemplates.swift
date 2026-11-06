@@ -186,6 +186,9 @@ enum PromptTemplates {
     nonisolated static let noRelevantInformationAnswer =
         "Je n'ai pas trouvé d'information fiable sur ce sujet dans les sources disponibles. Essaie de reformuler ta question ou de relancer la recherche."
 
+    /// Contexte d'une recherche sans aucun document citable (`numberedContext`).
+    nonisolated static let noSourcesContext = "Aucune source disponible."
+
     /// Préfixe imposé pour signaler deux sources qui se contredisent.
     /// Équivalent de `⚠️ **Sources disagree**` du web, sans emoji.
     nonisolated static let contradictorySourcesMarker = "**Les sources divergent**"
@@ -305,12 +308,29 @@ enum PromptTemplates {
 
         <contexte>
         \(context)
-        </contexte>
+        </contexte>\(contextReminder(for: parts.mode, context: context))
 
         Date et heure actuelles (UTC, format ISO 8601) : \(formattedDate(parts.currentDate)).
 
         \(parts.reformulation)Question de l'utilisateur : \(parts.query)
         """
+    }
+
+    /// Rappel du mode Fiable, juste après le contexte, donc au plus près de la question : c'est la
+    /// seule consigne que le modèle lit APRÈS avoir vu ce que les documents contiennent. Mesuré le
+    /// 2026-11-05 avec gpt-4o-mini : sur « Quelles sont les différences entre JavaScript et
+    /// TypeScript ? », avec un seul document hors sujet (« Syntaxe JavaScript »), il répondait de tête,
+    /// sans citation ni marqueur, malgré `modeSection` et `specialCasesSection` plus haut. Le mode qui
+    /// promet de ne rien affirmer sans source affirmait alors tout sans source.
+    ///
+    /// Conditionnel au seul cas hors sujet, exprès : avec des documents pertinents, `modeSection`
+    /// garde son marqueur `unsupportedClaimMarker`, qu'un « jamais de connaissances générales » sans
+    /// condition contredirait. Vide hors du mode Fiable : les autres gabarits restent identiques au
+    /// caractère près. Vide aussi sans aucun document (widget seul, le seul cas où la rédaction tourne
+    /// alors) : `modeSection` prévoit déjà `unverifiedSourcesWarning`.
+    private nonisolated static func contextReminder(for mode: ResponseMode, context: String) -> String {
+        guard case .reliable = mode, context != noSourcesContext else { return "" }
+        return "\n\nRappel du mode Fiable : si les documents ci-dessus ne traitent pas du sujet de la question, n'utilise pas tes connaissances générales, même si tu connais la réponse : réponds exactement « \(noRelevantInformationAnswer) »"
     }
 
     /// Version courte. Ce qui est gardé et pourquoi : les citations `[n]`
@@ -616,7 +636,7 @@ enum PromptTemplates {
     ) -> String {
         let documents = citableDocuments(sources: sources, scrapedPages: scrapedPages)
         guard !documents.isEmpty else {
-            return "Aucune source disponible."
+            return noSourcesContext
         }
 
         // Répartition équitable du budget de caractères entre les documents

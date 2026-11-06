@@ -280,6 +280,11 @@ private struct TrivaRootShell: View {
             }
             .navigationTitle("Triva")
         } detail: {
+            // Chaque espace a sa pile, mais toutes partagent cette colonne : leurs chemins doivent
+            // être du même type, `NavigationPath`. Quitter un écran poussé compare l'ancien chemin au
+            // nouveau, et deux types différents font planter SwiftUI sur un `try!`
+            // (`AnyNavigationPath.Error.comparisonTypeMismatch`, constaté sur iPad, QA Q1 ; un
+            // `.id` sur ce détail n'y change rien).
             content(for: coordinator.selection)
         }
     }

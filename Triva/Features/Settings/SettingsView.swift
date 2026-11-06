@@ -68,8 +68,8 @@ struct SettingsView: View {
     @State private var pendingEngine: AIEngineOption?
     @State private var isAdvancedExpanded = false
     /// Pile injectée, `nil` : `localNavigationPath`. Voir le commentaire de tête.
-    private let injectedNavigationPath: Binding<[SettingsRoute]>?
-    @State private var localNavigationPath: [SettingsRoute] = []
+    private let injectedNavigationPath: Binding<NavigationPath>?
+    @State private var localNavigationPath = NavigationPath()
 
     init(
         selectedEngine: AIEngineOption? = nil,
@@ -78,7 +78,7 @@ struct SettingsView: View {
         cloudSelectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore(),
         customProviderStore: CustomProviderStore = CustomProviderStore(),
         instanceStore: CustomInstanceStore = CustomInstanceStore(),
-        navigationPath: Binding<[SettingsRoute]>? = nil
+        navigationPath: Binding<NavigationPath>? = nil
     ) {
         self.selectedEngine = selectedEngine
         self.onSelectEngine = onSelectEngine
@@ -117,10 +117,12 @@ struct SettingsView: View {
     private func engineSection(for engine: AIEngineOption) -> some View {
         Section("Moteur IA") {
             EngineBadge(engine: engine)
+                .accessibilityIdentifier("settings.engineBadge")
             if onSelectEngine != nil {
                 Button("Changer de moteur") {
                     presentedSheet = .engineSelection
                 }
+                .accessibilityIdentifier("settings.changeEngine")
             }
         }
     }
@@ -133,7 +135,9 @@ struct SettingsView: View {
             Button("Gérer les clés API") {
                 presentedSheet = .apiKeys
             }
+            .accessibilityIdentifier("settings.apiKeys")
             NavigationLink("Fournisseur et modèle", value: SettingsRoute.cloudModelPicker)
+                .accessibilityIdentifier("settings.cloudModel")
         } header: {
             Text("Clé API personnelle")
         } footer: {
@@ -155,6 +159,7 @@ struct SettingsView: View {
     private var searchSection: some View {
         Section("Recherche") {
             NavigationLink("Clés de recherche", value: SettingsRoute.searchKeys)
+                .accessibilityIdentifier("settings.searchKeys")
             DisclosureGroup("Avancé", isExpanded: $isAdvancedExpanded) {
                 NavigationLink(value: SettingsRoute.searxngInstances) {
                     LabeledContent(
@@ -162,6 +167,7 @@ struct SettingsView: View {
                         value: instanceStore.isCustomized ? "Personnalisées" : "Par défaut"
                     )
                 }
+                .accessibilityIdentifier("settings.searxngInstances")
             }
         }
     }
@@ -169,6 +175,7 @@ struct SettingsView: View {
     private var storageSection: some View {
         Section("Stockage") {
             NavigationLink("Modèles MLX", value: SettingsRoute.mlxStorage)
+                .accessibilityIdentifier("settings.mlxStorage")
         }
     }
 

@@ -177,7 +177,7 @@ struct FavoritesView: View {
     @State private var phase: FavoritesPhase = .loading
     @State private var retryCount = 0
     @State private var excerptCache = AnswerExcerptCache()
-    @State private var path: [FavoriteRoute] = []
+    @State private var path = NavigationPath()
     @State private var pendingRemoval: FavoriteSummary?
     @State private var removalErrorMessage: String?
 
@@ -302,8 +302,8 @@ struct FavoritesView: View {
         if case .loaded(let snapshot) = phase {
             withAnimation { phase = .loaded(snapshot.removing(messageID: messageID)) }
         }
-        // Referme le détail s'il était ouvert sur ce favori.
-        path.removeAll { $0.messageID == messageID }
+        // Referme le détail : seul celui du favori retiré peut être ouvert (la pile le cache sinon).
+        path = NavigationPath()
     }
 
     private var isConfirmingRemoval: Binding<Bool> {
@@ -364,6 +364,7 @@ private struct FavoritesContentView: View {
             FavoriteRowLabel(favorite: favorite, referenceDate: referenceDate)
         }
         .accessibilityHint("Ouvre la réponse complète")
+        .accessibilityIdentifier("favorites.row")
         .listRowInsets(HistoryListLayout.rowInsets)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             removeButton(for: favorite, title: "Retirer")
@@ -572,6 +573,7 @@ private struct FavoriteDetailScreen: View {
         Button("Retirer des favoris", systemImage: "star.slash") {
             isConfirmingRemoval = true
         }
+        .accessibilityIdentifier("favorites.detail.remove")
         .confirmationDialog(FavoritePresentation.removalTitle, isPresented: $isConfirmingRemoval, titleVisibility: .visible) {
             Button("Retirer", role: .destructive) { onRemove(messageID) }
             Button("Annuler", role: .cancel) {}
