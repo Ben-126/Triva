@@ -75,3 +75,7 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Aucune donnée envoyée à un serveur intermédiaire
 - Les clés API et les clés de recherche restent en local, dans le Trousseau de ton appareil
 - Uniquement des widgets qui ne demandent ni clé API ni compte — pas de service tiers caché derrière une fonctionnalité en apparence gratuite
+
+## License
+
+Ce projet est sous licence MIT - voir le fichier [LICENSE](LICENSE) pour plus de détails.
