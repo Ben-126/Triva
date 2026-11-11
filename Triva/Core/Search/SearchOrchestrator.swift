@@ -74,6 +74,13 @@ nonisolated struct SearchArtifacts: Sendable {
     /// Ben, `SearchArtifacts.answersWithoutSearch`). Décidé ICI, où la question
     /// brute est connue : la reformulation d'un « Bonjour » n'en est plus un.
     var answeredWithoutSearch = false
+    /// Appareil hors connexion et réponse rédigée sans recherche ni widget, hors salutation (tâche 1.16,
+    /// `SearchOrchestrator.isOffline`) : la bulle porte « Hors connexion, sans source » à la place de
+    /// « Réponse sans recherche ». Voir `SearchArtifacts+Offline.swift`.
+    var answeredOffline = false
+    /// Hors connexion, la météo était demandée : son widget n'a PAS été lancé (aucune tentative dans le
+    /// vide). `ChatViewModel` répond par un message fixe, le modèle n'invente pas de météo.
+    var offlineWeatherSkipped = false
 }
 
 /// Résultat du pipeline (0.7) : le texte généré et ses `artifacts`.
@@ -340,6 +347,9 @@ nonisolated struct SearchOrchestrator: Sendable {
     private let maxAttachmentContextCharacters: Int
     /// Chaîne de repli de la recherche web (RI1b), `nil` = SearXNG seul.
     private let webSearchChain: WebSearchChain?
+    /// Appareil hors connexion (tâche 1.16, `ConnectivityMonitor`) : aucune recherche web, aucun
+    /// widget météo ; fichiers joints et calcul restent disponibles. Voir `SearchOrchestrator+Offline.swift`.
+    private let isOffline: Bool
 
     /// Attente maximale des médias (1.6) une fois la recherche texte finie :
     /// au-delà, ils valent `.failed` et la réponse part sans eux. Les médias
@@ -408,6 +418,8 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///     ouvertes (`WebSearchChain`). Sert aux seules actions web du tour
     ///     seedé ; les médias restent sur SearXNG (`mediaSearcher`). `nil`
     ///     (défaut) : SearXNG seul, comportement d'avant la chaîne.
+    ///   - isOffline: `false` (défaut) = comportement d'avant la tâche 1.16. `true` : l'appareil est hors
+    ///     connexion, le pipeline répond sans recherche web ni météo (voir `SearchOrchestrator+Offline.swift`).
     ///
     /// Budget des fichiers joints : `min(UploadsSearchResultBuilder.defaultMaxTotalCharacters,
     /// configuration.maxScrapedContextCharacters)` — 3 000 caractères sous
@@ -431,11 +443,13 @@ nonisolated struct SearchOrchestrator: Sendable {
         widgets: [any SearchWidget]? = nil,
         mediaSearcher: (any MediaSearching)? = nil,
         mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod,
-        webSearchChain: WebSearchChain? = nil
+        webSearchChain: WebSearchChain? = nil,
+        isOffline: Bool = false
     ) {
         self.failoverManager = failoverManager
         self.aiProvider = aiProvider
         self.webSearchChain = webSearchChain
+        self.isOffline = isOffline
         self.queryClassifier = queryClassifier ?? QueryClassifier(
             aiProvider: aiProvider,
             maxHistoryMessages: configuration.maxHistoryMessages,
@@ -454,7 +468,9 @@ nonisolated struct SearchOrchestrator: Sendable {
         self.maxHistoryMessageCharacters = configuration.maxHistoryMessageCharacters
         self.scrapeRoundTimeout = scrapeRoundTimeout
         self.clock = clock
-        self.widgetExecutor = WidgetExecutor(widgets: widgets ?? Self.defaultWidgets(aiProvider: aiProvider))
+        self.widgetExecutor = WidgetExecutor(widgets: Self.widgetsAvailable(
+            widgets ?? Self.defaultWidgets(aiProvider: aiProvider), isOffline: isOffline
+        ))
         self.mediaSearcher = mediaSearcher ?? SearXNGMediaSearcher(failoverManager: failoverManager)
         self.mediaGracePeriod = mediaGracePeriod
         self.maxAttachmentContextCharacters = max(
@@ -492,7 +508,7 @@ nonisolated struct SearchOrchestrator: Sendable {
     ) async throws -> SearchOrchestratorResult {
         let request = SearchRequest(query: query, chatHistory: chatHistory, attachments: attachments, media: media)
         let prepared = try await prepareFinalPrompt(request)
-        guard !prepared.artifacts.lacksReliableSources else {
+        guard !prepared.artifacts.lacksReliableSources, !prepared.artifacts.withholdsAnswerOffline else {
             return SearchOrchestratorResult(answer: "", artifacts: prepared.artifacts)
         }
         let answerText = try await aiProvider.generate(prompt: prepared.prompt)
@@ -527,7 +543,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         // `ChatViewModel` : `SearchArtifacts+ReliableMode.swift`. Le contrôle
         // de fin de flux (`rejectsReliableAnswer`) revient à l'appelant, seul à
         // lire le texte.
-        guard !prepared.artifacts.lacksReliableSources else {
+        // Même garde hors connexion (tâche 1.16) : météo sans réseau, ou mode Fiable sans aucune source.
+        guard !prepared.artifacts.lacksReliableSources, !prepared.artifacts.withholdsAnswerOffline else {
             // Aucune requête au moteur : flux vide déjà terminé.
             return StreamingAnswer(artifacts: prepared.artifacts, textStream: AsyncThrowingStream { $0.finish() })
         }
@@ -595,6 +612,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         let webSourceKind: WebSearchSourceKind?
         /// `SearchArtifacts.webSearchReport` (mission A2).
         var webSearchReport = WebSearchChainReport()
+        /// `SearchArtifacts.offlineWeatherSkipped` (tâche 1.16).
+        var offlineWeatherSkipped = false
     }
 
     /// Recherche complète puis prompt final, partagés par `answer` et
@@ -659,7 +678,10 @@ nonisolated struct SearchOrchestrator: Sendable {
                 widgetCount: research.widgets.outputs.count
             )
         )
-        return PreparedAnswer(prompt: prompt, artifacts: artifacts)
+        return PreparedAnswer(
+            prompt: prompt,
+            artifacts: artifacts.markedOffline(isOffline, weatherSkipped: research.offlineWeatherSkipped)
+        )
     }
 
     /// Coeur de l'orchestration, partagé par `answer` et `streamAnswer` (seule
@@ -681,7 +703,11 @@ nonisolated struct SearchOrchestrator: Sendable {
         let classification = try await classifyWithFallback(query: request.query, boundedHistory: history)
         let searchQuery = Self.effectiveQuery(for: request.query, standaloneFollowUp: classification.standaloneFollowUp)
         let route = Self.routeConsultingAttachments(
-            SearchRoute.resolve(for: classification, hasAttachments: request.hasAttachments),
+            Self.routeAvailable(
+                SearchRoute.resolve(for: classification, hasAttachments: request.hasAttachments),
+                isOffline: isOffline,
+                hasAttachments: request.hasAttachments
+            ),
             hasAttachments: request.hasAttachments
         )
 
@@ -710,7 +736,8 @@ nonisolated struct SearchOrchestrator: Sendable {
             widgets: widgets,
             media: gathered.media,
             webSourceKind: gathered.webSourceKind,
-            webSearchReport: gathered.webSearchReport
+            webSearchReport: gathered.webSearchReport,
+            offlineWeatherSkipped: isOffline && classification.showWeatherWidget
         )
     }
 

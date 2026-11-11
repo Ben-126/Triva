@@ -45,11 +45,26 @@ import Foundation
 /// puce mène à un état « Aucun article » local. Le détail d'une erreur n'est
 /// jamais affiché (même règle que `ChatViewModel.userFacingMessage(for:)`).
 ///
-/// Isolé au main actor (implicite) et pas `nonisolated` : il manipule
-/// `DiscoverContent`, `DiscoverTopicSection` et `DiscoverArticle`, non annotés dans
-/// `DiscoverService.swift`, donc isolés au main actor, conformance `Equatable`
-/// comprise. La logique lourde n'est pas ici : les requêtes tournent dans l'acteur
-/// `FailoverManager` et le disque dans `DiscoverDiskCache` (`@concurrent`).
+/// ## Un fil qui ne saute pas
+/// - L'ordre des articles est celui des dates de publication (`DiscoverService`), plus un
+///   mélange : un fil restauré du cache et le fil actualisé s'ordonnent de la même façon, et
+///   seuls les articles vraiment nouveaux changent de place.
+/// - L'avertissement « Actualisation impossible » (`refreshDidFail`, `staleTopics`) n'est
+///   remplacé qu'AVEC le résultat du chargement, pas à son lancement : il restait sinon
+///   affiché une seconde de moins, puis revenait, sous les yeux de l'utilisateur (Q1).
+/// - Un article restauré qui a dépassé l'âge maximal est retiré avant l'affichage.
+///
+/// ## Hors connexion (tâche 1.16)
+/// Quand l'appareil est hors connexion (`isOffline`, `ConnectivityMonitor`), un chargement ne lance
+/// AUCUNE requête : il restaure le cache s'il y en a un (articles de la dernière visite, avec leur âge
+/// dans la ligne « Hors connexion. Dernière mise à jour : … »), sinon il affiche l'état « Hors
+/// connexion ». Au retour de la connexion, `connectionDidReturn()` relance ce qui attendait. Même
+/// règle que partout : le moniteur n'est qu'un raccourci, un chargement lancé « en ligne » qui
+/// échoue garde son traitement habituel (`update(after:previous:)`).
+///
+/// Isolé au main actor (implicite) : il pilote l'interface. La logique lourde n'est pas
+/// ici : les flux sont lus et analysés hors du main actor (`HTTPFeedFetcher`) et le disque
+/// dans `DiscoverDiskCache` (`@concurrent`).
 @Observable
 @MainActor
 final class DiscoverViewModel {
@@ -103,6 +118,9 @@ final class DiscoverViewModel {
     private(set) var sectionDates: [DiscoverTopic: Date] = [:]
     /// Vrai pendant la mise à jour automatique d'articles restaurés du cache.
     private(set) var isUpdatingRestoredContent = false
+    /// Vrai quand ce qui est affiché (articles du cache, ou l'état d'échec) l'est parce que l'appareil
+    /// est hors connexion, pas parce que les sources n'ont pas répondu (tâche 1.16).
+    private(set) var isShowingOfflineState = false
     /// Phase au début du dernier chargement, pour son annonce VoiceOver.
     private var phaseBeforeLoad: Phase = .idle
     /// Sujet affiché, `nil` pour « Tout ». Ici plutôt qu'en `@State` dans la
@@ -113,12 +131,14 @@ final class DiscoverViewModel {
     private let cache: any DiscoverContentCaching
     private let topics: [DiscoverTopic]
     private let now: () -> Date
+    private let isOffline: @MainActor () -> Bool
     @ObservationIgnored private var inFlightLoad: Task<Void, Never>?
 
     /// - Parameters:
     ///   - cache: articles de la dernière visite ; aucun par défaut (tests, aperçus).
     ///   - topics: sujets attendus, ceux du catalogue par défaut.
     ///   - now: horloge injectable, pour les dates des sujets.
+    ///   - isOffline: l'appareil est-il hors connexion ? (`{ false }` par défaut : aucun changement.)
     ///   - loadContent: même forme que les closures de `ChatViewModel` : la vue ne
     ///     sait rien du réseau, les tests injectent un contenu factice.
     init(
@@ -126,13 +146,25 @@ final class DiscoverViewModel {
         cache: any DiscoverContentCaching = DiscoverNoCache(),
         topics: [DiscoverTopic] = DiscoverTopicCatalog.all.map(\.topic),
         now: @escaping () -> Date = { Date() },
+        isOffline: @escaping @MainActor () -> Bool = { false },
         loadContent: @escaping (@escaping TopicHandler) async throws -> DiscoverContent
     ) {
         self.selectedTopic = selectedTopic
         self.cache = cache
         self.topics = topics
         self.now = now
+        self.isOffline = isOffline
         self.loadContent = loadContent
+    }
+
+    /// Lu par la vue : l'état d'écran « Hors connexion » et le retour de la connexion.
+    var isDeviceOffline: Bool { isOffline() }
+
+    /// La connexion revient : relance ce qui attendait (cache affiché hors connexion, ou rien à
+    /// afficher). Sans effet si un contenu à jour est déjà là ou si un chargement est en cours.
+    func connectionDidReturn() async {
+        guard !isDeviceOffline, isShowingOfflineState, !isLoading else { return }
+        await load()
     }
 
     /// Source qui ne signale pas ses sujets un par un (aperçus, tests).
@@ -162,8 +194,7 @@ final class DiscoverViewModel {
         }
     }
 
-    /// Pour tirer pour actualiser, ⌘R et « Réessayer » : relance toutes les
-    /// recherches (le service remélange les articles à chaque appel).
+    /// Pour tirer pour actualiser, ⌘R et « Réessayer » : relit tous les flux.
     func refresh() async {
         await load()
     }
@@ -188,9 +219,11 @@ final class DiscoverViewModel {
 
     private func performLoad() async {
         phaseBeforeLoad = phase
-        refreshDidFail = false
-        staleTopics = []
         let restored = await restoreFromCacheIfNeeded()
+        guard !isOffline() else {
+            showOfflineState()
+            return
+        }
         if case .loaded = phase {
             isRefreshing = true
             isUpdatingRestoredContent = restored
@@ -211,10 +244,28 @@ final class DiscoverViewModel {
         }
 
         apply(Self.update(after: outcome, previous: phase))
+        // Après `apply` seulement : la ligne « Hors connexion. » ne devient pas « Actualisation impossible. »
+        // pendant le chargement qui suit le retour de la connexion.
+        isShowingOfflineState = false
         pendingTopics = []
         isRefreshing = false
         isUpdatingRestoredContent = false
         await saveToCacheIfUseful()
+    }
+
+    /// Hors connexion : pas de requête. Le contenu affiché (cache) reste, signalé ; sans contenu, l'état
+    /// d'échec, que la vue dit « Hors connexion ». Rien n'est enregistré : le fichier a déjà ces articles.
+    private func showOfflineState() {
+        isShowingOfflineState = true
+        if case .loaded(let content) = phase, !content.sections.isEmpty {
+            refreshDidFail = true
+            staleTopics = []
+        } else {
+            phase = .failed
+        }
+        pendingTopics = []
+        isRefreshing = false
+        isUpdatingRestoredContent = false
     }
 
     /// `true` si des articles restaurés sont désormais à l'écran. Ne lit le disque
@@ -222,7 +273,7 @@ final class DiscoverViewModel {
     private func restoreFromCacheIfNeeded() async -> Bool {
         guard case .idle = phase, let snapshot = await cache.load() else { return false }
         let restored = snapshot.restored()
-        let usable = Self.sanitized(restored.content)
+        let usable = Self.sanitized(Self.recent(restored.content, now: now()))
         guard !usable.sections.isEmpty else { return false }
         phase = .loaded(DiscoverContent(sections: usable.sections, failedTopics: []))
         sectionDates = restored.dates
@@ -306,6 +357,22 @@ final class DiscoverViewModel {
         DiscoverTopic.allCases.flatMap { topic in sections.filter { $0.topic == topic } }
     }
 
+    /// Retire d'un contenu restauré les articles sans date ou plus vieux que l'âge maximal
+    /// de `DiscoverService` : un fichier de cache peut dater de plusieurs semaines. Un sujet
+    /// qui n'en garde aucun disparaît, comme avec `sanitized(_:)`.
+    static func recent(
+        _ content: DiscoverContent,
+        now: Date,
+        maximumAge: TimeInterval = DiscoverService.defaultMaximumArticleAge
+    ) -> DiscoverContent {
+        let oldest = now.addingTimeInterval(-maximumAge)
+        let sections = content.sections.compactMap { section -> DiscoverTopicSection? in
+            let articles = section.articles.filter { ($0.publishedAt ?? .distantPast) >= oldest }
+            return articles.isEmpty ? nil : DiscoverTopicSection(topic: section.topic, articles: articles)
+        }
+        return DiscoverContent(sections: sections, failedTopics: content.failedTopics)
+    }
+
     /// Retire les articles inaffichables (voir `isDisplayable(_:)`). Un sujet
     /// qui n'en garde aucun passe dans `failedTopics` : pour l'écran, c'est
     /// exactement un sujet qui n'a rien rendu.
@@ -376,6 +443,7 @@ final class DiscoverViewModel {
         }
         return DiscoverStaleNotice.text(
             refreshDidFail: refreshDidFail,
+            isOffline: isShowingOfflineState,
             staleTitles: titles,
             oldestDate: staleDates.min(),
             now: now(),
@@ -385,7 +453,6 @@ final class DiscoverViewModel {
 }
 
 /// Une place de la vue « Tout » : un sujet prêt, ou un sujet encore en route.
-/// Isolé au main actor, comme `DiscoverTopicSection`, dont il lit l'`id`.
 enum DiscoverOverviewSlot: Identifiable, Equatable {
     case ready(DiscoverTopicSection)
     case pending(topicID: String)
@@ -414,13 +481,16 @@ nonisolated enum DiscoverStaleNotice {
 
     static func text(
         refreshDidFail: Bool,
+        isOffline: Bool = false,
         staleTitles: [String],
         oldestDate: Date?,
         now: Date,
         calendar: Calendar
     ) -> String? {
         let failure: String
-        if refreshDidFail {
+        if refreshDidFail, isOffline {
+            failure = "Hors connexion."
+        } else if refreshDidFail {
             failure = "Actualisation impossible."
         } else if staleTitles.count == 1, let title = staleTitles.first {
             failure = "\(title) n'a pas pu être actualisé."
@@ -431,7 +501,7 @@ nonisolated enum DiscoverStaleNotice {
             return nil
         }
         guard let oldestDate, now.timeIntervalSince(oldestDate) >= minimumMeaningfulAge else {
-            return refreshDidFail ? "\(failure) Vérifie ta connexion." : failure
+            return refreshDidFail && !isOffline ? "\(failure) Vérifie ta connexion." : failure
         }
         let age = RelativeDateLabel.text(for: oldestDate, relativeTo: now, calendar: calendar)
             .lowercased(with: RelativeDateLabel.locale)

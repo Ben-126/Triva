@@ -73,7 +73,7 @@ nonisolated struct WikipediaSearchProvider: WebSearchProviding {
         let items = [
             URLQueryItem(name: "action", value: "query"),
             URLQueryItem(name: "generator", value: "search"),
-            URLQueryItem(name: "gsrsearch", value: BYOKSearchHTTP.trimmedQuery(query) ?? query),
+            URLQueryItem(name: "gsrsearch", value: Self.searchTerms(for: query)),
             URLQueryItem(name: "gsrnamespace", value: "0"),
             URLQueryItem(name: "gsrlimit", value: String(count)),
             URLQueryItem(name: "prop", value: "extracts|info"),
@@ -88,6 +88,18 @@ nonisolated struct WikipediaSearchProvider: WebSearchProviding {
         ]
         let url = try BYOKSearchHTTP.makeURL(host: Self.host(for: options.language), path: Self.path, queryItems: items)
         return OpenSourceSearchHTTP.makeRequest(url: url, accept: "application/json")
+    }
+
+    /// Termes envoyés à `gsrsearch`. CirrusSearch exige TOUS les mots : une phrase de question
+    /// (« Décrire le processus de la photosynthèse étape par étape », « tarifs prévus… 2026 »)
+    /// écarte l'article attendu parce qu'il ne contient pas « décrire » ni « étape ». On envoie donc
+    /// les mots pleins (mêmes mots vides que `LexicalRelevance`, accents gardés). Repli : si rien ne
+    /// reste (question faite que de mots vides), la requête d'origine part telle quelle, comme avant
+    /// la mission A5. Mesure avant/après sur de vraies requêtes : voir les tests et le rapport A5.
+    static func searchTerms(for query: String) -> String {
+        let words = LexicalRelevance.contentWords(of: query)
+        if !words.isEmpty { return words.joined(separator: " ") }
+        return BYOKSearchHTTP.trimmedQuery(query) ?? query
     }
 
     /// « fr », « fr-FR », « FR_ca » -> `fr.wikipedia.org` ; tout le reste (y compris `nil`) -> `en`.

@@ -148,6 +148,27 @@ dans ce cas (les données quittent l'appareil vers le fournisseur choisi), même
 serveur Triva n'est jamais impliqué (règle "zéro backend" du projet, valable pour les
 3 moteurs).
 
+### Apple Intelligence : cloud privé d'Apple ou appareil (mission A4)
+
+Le moteur `.appleIntelligence` peut répondre avec deux modèles : le cloud privé d'Apple
+(Private Cloud Compute) ou le modèle sur l'appareil. Le badge suit le modèle que le
+**prochain envoi utilisera** (`AIEngineOption.privacyBadge(appleRoute:)`, même calcul que
+l'envoi), jamais une supposition :
+
+| Modèle retenu | Icône | Texte | Légende |
+|---|---|---|---|
+| Cloud privé d'Apple | `lock.icloud.fill` | "Apple · Cloud privé" | "Envoyé au cloud privé d'Apple, rien n'y est conservé" |
+| Sur l'appareil, quota du cloud atteint | `lock.fill` | "Apple Intelligence · Sur l'appareil" | "Limite du cloud privé atteinte : réponses sur l'appareil" |
+| Sur l'appareil (choix, hors connexion, cloud non proposé) | `lock.fill` | "Apple Intelligence · Sur l'appareil" | "Aucune IA cloud utilisée" |
+
+- Quand le cloud privé répond, ni "Sur l'appareil" ni "Aucune IA cloud" : ce serait faux.
+- Tant que le cloud privé n'est pas **proposé** (entitlement Apple pas encore accordé,
+  appareil non éligible), aucune mention du cloud n'apparaît nulle part : ni badge, ni
+  choix, ni texte. L'app reste exactement comme avant.
+- Le choix "Cloud privé / Sur l'appareil" vit sous la carte Apple Intelligence de l'écran
+  de choix du moteur (sélecteur segmenté système, sans verre) et dans la section
+  "Moteur IA" des Réglages (sélecteur système de la liste). Textes : `AppleIntelligenceModelCopy`.
+
 ## Composants de référence
 
 Tous implémentés dans `Triva/DesignSystem/TrivaHomeReferenceView.swift` :

@@ -132,6 +132,21 @@ nonisolated struct LexicalRelevance: Sendable, Equatable {
             .map(singular)
     }
 
+    /// Mots PLEINS de `text`, dans l'ordre, tels qu'écrits (casse et accents gardés) : ce que
+    /// `tokens(of:)` garde, moins les mots vides de `stopWords`. Sert à écrire une requête pour un
+    /// moteur qui exige TOUS les mots (Wikipédia, mission A5) : « Décrire le processus de la
+    /// photosynthèse étape par étape » devient « photosynthèse », qui trouve l'article attendu là
+    /// où la phrase entière n'en trouvait aucun. Même liste de mots vides que `assess`, pour que
+    /// ce qu'on envoie à la source et ce qu'on attend d'elle restent cohérents. Peut renvoyer un
+    /// tableau vide (« Comment faire ça ? ») : l'appelant garde alors la phrase d'origine.
+    static func contentWords(of text: String) -> [String] {
+        text.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { word in
+                guard let token = tokens(of: word).first else { return false }
+                return !stopWords.contains(token)
+            }
+    }
+
     private static func singular(_ word: String) -> String {
         guard word.count > 3, let last = word.last, last == "s" || last == "x" else { return word }
         return String(word.dropLast())

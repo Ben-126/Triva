@@ -38,9 +38,11 @@ enum ChatViewModelError: Error, Sendable, Equatable {
 /// jamais un échec ni une réponse vide. Le jeton `activeExchangeID` empêche un
 /// échange remplacé, qui finit de se dérouler, de toucher l'état du suivant.
 ///
-/// Deux extensions, pour garder ce fichier sous les 800 lignes :
-/// `ChatViewModel+Message.swift` (un message du fil) et
-/// `ChatViewModel+ErrorMessages.swift` (messages du bandeau d'erreur).
+/// Extensions, pour garder ce fichier sous les 800 lignes :
+/// `ChatViewModel+Message.swift` (un message du fil),
+/// `ChatViewModel+ErrorMessages.swift` (messages du bandeau d'erreur),
+/// `ChatViewModel+ReliableMode.swift` (mode Fiable), `ChatViewModel+Offline.swift` (mode hors
+/// connexion, tâche 1.16), `ChatViewModel+Favorites.swift` et `ChatViewModel+Media.swift`.
 @Observable
 @MainActor
 final class ChatViewModel {
@@ -53,6 +55,9 @@ final class ChatViewModel {
         /// Chaîne de repli de la recherche web (RI1b), construite sur ce
         /// `failoverManager` ; `nil` = SearXNG seul.
         let webSearchChain: WebSearchChain?
+        /// Appareil hors connexion (tâche 1.16) : l'orchestrateur ne cherche pas sur le web. `var` avec
+        /// défaut : les appels existants (dont les tests) compilent inchangés.
+        var isOffline = false
     }
 
     /// Décision (c) de Ben : textes fixes de l'état `.noReliableSources`.
@@ -68,9 +73,24 @@ final class ChatViewModel {
     /// Toutes les sources de recherche ont échoué, ou SearXNG n'a rien donné
     /// (mission A2) : invitation à gérer ses clés, en bas du fil. Même durée de vie que `errorDescription`.
     private(set) var searchKeyInvitation: SearchKeyInvitation?
+    /// Mission A5 : l'invitation « après un repli » (SearXNG laissé de côté, une source de
+    /// secours a répondu) n'est faite qu'UNE fois par conversation, pas à chaque réponse de
+    /// secours : répétée, elle devient un reproche. Remise à `false` par `startNewConversation()`
+    /// (donc aussi par `loadConversation`, qui passe par elle) et quand l'invitation posée est
+    /// effacée avant d'avoir pu être vue (`fail`). L'invitation d'une ERREUR (toutes les sources
+    /// en échec) n'est pas concernée : elle explique un échec, elle reste affichée à chaque fois.
+    private var fallbackInvitationOffered = false
     /// Échec d'écriture de l'historique ou des favoris : séparé, la réponse a
     /// abouti — n'écrase jamais `errorDescription`.
     private(set) var persistenceErrorDescription: String?
+    /// Envoi bloqué hors connexion (tâche 1.16) : bandeau et bouton « Relancer » en bas du fil. Même
+    /// durée de vie que `errorDescription`. Voir `ChatViewModel+Offline.swift`.
+    private(set) var offlineNotice: OfflineNotice?
+
+    /// Seul point d'écriture de `offlineNotice` hors de ce fichier (`private(set)`).
+    func setOfflineNotice(_ notice: OfflineNotice?) {
+        offlineNotice = notice
+    }
     /// `StoredConversation.id` du fil. Jamais la référence SwiftData :
     /// supprimée depuis la Bibliothèque, elle resterait lisible.
     private(set) var currentConversationID: UUID?
@@ -79,24 +99,27 @@ final class ChatViewModel {
     let attachmentController: FileAttachmentController
 
     private let resolveProvider: () async throws -> any AIGenerating
-    private let resolveFailoverManager: () throws -> FailoverManager
+    let resolveFailoverManager: () throws -> FailoverManager
     private let resolveWebSearchChain: @MainActor (FailoverManager) throws -> WebSearchChain?
+    /// `nil` = connecté (pipeline normal) ; sinon ce que l'envoi doit faire hors connexion (tâche 1.16,
+    /// `SearchSession.resolveOfflinePlan`). Relue à CHAQUE envoi, jamais mémorisée.
+    let resolveOfflinePlan: @MainActor () -> OfflinePlan?
     private let resolvePipelineConfiguration: @MainActor () -> SearchPipelineConfiguration
-    private let readResponseMode: @MainActor () -> ResponseMode
+    let readResponseMode: @MainActor () -> ResponseMode
     private let makeOrchestrator: @MainActor (OrchestratorInputs) -> SearchOrchestrator
     private let generateSuggestions: @MainActor (any AIGenerating, [ClassifierChatMessage]) async -> [String]
-    private let makeMediaSearcher: @MainActor (FailoverManager) -> any MediaSearching
+    let makeMediaSearcher: @MainActor (FailoverManager) -> any MediaSearching
     private let historyStore: ChatHistoryStore?
-    private let favoritesStore: FavoritesStore?
-    private let now: @MainActor () -> Date
+    let favoritesStore: FavoritesStore?
+    let now: @MainActor () -> Date
 
-    @ObservationIgnored private var activeExchangeID: UUID?
+    @ObservationIgnored var activeExchangeID: UUID?
     @ObservationIgnored private var generationTask: Task<Void, Never>?
     @ObservationIgnored private var suggestionsTask: Task<Void, Never>?
-    @ObservationIgnored private var mediaTasks: [MediaRequest: Task<Void, Never>] = [:]
-    @ObservationIgnored private var favoritesCache: (revision: Int, ids: Set<UUID>)?
+    @ObservationIgnored var mediaTasks: [MediaRequest: Task<Void, Never>] = [:]
+    @ObservationIgnored var favoritesCache: (revision: Int, ids: Set<UUID>)?
 
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "ChatViewModel")
+    static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "ChatViewModel")
 
     /// - Parameters:
     ///   - resolveWebSearchChain: chaîne de repli de la recherche web de
@@ -104,6 +127,8 @@ final class ChatViewModel {
     ///     résoudre (`SearchSession.resolveWebSearchChain(failoverManager:)`),
     ///     transmise par `OrchestratorInputs` au `makeOrchestrator` par
     ///     défaut. `nil` (défaut) : SearXNG seul, comportement d'avant la chaîne.
+    ///   - resolveOfflinePlan: `nil` (défaut, et quand l'appareil est connecté) = pipeline normal ;
+    ///     sinon le plan hors connexion (tâche 1.16) : répondre sans recherche, ou bloquer avec un message.
     ///   - resolvePipelineConfiguration: budget du moteur qui a produit le
     ///     provider (bug 6), `SearchPipelineConfiguration.preset(for:mlxModel:)` ;
     ///     appelée juste après `resolveProvider`, dans le même envoi.
@@ -116,6 +141,7 @@ final class ChatViewModel {
         resolveProvider: @escaping () async throws -> any AIGenerating,
         resolveFailoverManager: @escaping () throws -> FailoverManager,
         resolveWebSearchChain: @escaping @MainActor (FailoverManager) throws -> WebSearchChain? = { _ in nil },
+        resolveOfflinePlan: @escaping @MainActor () -> OfflinePlan? = { nil },
         resolvePipelineConfiguration: @escaping @MainActor () -> SearchPipelineConfiguration = { .appleIntelligence },
         readResponseMode: @escaping @MainActor () -> ResponseMode = { ChatViewModel.persistedResponseMode() },
         historyStore: ChatHistoryStore? = nil,
@@ -127,7 +153,8 @@ final class ChatViewModel {
                 aiProvider: inputs.provider,
                 responseMode: inputs.responseMode,
                 configuration: inputs.configuration,
-                webSearchChain: inputs.webSearchChain
+                webSearchChain: inputs.webSearchChain,
+                isOffline: inputs.isOffline
             )
         },
         generateSuggestions: @escaping @MainActor (any AIGenerating, [ClassifierChatMessage]) async -> [String] = { provider, history in
@@ -139,6 +166,7 @@ final class ChatViewModel {
         self.resolveProvider = resolveProvider
         self.resolveFailoverManager = resolveFailoverManager
         self.resolveWebSearchChain = resolveWebSearchChain
+        self.resolveOfflinePlan = resolveOfflinePlan
         self.resolvePipelineConfiguration = resolvePipelineConfiguration
         self.readResponseMode = readResponseMode
         self.historyStore = historyStore
@@ -154,7 +182,7 @@ final class ChatViewModel {
 
     /// Un envoi, figé au départ : changer le mode ou les fichiers pendant la
     /// génération ne concerne que la question suivante.
-    private struct Exchange: Sendable {
+    struct Exchange: Sendable {
         let question: String
         let history: [ClassifierChatMessage]
         let mode: ResponseMode
@@ -236,12 +264,13 @@ final class ChatViewModel {
         ))
     }
 
-    private func runExchange(_ exchange: Exchange) async {
+    func runExchange(_ exchange: Exchange) async {
         let exchangeID = UUID()
         activeExchangeID = exchangeID
         isGenerating = true
         errorDescription = nil
         searchKeyInvitation = nil
+        offlineNotice = nil
         suggestionsTask?.cancel()
         for index in messages.indices where !messages[index].suggestions.isEmpty {
             messages[index].suggestions = []
@@ -263,6 +292,13 @@ final class ChatViewModel {
     private func perform(_ exchange: Exchange, exchangeID: UUID) async {
         var answer = AnswerDraft()
         defer { persistAnswer(answer, exchange: exchange) }
+        // Hors connexion (tâche 1.16) : lu AVANT toute résolution. Un moteur cloud ne tente rien, et le
+        // `prepare()` de MLX, qui téléchargerait un modèle absent, n'est jamais lancé dans le vide.
+        let offlinePlan = resolveOfflinePlan()
+        if case .blocked(let reason)? = offlinePlan {
+            blockOffline(exchange, exchangeID: exchangeID, reason: reason)
+            return
+        }
         do {
             let provider = try await resolveProvider()
             let failoverManager = try resolveFailoverManager()
@@ -271,7 +307,8 @@ final class ChatViewModel {
                 provider: provider,
                 responseMode: exchange.mode,
                 configuration: resolvePipelineConfiguration(),
-                webSearchChain: try resolveWebSearchChain(failoverManager)
+                webSearchChain: try resolveWebSearchChain(failoverManager),
+                isOffline: offlinePlan != nil
             ))
             // `media: []` : images et vidéos À LA DEMANDE (décision (a)).
             let streamingAnswer = try await orchestrator.streamAnswer(
@@ -281,14 +318,20 @@ final class ChatViewModel {
                 media: []
             )
             let artifacts = streamingAnswer.artifacts
+            if let reason = artifacts.offlineBlockReason {
+                // Météo hors connexion, ou mode Fiable sans source (`SearchArtifacts+Offline.swift`).
+                blockOffline(exchange, exchangeID: exchangeID, reason: reason)
+                return
+            }
             // Mission A2 : SearXNG laissé de côté, une source de secours a répondu.
             // Remplacée par `fail` si l'échange échoue ensuite (erreur du moteur IA).
-            if activeExchangeID == exchangeID {
+            if activeExchangeID == exchangeID, !fallbackInvitationOffered {
                 searchKeyInvitation = SearchKeyInvitation(
                     afterFallback: artifacts.webSearchReport,
                     retainedSource: artifacts.webSourceKind,
                     webSourceCount: artifacts.sources.count - artifacts.attachmentSourceCount
                 )
+                fallbackInvitationOffered = searchKeyInvitation != nil
             }
             if Self.lacksReliableSources(artifacts) {
                 // Décision (c) : jamais de réponse sans source en mode Fiable.
@@ -312,6 +355,9 @@ final class ChatViewModel {
             // garde que dans `consume`, une erreur due à l'annulation n'est pas un échec.
             if Task.isCancelled {
                 finishAnswer(exchange.answerID, as: .interrupted)
+            } else if offlinePlan != nil, Self.isLocalModelDownloadFailure(error) {
+                // Modèle MLX présumé sur le disque mais impossible à charger sans Internet.
+                blockOffline(exchange, exchangeID: exchangeID, reason: .localModelUnavailable)
             } else {
                 fail(answerID: exchange.answerID, exchangeID: exchangeID, error: error)
             }
@@ -425,12 +471,16 @@ final class ChatViewModel {
     private func fail(answerID: UUID, exchangeID: UUID, error: any Error) {
         if activeExchangeID == exchangeID {
             errorDescription = Self.userFacingMessage(for: error)
-            searchKeyInvitation = SearchKeyInvitation(for: error)
+            let errorInvitation = SearchKeyInvitation(for: error)
+            // Une invitation de repli posée dans CET échange disparaît sans avoir été vue : elle
+            // reste à faire (seule une invitation de repli peut exister ici, l'envoi l'a remise à nil).
+            if errorInvitation == nil, searchKeyInvitation != nil { fallbackInvitationOffered = false }
+            searchKeyInvitation = errorInvitation
         }
         finishAnswer(answerID, as: .failed)
     }
 
-    private func finishAnswer(_ answerID: UUID, as status: Message.Status) {
+    func finishAnswer(_ answerID: UUID, as status: Message.Status) {
         let date = now()
         updateMessage(id: answerID) { $0.finish(status, at: date) }
     }
@@ -455,6 +505,8 @@ final class ChatViewModel {
         messages = []
         errorDescription = nil
         searchKeyInvitation = nil
+        fallbackInvitationOffered = false
+        offlineNotice = nil
         persistenceErrorDescription = nil
         currentConversationID = nil
         // Par le contrôleur, jamais `store.removeAll()` seul : un fichier en
@@ -601,134 +653,8 @@ final class ChatViewModel {
         }
     }
 
-    private func reportPersistenceFailure(_ error: any Error) {
+    func reportPersistenceFailure(_ error: any Error) {
         persistenceErrorDescription = Self.userFacingMessage(for: error)
-    }
-
-    // MARK: - Favoris (1.10)
-
-    /// Étoile pleine ? Lit `favoritesStore.revision` : appelée dans un `body`,
-    /// la vue se redessine quand un favori change ailleurs (écran Favoris à
-    /// côté du chat sur iPad / Mac). Identifiants relus une fois par révision.
-    func isFavorite(_ message: Message) -> Bool {
-        guard let storedID = message.storedMessageID else { return false }
-        return favoritedStoredMessageIDs().contains(storedID)
-    }
-
-    /// Réponse terminée ET persistée : le favori porte l'`id` du
-    /// `StoredMessage`, jamais l'UUID éphémère de la bulle. Donc jamais
-    /// pendant le streaming, ni sans historique.
-    func canToggleFavorite(_ message: Message) -> Bool {
-        favoritesStore != nil && message.role == .assistant && !message.isStreaming
-            && message.status != .noReliableSources && message.storedMessageID != nil
-    }
-
-    /// Marque ou retire une réponse : question = celle qui la précède, réponse
-    /// = texte brut et sources dans l'ordre de citation.
-    func toggleFavorite(messageID: UUID) {
-        guard let favoritesStore,
-              let index = messages.firstIndex(where: { $0.id == messageID }),
-              canToggleFavorite(messages[index]),
-              let storedID = messages[index].storedMessageID else { return }
-        let message = messages[index]
-        do {
-            if favoritedStoredMessageIDs().contains(storedID) {
-                try favoritesStore.unmark(messageID: storedID)
-            } else {
-                try favoritesStore.mark(
-                    messageID: storedID,
-                    conversationID: message.storedConversationID,
-                    question: precedingQuestion(beforeIndex: index) ?? "",
-                    answer: message.text,
-                    sources: message.sources,
-                    now: now()
-                )
-            }
-        } catch {
-            reportPersistenceFailure(error)
-        }
-    }
-
-    private func favoritedStoredMessageIDs() -> Set<UUID> {
-        guard let favoritesStore else { return [] }
-        let revision = favoritesStore.revision
-        if let favoritesCache, favoritesCache.revision == revision {
-            return favoritesCache.ids
-        }
-        do {
-            let ids = try favoritesStore.favoritedMessageIDs()
-            favoritesCache = (revision, ids)
-            return ids
-        } catch {
-            // Appelée depuis un `body` : aucune écriture d'état observé ici.
-            Self.logger.error("Lecture des favoris impossible : \(String(describing: error), privacy: .private)")
-            return favoritesCache?.ids ?? []
-        }
-    }
-
-    // MARK: - Médias à la demande (1.6, décision (a))
-
-    private enum MediaKind: Hashable {
-        case images
-        case videos
-    }
-
-    private struct MediaRequest: Hashable {
-        let messageID: UUID
-        let kind: MediaKind
-    }
-
-    /// Bouton de `ImageResultsView` : la recherche ne part QUE sur demande.
-    /// Sujet : `searchQuery` de la réponse (pas d'appel LLM de plus), ou la
-    /// question d'un message relu. Ignorée pendant le streaming ou si la même
-    /// recherche est déjà en cours.
-    func searchImages(messageID: UUID) {
-        startMediaSearch(.images, messageID: messageID)
-    }
-
-    /// Bouton de `VideoResultsView`, mêmes règles que `searchImages(messageID:)`.
-    func searchVideos(messageID: UUID) {
-        startMediaSearch(.videos, messageID: messageID)
-    }
-
-    private func startMediaSearch(_ kind: MediaKind, messageID: UUID) {
-        let request = MediaRequest(messageID: messageID, kind: kind)
-        guard mediaTasks[request] == nil,
-              let index = messages.firstIndex(where: { $0.id == messageID }),
-              messages[index].role == .assistant, !messages[index].isStreaming else { return }
-        let query = messages[index].searchQuery ?? precedingQuestion(beforeIndex: index) ?? ""
-        guard !query.isEmpty else { return }
-        switch kind {
-        case .images: messages[index].images = .loading
-        case .videos: messages[index].videos = .loading
-        }
-        mediaTasks[request] = Task {
-            await self.runMediaSearch(kind, query: query, messageID: messageID)
-            self.mediaTasks[request] = nil
-        }
-    }
-
-    /// Erreur -> `.failed`, jamais son texte (contrat de 1.6). Un résultat
-    /// arrivé après une nouvelle conversation ne trouve plus son message.
-    private func runMediaSearch(_ kind: MediaKind, query: String, messageID: UUID) async {
-        do {
-            let searcher = makeMediaSearcher(try resolveFailoverManager())
-            switch kind {
-            case .images:
-                let images = try await searcher.searchImages(query: query)
-                updateMessage(id: messageID) { $0.images = .loaded(images) }
-            case .videos:
-                let videos = try await searcher.searchVideos(query: query)
-                updateMessage(id: messageID) { $0.videos = .loaded(videos) }
-            }
-        } catch {
-            updateMessage(id: messageID) { message in
-                switch kind {
-                case .images: message.images = .failed
-                case .videos: message.videos = .failed
-                }
-            }
-        }
     }
 
     // MARK: - Utilitaires
@@ -744,15 +670,15 @@ final class ChatViewModel {
     }
 
     /// Instantané `Sendable` pour le pipeline, `nil` sans fichier joint.
-    private func attachmentSnapshot() -> AttachmentSearchIndex? {
+    func attachmentSnapshot() -> AttachmentSearchIndex? {
         attachmentController.attachments.isEmpty ? nil : attachmentController.store.searchIndex
     }
 
-    private func precedingQuestion(beforeIndex index: Int) -> String? {
+    func precedingQuestion(beforeIndex index: Int) -> String? {
         messages[..<index].last { $0.role == .user }?.text
     }
 
-    private func updateMessage(id: UUID, _ update: (inout Message) -> Void) {
+    func updateMessage(id: UUID, _ update: (inout Message) -> Void) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         update(&messages[index])
     }

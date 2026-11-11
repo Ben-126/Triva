@@ -210,15 +210,17 @@ struct TrivaRootCoordinatorTests {
         #expect(coordinator.selection == .search)
     }
 
-    /// Liste d'instances VIDE : chargé à travers la session, Découvrir échoue
-    /// aussitôt (`noInstancesConfigured`), sans réseau.
-    @Test("Découvrir cherche sur la liste d'instances effective de l'app")
-    func discoverLoadsThroughTheAppInstanceList() async throws {
-        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores(instances: []))
+    /// Un lecteur de flux factice qui échoue toujours : Découvrir passe par le lecteur
+    /// injecté dans la fenêtre, sans réseau, et finit en échec faute d'article.
+    @Test("Découvrir lit ses flux à travers le lecteur injecté dans la fenêtre")
+    func discoverLoadsThroughTheInjectedFeedFetcher() async throws {
+        let fetcher = StubFeedFetcher(fallback: .fails(.network))
+        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makeStores(), discoverFetcher: fetcher)
 
         await coordinator.discover.loadIfNeeded()
 
         #expect(coordinator.discover.phase == .failed)
+        #expect(!fetcher.requestedIDs.isEmpty)
     }
 
     @Test("Réglages : « Configurer une clé API » mène aux Réglages de la fenêtre")
@@ -285,11 +287,7 @@ struct TrivaRootCoordinatorTests {
 
     private static func makeArticle(title: String) -> DiscoverArticle {
         DiscoverArticle(
-            topic: .tech,
-            result: SearXNGSearchResult(
-                title: title, url: "https://exemple.fr/article", content: nil,
-                imgSrc: nil, thumbnailSrc: nil, thumbnail: nil, author: nil, iframeSrc: nil
-            )
+            topic: .tech, title: title, url: "https://exemple.fr/article", snippet: nil, imageURL: nil
         )
     }
 }

@@ -46,6 +46,10 @@ final class SearXNGMaintenance {
     /// Construit un `FailoverManager` sur la liste d'instances COURANTE, branché sur la mémoire
     /// de fiabilité de l'app. Appelé après le rafraîchissement, jamais avant (voir l'en-tête).
     private let makeFailoverManager: @MainActor () -> FailoverManager
+    /// Vrai quand le système dit qu'il n'y a pas de connexion (`ConnectivityMonitor.isOffline`) :
+    /// un passage ne ferait que télécharger l'annuaire et sonder des instances dans le vide
+    /// (tâche 1.16). Lue à CHAQUE activation, pas mémorisée.
+    private let isOffline: @MainActor () -> Bool
 
     /// Passage en cours, `nil` au repos. Lecture exposée pour les tests.
     private(set) var inFlight: Task<Void, Never>?
@@ -55,24 +59,32 @@ final class SearXNGMaintenance {
     ///     branché sur SES stores (voir `TrivaSharedStores.makeSearXNGMaintenance`).
     ///   - prober: sonde de la re-sonde (la vraie par défaut, une fausse dans les tests).
     ///   - makeFailoverManager: voir la propriété du même nom.
+    ///   - isOffline: voir la propriété du même nom ; `{ false }` par défaut (comportement d'avant 1.16).
     init(
         refresher: any SearXNGDirectoryRefreshing,
         prober: any InstanceProbing = SearXNGInstanceHealthProbe(),
+        isOffline: @escaping @MainActor () -> Bool = { false },
         makeFailoverManager: @escaping @MainActor () -> FailoverManager
     ) {
         self.refresher = refresher
         self.prober = prober
+        self.isOffline = isOffline
         self.makeFailoverManager = makeFailoverManager
     }
 
     /// À appeler à chaque passage de l'app au premier plan (`scenePhase == .active`), lancement
     /// compris.
     ///
+    /// Hors connexion (tâche 1.16) : AUCUN passage — ni téléchargement de l'annuaire, ni sonde. Le
+    /// rafraîchisseur n'enregistrerait de toute façon qu'un échec « hors ligne » (nouvel essai dans 1 h)
+    /// et la re-sonde mettrait à l'écart des instances qui n'ont rien fait de mal : il n'y a pas de
+    /// réseau pour les juger. Le retour de la connexion rappelle cette fonction (`TrivaApp`).
+    ///
     /// - Returns: la tâche du passage lancé (que les tests attendent), ou `nil` si un passage
-    ///   était déjà en cours : rien n'est alors relancé.
+    ///   était déjà en cours ou si l'appareil est hors connexion : rien n'est alors relancé.
     @discardableResult
     func sceneDidBecomeActive() -> Task<Void, Never>? {
-        guard inFlight == nil else { return nil }
+        guard inFlight == nil, !isOffline() else { return nil }
         // Le corps de la tâche hérite du main actor : il ne peut donc démarrer qu'après la fin
         // de cette fonction, et `inFlight` est toujours affecté AVANT que `runPass` ne le remette
         // à `nil`.

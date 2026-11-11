@@ -111,7 +111,25 @@ struct WriterAccuracyRulesTests {
         #expect(!section.contains("écris tout ce qu'elles disent"))
         #expect(!PromptTemplates.modeSection(for: .quick, complexity: .concise).contains("Vise 300 à 400 mots"))
     }
+
+    /// Mission A5, point 6. « Traduis ta réponse en anglais » (sans recherche) recopiait le haïku en
+    /// français : le prompt concis n'avait pas la règle Langue du détaillé. Mesure sur Apple
+    /// Intelligence (Mac, 2026-11-11, historique d'un haïku, 6 essais par version : 3 sans, 3 avec
+    /// reformulation autonome) : 0 traduction avant ; après, 1 sur 6 avec la règle du détaillé (essais
+    /// d'autres formulations : 0 à 2 sur 6, dont une qui nomme la traduction, sans gain net). Le modèle
+    /// embarqué traduit mal ce cas : la règle est posée, elle ne suffit pas à elle seule.
+    @Test("Mission A5 : le prompt de conversation concis porte la règle Langue du détaillé, dans tous les modes")
+    func conciseConversationHasTheLanguageRule() {
+        let rule = "Langue : réponds dans la langue de la question, sauf si elle demande explicitement une autre langue."
+        for mode in ResponseMode.allCases {
+            let concise = PromptTemplates.conversationPrompt(query: "Traduis ta réponse en anglais", mode: mode, complexity: .concise)
+            let full = PromptTemplates.conversationPrompt(query: "Traduis ta réponse en anglais", mode: mode, complexity: .full)
+            #expect(concise.contains(rule))
+            #expect(full.contains(rule.replacingOccurrences(of: "Langue :", with: "**Langue** :")))
+        }
+    }
 }
+
 
 @MainActor
 @Suite("QueryClassifier — consignes de routage (mission A2)")
@@ -135,14 +153,31 @@ struct ClassifierAccuracyRulesTests {
 
     @Test("Décision 2 : en concis, skipSearch réservé à une liste fermée ; les faits passent par la recherche")
     func conciseSkipSearchIsAClosedList() {
-        // La liste exacte de Ben : y ajouter un cas (la météo, par exemple) doit être une décision.
+        // La liste de Ben (validée le 2026-11-11, mission A5) : salutation, écriture, calcul, et la
+        // météo répondue par le widget. Un cas de plus doit rester une décision.
         #expect(Self.concise.contains(
             "\"skipSearch\": true SEULEMENT pour une salutation, une écriture ou reformulation "
-                + "(poème, e-mail, traduction, résumé de la conversation) ou un calcul ;"
+                + "(poème, e-mail, traduction, résumé de la conversation), un calcul "
+                + "ou la météo d'un lieu précis (un widget y répond) ;"
         ))
         #expect(Self.concise.contains("false pour toute question de fait"))
         #expect(Self.concise.contains("même si tu connais la réponse"))
         #expect(!Self.concise.contains("connaissance générale"))
+    }
+
+    @Test("Mission A5 : le prompt détaillé suit la même liste fermée, sans « connaissance générale »")
+    func fullSkipSearchIsTheSameClosedList() {
+        #expect(Self.full.contains("La liste ci-dessous est FERMÉE."))
+        #expect(Self.full.contains("SEULEMENT dans ces quatre cas"))
+        for item in ["une salutation", "écriture ou de reformulation", "un calcul ou une conversion", "la météo d'un lieu précis"] {
+            #expect(Self.full.contains(item))
+        }
+        #expect(Self.full.contains("MÊME SI TU CONNAIS LA RÉPONSE"))
+        #expect(Self.full.contains("une question de fait déclenche toujours la recherche"))
+        #expect(!Self.full.contains("CONNAISSANCE GÉNÉRALE"))
+        #expect(!Self.full.contains("connaissances générales"))
+        // La bourse n'est pas dans la liste fermée ; la route envoie de toute façon vers le web.
+        #expect(Self.full.contains("Laisse skipSearch à false : un cours de bourse"))
     }
 
     @Test("Décision 4 : « Cite » ne déclenche plus la recherche académique, ni « citations » ni « recherches »")

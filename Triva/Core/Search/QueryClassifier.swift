@@ -339,9 +339,17 @@ struct QueryClassifier: Sendable {
     /// et `discussionSearch` reçoit la ligne proposée et mesurée par T2
     /// (décision 1 : « Quelles sont les différences entre JavaScript et
     /// TypeScript ? » était classée discussion 3 fois sur 3, donc envoyée sur
-    /// Reddit). `skipSearch` reste celui du web : mesuré dans l'éval A2 avec
-    /// gpt-6-luna, il saute la recherche pour 6 questions de fait sur 8 —
-    /// arbitrage signalé à Ben, non tranché ici.
+    /// Reddit).
+    ///
+    /// Mission A5 (décision de Ben du 2026-11-11) : `skipSearch` suit la MÊME
+    /// liste fermée que le prompt concis (salutation, écriture ou
+    /// reformulation, calcul, météo répondue par le widget). Le `skipSearch`
+    /// du web (« connaissance générale ») faisait sauter la recherche à
+    /// gpt-6-luna pour 6 questions de fait sur 8 (mesure A2, confirmée par
+    /// A5 sur les 12 questions de A2 : 6 sur 8 avant, 0 sur 8 après, un seul
+    /// essai par question) ; la réponse venait alors de tête, sans source.
+    /// Les calculs, la météo et les écritures restent sautés (3 sur 3). Un
+    /// écart assumé avec `classifier.ts`, qui garde l'ancienne règle.
     private static let classifierSystemPrompt: String = """
     <role>
     Tu es un système d'IA avancé chargé d'analyser la requête de l'utilisateur et l'historique de la conversation pour déterminer la classification la plus appropriée de l'opération de recherche.
@@ -349,12 +357,10 @@ struct QueryClassifier: Sendable {
     </role>
 
     <labels>
-    NOTE : PAR "CONNAISSANCE GÉNÉRALE", ON ENTEND UNE INFORMATION ÉVIDENTE, LARGEMENT CONNUE, OU DÉDUCTIBLE SANS SOURCE EXTERNE — PAR EXEMPLE DES FAITS MATHÉMATIQUES, DES CONNAISSANCES SCIENTIFIQUES DE BASE, DES ÉVÉNEMENTS HISTORIQUES CONNUS, ETC.
-    1. skipSearch (booléen) : Analyse en profondeur si la requête de l'utilisateur peut être répondue sans effectuer de recherche.
-       - Mets-le à true si la requête est simple, factuelle, ou peut être répondue avec des connaissances générales.
-       - Mets-le à true pour les tâches d'écriture ou les messages de salutation qui ne nécessitent pas d'information externe.
-       - Mets-le à true si un widget météo, bourse ou similaire peut entièrement satisfaire la demande.
-       - Mets-le à false si la requête nécessite une information à jour, des détails spécifiques, ou un contexte non déductible des connaissances générales.
+    1. skipSearch (booléen) : Détermine si la requête peut être répondue sans effectuer de recherche. La liste ci-dessous est FERMÉE.
+       - Mets-le à true SEULEMENT dans ces quatre cas : une salutation ; une tâche d'écriture ou de reformulation (poème, e-mail, traduction, résumé de la conversation) ; un calcul ou une conversion ; la météo d'un lieu précis, quand un widget météo la répond entièrement.
+       - Mets-le à false pour toute question de fait (chiffre, date, prix, personne, lieu, définition, explication, comparaison), MÊME SI TU CONNAIS LA RÉPONSE : une question de fait déclenche toujours la recherche.
+       - Mets-le à false si la requête nécessite une information à jour, des détails spécifiques, ou un contexte non déductible de la conversation.
        - METS TOUJOURS SKIPSEARCH À FALSE SI TU ES INCERTAIN, SI LA REQUÊTE EST AMBIGUË, OU SI TU N'ES PAS SÛR.
     2. personalSearch (booléen) : Détermine si la requête nécessite de chercher dans les documents importés par l'utilisateur.
        - Mets-le à true si la requête référence explicitement ou implique le besoin d'accéder à des documents importés par l'utilisateur, par exemple "Détermine les points clés du document que j'ai importé sur..." ou "Qui est l'auteur ?", "Résume le contenu du document".
@@ -372,15 +378,15 @@ struct QueryClassifier: Sendable {
     5. showWeatherWidget (booléen) : Décide si afficher un widget météo répondrait suffisamment à la requête.
        - Mets-le à true si la requête concerne spécifiquement les conditions météo actuelles, des prévisions, ou toute information liée à la météo pour un lieu donné.
        - Mets-le à true pour des requêtes comme "Quel temps fait-il à [Lieu] ?" ou "Va-t-il pleuvoir demain à [Lieu] ?" ou "Montre-moi la météo" (ici, il s'agit de la météo du lieu actuel de l'utilisateur).
-       - Si cela répond entièrement à la requête sans recherche supplémentaire, mets aussi skipSearch à true.
+       - Si cela répond entièrement à la requête sans recherche supplémentaire, mets aussi skipSearch à true (cas météo de la liste fermée).
     6. showStockWidget (booléen) : Détermine si afficher un widget boursier répondrait suffisamment à la demande.
        - Mets-le à true si la requête concerne spécifiquement le cours actuel d'une action ou des informations boursières pour des entreprises précises. Ne jamais l'utiliser pour une analyse de marché ou des actualités boursières.
        - Mets-le à true pour des requêtes comme "Quel est le cours de l'action [Entreprise] ?" ou "Comment se comporte [Action] aujourd'hui ?" ou "Montre-moi les cours des actions" (ici, il s'agit des actions qui intéressent l'utilisateur).
-       - Si cela répond entièrement à la requête sans recherche supplémentaire, mets aussi skipSearch à true.
+       - Laisse skipSearch à false : un cours de bourse n'est pas dans la liste fermée de skipSearch.
     7. showCalculationWidget (booléen) : Décide si afficher un widget de calcul répondrait à la requête.
        - Mets-le à true si la requête implique des calculs mathématiques, des conversions, ou toute tâche de calcul.
        - Mets-le à true pour des requêtes comme "Combien font 25% de 80 ?" ou "Convertis 100 USD en EUR" ou "Calcule la racine carrée de 256" ou "Combien font 2 * 3 + 5 ?" ou d'autres expressions mathématiques.
-       - Si cela répond entièrement à la requête sans recherche supplémentaire, mets aussi skipSearch à true.
+       - Si cela répond entièrement à la requête sans recherche supplémentaire, mets aussi skipSearch à true (cas calcul de la liste fermée).
     </labels>
 
     <standalone_followup>
@@ -422,13 +428,11 @@ struct QueryClassifier: Sendable {
     /// faisait répondre de tête « 330 pieds » à la hauteur de la tour Eiffel
     /// (constat Q1) ; les faits passent par la recherche. La liste est celle
     /// de Ben, au mot près : salutation, écriture ou reformulation, calcul. La
-    /// météo n'y est pas : une question météo lance donc une recherche web en
-    /// plus du widget, que le rédacteur peut citer à tort (éval A2 : « couvert
-    /// [2] » renvoyait à l'article Wikipédia de Lyon). L'y ajouter
-    /// (`SearchRoute.webUnlessWeatherAnswered` saute alors le web quand le
-    /// widget répond) est une proposition soumise à Ben, pas une décision.
-    /// Sans effet sur le prompt `.full`, port du web, dont `skipSearch` reste
-    /// inchangé.
+    /// météo, retirée par A2, y est REMISE par A5 : Ben a validé la liste avec
+    /// « météo répondue par le widget » (sans elle, la recherche web s'ajoutait
+    /// au widget et le rédacteur citait à tort l'article Wikipédia de Lyon, éval
+    /// A2). `SearchRoute.webUnlessWeatherAnswered` saute alors le web quand le
+    /// widget répond. Le prompt `.full` suit la même liste (mission A5).
     /// `academicSearch` : ni « citations » ni « recherches » ne déclenchent
     /// plus la recherche académique. « Cite les 27 pays de l'UE » partait sur
     /// arXiv (constat Q1), « Explique en détail… » sur OpenAlex (éval A2) ;
@@ -437,7 +441,7 @@ struct QueryClassifier: Sendable {
     Analyse la requête ci-dessous (et l'historique de conversation si utile) et réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
     {
       "classification": {
-        "skipSearch": true SEULEMENT pour une salutation, une écriture ou reformulation (poème, e-mail, traduction, résumé de la conversation) ou un calcul ; false pour toute question de fait (chiffre, date, prix, personne, lieu, définition, explication), même si tu connais la réponse, et false si incertain,
+        "skipSearch": true SEULEMENT pour une salutation, une écriture ou reformulation (poème, e-mail, traduction, résumé de la conversation), un calcul ou la météo d'un lieu précis (un widget y répond) ; false pour toute question de fait (chiffre, date, prix, personne, lieu, définition, explication), même si tu connais la réponse, et false si incertain,
         "personalSearch": true seulement si la requête parle d'un document importé par l'utilisateur, sinon false,
         "academicSearch": true seulement si la requête demande explicitement des articles scientifiques ou des études (« Cite… » demande une liste : false), sinon false,
         "discussionSearch": true seulement si la requête demande des avis/opinions/discussions communautaires, sinon false,

@@ -7,43 +7,62 @@
 
 import Foundation
 
-/// Un article tendance, prêt pour l'affichage — dérivé d'un
-/// `SearXNGSearchResult` mais recadré sur ce dont Discover a besoin
-/// (`imageURL` déjà parsée, `id` déjà normalisé pour servir de clé
-/// `Identifiable` ET de clé de déduplication).
-struct DiscoverArticle: Sendable, Equatable, Identifiable {
+/// Un article de Découvrir, prêt pour l'affichage. Venu d'un flux RSS/Atom (`FeedItem`),
+/// recadré sur ce dont l'écran a besoin : `id` déjà normalisé, qui sert à la fois de clé
+/// `Identifiable` et de clé de déduplication, `imageURL` déjà parsée.
+///
+/// `nonisolated` : donnée pure, construite par `DiscoverService` hors du main actor. Sans
+/// cela, chaque création d'article reviendrait sur le fil principal.
+nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
     let id: String
     let topic: DiscoverTopic
     let title: String
     let url: String
     let snippet: String?
     let imageURL: URL?
+    /// Date de publication fournie par l'éditeur. `nil` seulement pour un article écrit à
+    /// la main (aperçus, tests) : `DiscoverService` n'en produit jamais sans date.
+    let publishedAt: Date?
+    /// Nom de l'éditeur (« Numerama »), cité sous chaque article comme l'exigent les
+    /// conditions de plusieurs flux (ESPN, PMC).
+    let sourceName: String?
 
-    init(topic: DiscoverTopic, result: SearXNGSearchResult) {
-        self.topic = topic
-        self.title = result.title
-        self.url = result.url
-        self.snippet = result.content
-        self.imageURL = (result.imgSrc ?? result.thumbnail ?? result.thumbnailSrc)
-            .flatMap { URL(string: $0) }
-        self.id = Self.normalizedKey(for: result.url)
+    init(topic: DiscoverTopic, item: FeedItem, source: FeedSource) {
+        self.init(
+            topic: topic,
+            title: item.title,
+            url: item.link,
+            snippet: item.summary,
+            imageURL: source.usesThumbnails ? item.imageURL.flatMap { URL(string: $0) } : nil,
+            publishedAt: item.publishedAt,
+            sourceName: source.name
+        )
     }
 
-    /// Article restauré du cache (`DiscoverCacheSnapshot.restored()`).
-    init(topic: DiscoverTopic, title: String, url: String, snippet: String?, imageURL: URL?) {
+    /// Article restauré du cache (`DiscoverCacheSnapshot.restored()`) ou écrit à la main
+    /// (aperçus, tests).
+    init(
+        topic: DiscoverTopic,
+        title: String,
+        url: String,
+        snippet: String?,
+        imageURL: URL?,
+        publishedAt: Date? = nil,
+        sourceName: String? = nil
+    ) {
         self.topic = topic
         self.title = title
         self.url = url
         self.snippet = snippet
         self.imageURL = imageURL
+        self.publishedAt = publishedAt
+        self.sourceName = sourceName
         self.id = Self.normalizedKey(for: url)
     }
 
     /// Même règle de déduplication que le web (`item.url?.toLowerCase().trim()`,
-    /// route.ts) : suffisant pour éliminer les doublons exacts entre domaines/
-    /// requêtes qui remontent la même URL, pas une normalisation d'URL
-    /// complète (paramètres de tracking, www., etc.) — non nécessaire ici,
-    /// le volume par sujet est petit et borné par `maxArticlesPerTopic`.
+    /// route.ts) : suffisant pour éliminer le même article repris par deux flux d'un même
+    /// sujet (ESPN « news » et « soccer »), pas une normalisation d'URL complète.
     static func normalizedKey(for url: String) -> String {
         url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
@@ -54,157 +73,99 @@ struct DiscoverArticle: Sendable, Equatable, Identifiable {
 /// `TaskGroup` complète ses tâches dans un ordre non déterministe, et une UI
 /// dont les sections sautent de place à chaque rafraîchissement serait
 /// désorientante.
-struct DiscoverTopicSection: Sendable, Equatable, Identifiable {
+nonisolated struct DiscoverTopicSection: Sendable, Equatable, Identifiable {
     let topic: DiscoverTopic
     let articles: [DiscoverArticle]
 
     var id: String { topic.rawValue }
 }
 
-/// Résultat complet d'un `fetchTrending`. `failedTopics` liste les sujets
-/// pour lesquels AUCUNE combinaison domaine/requête n'a renvoyé de résultat
-/// (erreur réseau totale ou instance SearXNG qui ne connaît aucun des
-/// domaines demandés) — jamais lancé comme erreur : un échec partiel ne doit
-/// jamais faire disparaître les sujets qui ont fonctionné (exigence de la
-/// mission 1.8).
-struct DiscoverContent: Sendable, Equatable {
+/// Résultat complet d'un `fetchTrending`. `failedTopics` liste les sujets sans AUCUN
+/// article récent (flux injoignables, ou flux sans article assez récent) — jamais lancé
+/// comme erreur : un échec partiel ne doit jamais faire disparaître les sujets qui ont
+/// fonctionné (exigence de la mission 1.8).
+nonisolated struct DiscoverContent: Sendable, Equatable {
     let sections: [DiscoverTopicSection]
     let failedTopics: [DiscoverTopic]
 
     static let empty = DiscoverContent(sections: [], failedTopics: [])
 }
 
-/// Abstraction du mélange aléatoire des articles avant bornage — remplace
-/// `Math.random()` (route.ts, `.sort(() => Math.random() - 0.5)`), qui n'a
-/// pas d'équivalent testable de façon déterministe. Même principe DI que
-/// `SearXNGSearching`/`ScrapeServing` : un protocole + une implémentation
-/// système par défaut, un mock déterministe (typiquement l'identité) dans
-/// les tests.
-nonisolated protocol DiscoverArticleShuffling: Sendable {
-    func shuffled(_ articles: [DiscoverArticle]) -> [DiscoverArticle]
-}
-
-/// Implémentation de production : `Array.shuffled()` (générateur système,
-/// non déterministe par construction — c'est le but, éviter que le même
-/// article soit toujours en tête à chaque rafraîchissement).
-struct SystemDiscoverArticleShuffler: DiscoverArticleShuffling {
-    init() {}
-
-    func shuffled(_ articles: [DiscoverArticle]) -> [DiscoverArticle] {
-        articles.shuffled()
-    }
-}
-
-/// Une recherche prévue par `DiscoverService` : un sujet, un domaine, une requête.
-struct DiscoverPlannedSearch: Sendable, Equatable {
+/// Un flux à lire pour un sujet.
+nonisolated struct DiscoverPlannedFeed: Sendable, Equatable {
     let topic: DiscoverTopic
-    let domain: String
-    let query: String
+    let source: FeedSource
 }
 
-/// Service Discover (1.8) : récupère le contenu tendance de tous les sujets
-/// du catalogue, groupé par sujet, sans backend — chaque requête part directement
-/// vers les instances SearXNG publiques via `FailoverManager` (même dépendance que
-/// `SearchOrchestrator`).
+/// Service Discover : récupère l'actualité de tous les sujets du catalogue à partir de
+/// flux RSS/Atom publics, sans backend, sans clé et sans moteur de recherche.
 ///
-/// DIVERGENCE assumée vis-à-vis du web : `route.ts` répond à UN `topic` à la
-/// fois (paramètre de requête HTTP, page qui affiche un sujet sélectionné).
-/// Ben a validé un modèle différent pour l'app : tous les sujets sont
-/// récupérés ensemble et regroupés, pour une vue Discover qui montre
-/// plusieurs sections en une fois plutôt qu'un sélecteur de sujet + rechargement.
+/// ## Pourquoi des flux et plus SearXNG (mesure T1, 2026-11-06)
+/// Les instances SearXNG publiques refusent après 3 ou 4 requêtes par IP ; un seul
+/// chargement de Découvrir en demandait 15, jusqu'à 30. Un flux RSS est fait pour être lu
+/// régulièrement, ne coûte qu'une requête, et porte ce qui manquait aux résultats d'un
+/// moteur : la DATE de publication réelle. Plus de vieux articles sans date (wikinews,
+/// finding Q3 53), plus de pages de rubrique prises pour des articles.
 ///
-/// DIVERGENCE assumée #2 : le web force `engines: ['bing news']`. Une
-/// instance SearXNG publique n'active pas forcément ce moteur précis (elles
-/// sont configurées indépendamment par leurs opérateurs, contrairement au
-/// serveur du web qui contrôle sa propre instance) — un moteur absent en
-/// SearXNG ne fait pas échouer la recherche, il l'ignore silencieusement et
-/// renvoie 0 résultat. On utilise donc la catégorie `news` (supportée par
-/// la quasi-totalité des instances) plutôt qu'un moteur nommé, et on retente
-/// sans aucune restriction si la catégorie ne renvoie rien (`searchOneCombo`)
-/// — un sujet ne doit pas rester vide juste parce que l'instance du moment
-/// classe mal ses actualités.
-///
-/// ## Pas de rafale (mesuré sur le vrai réseau le 2026-11-04)
-/// Le croisement complet domaines × requêtes lançait environ 50 recherches
-/// simultanées. Toutes choisissaient leur instance AVANT qu'aucune n'ait répondu :
-/// ni le cache de dernière instance de `FailoverManager` ni sa mise de côté ne
-/// servaient pendant le chargement. Sur la liste publique : 456 requêtes, 18 s, et
-/// aucun article. D'où trois règles :
-/// - `combosPerTopic` recherches par sujet (15 au total), qui varient d'une fois à
-///   l'autre (`searches(for:rotation:)`) ;
-/// - au plus `maxConcurrentSearches` en vol, sujet après sujet : la première vague
-///   apprend au manager quelle instance répond, et les sujets arrivent dans l'ordre
-///   du catalogue ;
-/// - quand assez de recherches ont épuisé toutes les instances sans aucun succès,
-///   les suivantes ne partent pas : elles échoueraient pareil.
-struct DiscoverService: Sendable {
-    /// Nombre max d'articles conservés par sujet après mélange — borne le
-    /// volume affiché sans dépendre d'une pagination.
+/// ## Règles
+/// - Au plus `maxConcurrentFeeds` (3) flux en vol : la même politesse qu'avec SearXNG, sujet
+///   après sujet, dans l'ordre du catalogue.
+/// - Un article sans date, ou plus vieux que `maximumArticleAge`, est écarté.
+/// - Plus de mélange aléatoire : le fil est trié du plus récent au plus ancien, donc le même
+///   à chaque chargement tant que rien n'est paru. Le mélange faisait changer l'ordre du fil
+///   restauré à la fin de chaque actualisation (Q1).
+/// - Chaque source garde au plus sa part du sujet (`maxArticlesPerTopic` / nombre de
+///   sources, arrondi au-dessus), puis les places libres vont aux plus récents : un flux
+///   bavard (The Conversation, 25 articles) ne chasse pas les autres.
+/// - Pas de repli SearXNG : ses résultats n'ont pas de date, ils rapporteraient les vieux
+///   articles que ce service existe pour écarter, et ils consommeraient le budget de 3 à 4
+///   requêtes. Un flux en échec laisse son sujet vide ; l'écran l'explique.
+nonisolated struct DiscoverService: Sendable {
+    /// Nombre max d'articles conservés par sujet : borne le volume affiché sans pagination.
     static let defaultMaxArticlesPerTopic = 12
-    /// Une recherche par domaine du catalogue : 15 pour les 5 sujets.
-    static let combosPerTopic = 3
-    static let defaultMaxConcurrentSearches = 3
-    /// Recherches qui épuisent toutes les instances, sans aucune réponse, avant de
-    /// renoncer aux suivantes. Plus d'une : avec une liste d'une seule instance, un
-    /// refus passager ne doit pas priver tous les sujets.
-    static let failedSearchesBeforeStopping = 3
+    static let defaultMaxConcurrentFeeds = 3
+    /// 21 jours : le flux Arts de The Conversation publie quelques articles par semaine, et
+    /// une exposition ou un essai ne vieillit pas comme une dépêche. En dessous, ce sujet
+    /// resterait vide.
+    static let defaultMaximumArticleAge: TimeInterval = 21 * 24 * 3600
+    /// Tolérance sur une date « dans le futur » (fuseaux, horloges de serveurs).
+    static let futureTolerance: TimeInterval = 24 * 3600
 
-    private let failoverManager: FailoverManager
-    private let shuffler: any DiscoverArticleShuffling
+    private let fetcher: any FeedFetching
     private let catalog: [DiscoverTopicDefinition]
     private let maxArticlesPerTopic: Int
-    private let maxConcurrentSearches: Int
-    private let queryRotation: @Sendable () -> Int
+    private let maxConcurrentFeeds: Int
+    private let maximumArticleAge: TimeInterval
+    private let now: @Sendable () -> Date
 
-    /// - Parameter queryRotation: décale les requêtes associées aux domaines, pour
-    ///   couvrir tout le catalogue au fil des chargements ; aléatoire par défaut.
     init(
-        failoverManager: FailoverManager,
-        shuffler: any DiscoverArticleShuffling = SystemDiscoverArticleShuffler(),
+        fetcher: any FeedFetching = HTTPFeedFetcher(),
         catalog: [DiscoverTopicDefinition] = DiscoverTopicCatalog.all,
         maxArticlesPerTopic: Int = DiscoverService.defaultMaxArticlesPerTopic,
-        maxConcurrentSearches: Int = DiscoverService.defaultMaxConcurrentSearches,
-        queryRotation: @escaping @Sendable () -> Int = { Int.random(in: 0..<1_000) }
+        maxConcurrentFeeds: Int = DiscoverService.defaultMaxConcurrentFeeds,
+        maximumArticleAge: TimeInterval = DiscoverService.defaultMaximumArticleAge,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
-        self.failoverManager = failoverManager
-        self.shuffler = shuffler
+        self.fetcher = fetcher
         self.catalog = catalog
-        self.maxArticlesPerTopic = maxArticlesPerTopic
-        self.maxConcurrentSearches = max(1, maxConcurrentSearches)
-        self.queryRotation = queryRotation
+        self.maxArticlesPerTopic = max(1, maxArticlesPerTopic)
+        self.maxConcurrentFeeds = max(1, maxConcurrentFeeds)
+        self.maximumArticleAge = maximumArticleAge
+        self.now = now
     }
 
-    /// Recherches d'un chargement, dans l'ordre d'envoi : sujet après sujet.
-    func plannedSearches(language: DiscoverLanguage) -> [DiscoverPlannedSearch] {
-        let rotation = queryRotation()
-        return catalog.flatMap { definition in
-            Self.searches(for: definition.localizedContent(for: language), rotation: rotation).map {
-                DiscoverPlannedSearch(topic: definition.topic, domain: $0.domain, query: $0.query)
+    /// Flux d'un chargement, dans l'ordre d'envoi : sujet après sujet.
+    func plannedFeeds(language: DiscoverLanguage) -> [DiscoverPlannedFeed] {
+        catalog.flatMap { definition in
+            definition.resolvedSources(for: language).sources.map {
+                DiscoverPlannedFeed(topic: definition.topic, source: $0)
             }
         }
     }
 
-    /// Les `combosPerTopic` couples domaine × requête d'un sujet : en parcourant les
-    /// diagonales du croisement, chaque domaine sert une fois avant qu'un domaine ne
-    /// serve deux fois, et avec une requête différente tant qu'il y en a assez.
-    static func searches(
-        for content: DiscoverLocalizedTopicContent,
-        rotation: Int
-    ) -> [(domain: String, query: String)] {
-        guard !content.domains.isEmpty, !content.queries.isEmpty else { return [] }
-        let queryCount = content.queries.count
-        let all = (0..<queryCount).flatMap { shift in
-            content.domains.enumerated().map { index, domain in
-                (domain: domain, query: content.queries[(rotation + index + shift) % queryCount])
-            }
-        }
-        return Array(all.prefix(combosPerTopic))
-    }
-
-    /// Récupère le contenu tendance de tous les sujets du catalogue.
-    /// Rappelable à volonté (aucun état interne conservé entre deux appels)
-    /// pour couvrir le rafraîchissement demandé par la mission 1.8 — chaque
-    /// appel relance les recherches et remélange les résultats.
+    /// Récupère l'actualité de tous les sujets du catalogue.
+    /// Rappelable à volonté : le seul état gardé entre deux appels est la mémoire partagée
+    /// des requêtes conditionnelles (`FeedRevalidationStore`).
     ///
     /// - Parameters:
     ///   - locale: `Locale.current` n'est PAS une bonne valeur ici : sans localisation
@@ -217,44 +178,39 @@ struct DiscoverService: Sendable {
         onTopicFinished: DiscoverViewModel.TopicHandler? = nil
     ) async -> DiscoverContent {
         let language = DiscoverLanguage.preferred(for: locale)
-        let plan = plannedSearches(language: language)
-        var collector = DiscoverSearchCollector(plan: plan)
+        let plan = plannedFeeds(language: language)
+        var collector = DiscoverFeedCollector(plan: plan)
         var finished: [DiscoverTopic: [DiscoverArticle]] = [:]
-        let finish = { (topic: DiscoverTopic, results: [SearXNGSearchResult]) in
+        let finish = { (topic: DiscoverTopic, results: [DiscoverFeedResult]) async in
             let articles = self.articles(for: topic, from: results)
             finished[topic] = articles
-            onTopicFinished?(topic, articles)
+            await onTopicFinished?(topic, articles)
         }
 
-        await withTaskGroup(of: (DiscoverTopic, DiscoverSearchOutcome).self) { group in
+        await withTaskGroup(of: (DiscoverTopic, DiscoverFeedResult).self) { group in
             var nextIndex = 0
             var inFlight = 0
             while true {
-                while inFlight < maxConcurrentSearches,
-                      nextIndex < plan.count,
-                      !collector.shouldStop(threshold: Self.failedSearchesBeforeStopping) {
-                    let search = plan[nextIndex]
+                while inFlight < maxConcurrentFeeds, nextIndex < plan.count {
+                    let feed = plan[nextIndex]
                     nextIndex += 1
                     inFlight += 1
-                    group.addTask {
-                        (search.topic, await self.searchOneCombo(search, language: language))
-                    }
+                    group.addTask { (feed.topic, await self.read(feed)) }
                 }
-                guard let (topic, outcome) = await group.next() else { break }
+                guard let (topic, result) = await group.next() else { break }
                 inFlight -= 1
-                if let results = collector.record(outcome, for: topic) {
-                    finish(topic, results)
+                if let results = collector.record(result, for: topic) {
+                    await finish(topic, results)
                 }
             }
         }
 
-        // Sujets sans recherche prévue, ou arrêtés avant la fin : ce qu'ils ont.
+        // Sujets sans aucun flux prévu : ils sortent en échec, sans attendre personne.
         for definition in catalog where finished[definition.topic] == nil {
-            finish(definition.topic, collector.results(for: definition.topic))
+            await finish(definition.topic, collector.results(for: definition.topic))
         }
 
-        // Dans l'ordre du catalogue, pas dans celui d'arrivée (voir la doc de
-        // `DiscoverTopicSection`).
+        // Dans l'ordre du catalogue, pas dans celui d'arrivée (voir `DiscoverTopicSection`).
         var sections: [DiscoverTopicSection] = []
         var failedTopics: [DiscoverTopic] = []
         for definition in catalog {
@@ -268,90 +224,92 @@ struct DiscoverService: Sendable {
         return DiscoverContent(sections: sections, failedTopics: failedTopics)
     }
 
-    /// Dédoublonne, mélange, borne.
-    private func articles(for topic: DiscoverTopic, from results: [SearXNGSearchResult]) -> [DiscoverArticle] {
-        var seenKeys = Set<String>()
-        var articles: [DiscoverArticle] = []
-        for result in results {
-            let key = DiscoverArticle.normalizedKey(for: result.url)
-            guard !key.isEmpty, seenKeys.insert(key).inserted else { continue }
-            articles.append(DiscoverArticle(topic: topic, result: result))
-        }
-        return Array(shuffler.shuffled(articles).prefix(maxArticlesPerTopic))
-    }
-
-    /// Une combinaison `site:domaine requête` : tente d'abord la catégorie `news`, et
-    /// retente sans restriction si elle ne renvoie RIEN (voir la divergence documentée
-    /// en tête de fichier). Une ERREUR ne se retente pas : toutes les instances
-    /// viennent d'échouer, les reparcourir pour la même requête n'apporterait rien.
-    /// Ne lève jamais : un sujet entier ne doit jamais faire `throw`.
-    private func searchOneCombo(
-        _ search: DiscoverPlannedSearch,
-        language: DiscoverLanguage
-    ) async -> DiscoverSearchOutcome {
-        let searchQuery = "site:\(search.domain) \(search.query)"
+    /// Lit un flux. Ne lève jamais : un flux en échec ne doit pas faire `throw` tout le chargement.
+    private func read(_ feed: DiscoverPlannedFeed) async -> DiscoverFeedResult {
         do {
-            let newsOptions = SearXNGSearchOptions(
-                categories: ["news"],
-                language: language.rawValue,
-                pageNumber: 1
-            )
-            let news = try await failoverManager.search(query: searchQuery, options: newsOptions)
-            guard news.results.isEmpty else { return .answered(news.results) }
-
-            let unrestrictedOptions = SearXNGSearchOptions(language: language.rawValue, pageNumber: 1)
-            let unrestricted = try await failoverManager.search(query: searchQuery, options: unrestrictedOptions)
-            return .answered(unrestricted.results)
+            return DiscoverFeedResult(source: feed.source, items: try await fetcher.items(from: feed.source))
         } catch {
-            return .failed
+            return DiscoverFeedResult(source: feed.source, items: nil)
         }
+    }
+
+    // MARK: Règles pures
+
+    /// Articles d'un sujet : récents et datés, sans doublon, une part par source, du plus
+    /// récent au plus ancien.
+    func articles(for topic: DiscoverTopic, from results: [DiscoverFeedResult]) -> [DiscoverArticle] {
+        let current = now()
+        let perSource = results
+            .map { recentArticles(topic: topic, result: $0, now: current) }
+            .filter { !$0.isEmpty }
+        let share = Int((Double(maxArticlesPerTopic) / Double(max(1, perSource.count))).rounded(.up))
+
+        var seen = Set<String>()
+        var chosen: [DiscoverArticle] = []
+        var rest: [DiscoverArticle] = []
+        for list in perSource {
+            var taken = 0
+            for article in list where seen.insert(article.id).inserted {
+                if taken < share {
+                    chosen.append(article)
+                    taken += 1
+                } else {
+                    rest.append(article)
+                }
+            }
+        }
+        let fill = rest.sorted(by: Self.isNewer).prefix(max(0, maxArticlesPerTopic - chosen.count))
+        return Array((chosen + fill).sorted(by: Self.isNewer).prefix(maxArticlesPerTopic))
+    }
+
+    /// Les articles datés d'une source, assez récents, du plus récent au plus ancien.
+    private func recentArticles(topic: DiscoverTopic, result: DiscoverFeedResult, now: Date) -> [DiscoverArticle] {
+        guard let items = result.items else { return [] }
+        return items.compactMap { item -> DiscoverArticle? in
+            guard let date = item.publishedAt, !item.link.isEmpty,
+                  date >= now.addingTimeInterval(-maximumArticleAge),
+                  date <= now.addingTimeInterval(Self.futureTolerance)
+            else { return nil }
+            return DiscoverArticle(topic: topic, item: item, source: result.source)
+        }.sorted(by: Self.isNewer)
+    }
+
+    /// Plus récent d'abord ; à date égale, l'adresse départage, pour un ordre toujours
+    /// identique d'un chargement à l'autre.
+    private static func isNewer(_ lhs: DiscoverArticle, _ rhs: DiscoverArticle) -> Bool {
+        let left = lhs.publishedAt ?? .distantPast
+        let right = rhs.publishedAt ?? .distantPast
+        return left == right ? lhs.id < rhs.id : left > right
     }
 }
 
-/// Issue d'une recherche : une instance a répondu (éventuellement sans résultat), ou
-/// aucune instance n'a répondu.
-enum DiscoverSearchOutcome: Sendable {
-    case answered([SearXNGSearchResult])
-    case failed
+/// Ce qu'un flux a rendu : ses articles, ou `nil` s'il n'a pas pu être lu.
+nonisolated struct DiscoverFeedResult: Sendable, Equatable {
+    let source: FeedSource
+    let items: [FeedItem]?
 }
 
-/// Suit l'avancement d'un chargement : ce qui reste à recevoir par sujet, les
-/// résultats reçus, et s'il vaut encore la peine d'envoyer des recherches.
-struct DiscoverSearchCollector {
+/// Suit l'avancement d'un chargement : combien de flux attend encore chaque sujet, et ce
+/// que les autres ont rendu.
+nonisolated struct DiscoverFeedCollector {
     private var remaining: [DiscoverTopic: Int] = [:]
-    private var resultsByTopic: [DiscoverTopic: [SearXNGSearchResult]] = [:]
-    private var answeredCount = 0
-    private var failedCount = 0
+    private var resultsByTopic: [DiscoverTopic: [DiscoverFeedResult]] = [:]
 
-    init(plan: [DiscoverPlannedSearch]) {
-        for search in plan {
-            remaining[search.topic, default: 0] += 1
+    init(plan: [DiscoverPlannedFeed]) {
+        for feed in plan {
+            remaining[feed.topic, default: 0] += 1
         }
     }
 
-    /// Enregistre une issue. Renvoie les résultats du sujet quand c'était sa dernière
-    /// recherche attendue.
-    mutating func record(_ outcome: DiscoverSearchOutcome, for topic: DiscoverTopic) -> [SearXNGSearchResult]? {
-        switch outcome {
-        case .answered(let results):
-            answeredCount += 1
-            resultsByTopic[topic, default: []].append(contentsOf: results)
-        case .failed:
-            failedCount += 1
-        }
+    /// Enregistre un résultat. Renvoie tous ceux du sujet quand c'était son dernier flux attendu.
+    mutating func record(_ result: DiscoverFeedResult, for topic: DiscoverTopic) -> [DiscoverFeedResult]? {
+        resultsByTopic[topic, default: []].append(result)
         let left = (remaining[topic] ?? 1) - 1
         remaining[topic] = left
         return left == 0 ? results(for: topic) : nil
     }
 
-    func results(for topic: DiscoverTopic) -> [SearXNGSearchResult] {
+    func results(for topic: DiscoverTopic) -> [DiscoverFeedResult] {
         resultsByTopic[topic] ?? []
-    }
-
-    /// Vrai si `threshold` recherches ont épuisé toutes les instances sans qu'aucune
-    /// n'ait reçu de réponse : hors ligne ou liste entièrement refusée, les suivantes
-    /// échoueraient pareil.
-    func shouldStop(threshold: Int) -> Bool {
-        answeredCount == 0 && failedCount >= threshold
     }
 }

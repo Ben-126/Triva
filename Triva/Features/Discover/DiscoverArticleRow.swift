@@ -94,6 +94,35 @@ nonisolated enum DiscoverArticlePresentation {
         return repeatsTitle ? nil : text
     }
 
+    /// Éditeur à citer au-dessus du titre : son nom (« ESPN »), sinon le domaine de l'adresse.
+    /// Citer la source est une condition de plusieurs flux (ESPN, PMC).
+    static func sourceLabel(sourceName: String?, url: String) -> String? {
+        if let name = sourceName.map(displayText), !name.isEmpty { return name }
+        return sourceDomain(of: url)
+    }
+
+    /// Date relative en minuscules (« il y a 3 heures », « hier »), pour la suite d'une
+    /// ligne qui commence par le nom de l'éditeur. `nil` sans date : une date inventée serait
+    /// pire que pas de date.
+    static func ageLabel(publishedAt: Date?, now: Date, calendar: Calendar) -> String? {
+        guard let publishedAt else { return nil }
+        return RelativeDateLabel.text(for: publishedAt, relativeTo: now, calendar: calendar)
+            .lowercased(with: RelativeDateLabel.locale)
+    }
+
+    /// « ESPN · il y a 3 heures » : ligne d'identification d'un article, à l'écran.
+    static func metaLine(source: String?, age: String?) -> String? {
+        let parts = [source, age].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// La même, pour VoiceOver : une virgule plutôt qu'un point médian, que le lecteur
+    /// d'écran prononcerait.
+    static func spokenMetaLine(source: String?, age: String?) -> String? {
+        let parts = [source, age].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
     /// Domaine de la source (« lemonde.fr ») : délègue à
     /// `SourceRanker.normalizedHost(of:)` (minuscules, sans `www.`), la règle
     /// déjà utilisée par le classement des sources et par les résultats
@@ -106,7 +135,7 @@ nonisolated enum DiscoverArticlePresentation {
 
 // MARK: - Ligne d'article
 
-/// Une ligne du fil Découvrir : domaine de la source, titre, extrait court,
+/// Une ligne du fil Découvrir : éditeur et date de publication, titre, extrait court,
 /// vignette à droite si l'article en a une. Port de `SmallNewsCard.tsx` /
 /// `MajorNewsCard.tsx` (web), refait selon DESIGN.md.
 ///
@@ -129,9 +158,10 @@ nonisolated enum DiscoverArticlePresentation {
 /// - Ni verre ni fond de carte : une ligne d'article est du CONTENU, et la DA
 ///   réserve le verre aux barres, badges et boutons. L'espacement de la
 ///   grille suffit à séparer les articles, comme dans Actualités.
-/// - Domaine AU-DESSUS du titre : c'est la convention des fils d'actualité
-///   (l'éditeur avant le titre), et il donne un point d'accroche constant aux
-///   lignes sans vignette.
+/// - Éditeur ET date AU-DESSUS du titre (« Numerama · il y a 3 heures ») : c'est la
+///   convention des fils d'actualité (l'éditeur avant le titre), il donne un point d'accroche
+///   constant aux lignes sans vignette, et la date est celle publiée par l'éditeur, jamais
+///   estimée.
 /// - Vignette : `MediaThumbnail` (`MediaResultsComponents.swift`), donc même cadre
 ///   4:3, même rayon de 20 et mêmes états de chargement et d'échec que les
 ///   images du chat. Pas de date : `DiscoverArticle` n'en porte pas, et une
@@ -150,6 +180,7 @@ struct DiscoverArticleRow: View {
 
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.calendar) private var calendar
 
     /// 112 pt de large (84 de haut en 4:3) : assez pour reconnaître l'image,
     /// et il reste environ 230 pt au texte sur iPhone (402 − 2 × 20 de marges
@@ -164,15 +195,18 @@ struct DiscoverArticleRow: View {
 
     var body: some View {
         let title = DiscoverArticlePresentation.displayText(article.title)
-        let domain = DiscoverArticlePresentation.sourceDomain(of: article.url)
+        let source = DiscoverArticlePresentation.sourceLabel(sourceName: article.sourceName, url: article.url)
+        let age = DiscoverArticlePresentation.ageLabel(publishedAt: article.publishedAt, now: Date(), calendar: calendar)
+        let meta = DiscoverArticlePresentation.metaLine(source: source, age: age)
+        let spokenMeta = DiscoverArticlePresentation.spokenMetaLine(source: source, age: age)
         if let url = DiscoverArticlePresentation.articleURL(from: article.url) {
             Button {
                 openURL(url)
             } label: {
-                rowContent(title: title, domain: domain)
+                rowContent(title: title, meta: meta)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(MediaResultsPresentation.accessibilityLabel(title: title, domain: domain))
+            .accessibilityLabel(MediaResultsPresentation.accessibilityLabel(title: title, domain: spokenMeta))
             .accessibilityHint("Ouvre l'article dans ton navigateur")
             .accessibilityIdentifier("discover.article")
             .accessibilityRemoveTraits(.isButton)
@@ -184,7 +218,7 @@ struct DiscoverArticleRow: View {
             // Garde-fou : `DiscoverViewModel.sanitized(_:)` écarte déjà les
             // articles sans URL ouvrable. Si l'un passait quand même, on
             // l'affiche en texte seul plutôt qu'en lien mort.
-            rowContent(title: title, domain: domain)
+            rowContent(title: title, meta: meta)
                 .accessibilityElement(children: .combine)
         }
     }
@@ -201,14 +235,14 @@ struct DiscoverArticleRow: View {
 
     /// `contentShape` : sans lui, seuls le texte et la vignette répondent au
     /// toucher, pas l'espace entre eux.
-    private func rowContent(title: String, domain: String?) -> some View {
+    private func rowContent(title: String, meta: String?) -> some View {
         let thumbnailURL = DiscoverArticlePresentation.thumbnailURL(from: article.imageURL)
         let snippet = DiscoverArticlePresentation.snippet(article.snippet, title: article.title)
         return rowLayout {
             if isAccessibilityLayout, let thumbnailURL {
                 MediaThumbnail(url: thumbnailURL, kind: .images)
             }
-            textColumn(title: title, domain: domain, snippet: snippet)
+            textColumn(title: title, meta: meta, snippet: snippet)
             if !isAccessibilityLayout, let thumbnailURL {
                 MediaThumbnail(url: thumbnailURL, kind: .images)
                     .frame(width: Self.thumbnailWidth)
@@ -218,16 +252,16 @@ struct DiscoverArticleRow: View {
         .contentShape(.rect)
     }
 
-    /// Domaine tronqué au MILIEU (« rmcsport.bf…tv.com ») : la fin est la
-    /// partie qui identifie la source, comme sous les images du chat.
-    private func textColumn(title: String, domain: String?, snippet: String?) -> some View {
+    /// Ligne éditeur · date, tronquée à la fin sur une seule ligne : le nom de l'éditeur,
+    /// qui commence la ligne, est ce qui identifie la source.
+    private func textColumn(title: String, meta: String?, snippet: String?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let domain {
-                Text(domain)
+            if let meta {
+                Text(meta)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(.tail)
             }
             Text(title)
                 .font(.headline)
@@ -345,6 +379,7 @@ enum DiscoverPreviewData {
     /// Aucun sujet n'a répondu : ce que renvoie `fetchTrending` hors ligne.
     static let allFailedContent = DiscoverContent(sections: [], failedTopics: DiscoverTopic.allCases)
 
+    /// Dates relatives à l'ouverture de la preview : « il y a 2 heures », « hier »…
     private static func article(
         _ topic: DiscoverTopic,
         _ index: Int,
@@ -354,16 +389,12 @@ enum DiscoverPreviewData {
     ) -> DiscoverArticle {
         DiscoverArticle(
             topic: topic,
-            result: SearXNGSearchResult(
-                title: title,
-                url: "https://\(topic.rawValue).journal.example/articles/\(index)",
-                content: snippet,
-                imgSrc: hasImage ? solidImages[index % solidImages.count] : nil,
-                thumbnailSrc: nil,
-                thumbnail: nil,
-                author: nil,
-                iframeSrc: nil
-            )
+            title: title,
+            url: "https://\(topic.rawValue).journal.example/articles/\(index)",
+            snippet: snippet,
+            imageURL: hasImage ? URL(string: solidImages[index % solidImages.count]) : nil,
+            publishedAt: Date().addingTimeInterval(-TimeInterval(3600 * (2 + index * 7))),
+            sourceName: "Journal Exemple"
         )
     }
 }

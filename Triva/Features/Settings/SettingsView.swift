@@ -59,6 +59,11 @@ struct SettingsView: View {
     /// comme `onSelectEngine` — aperçus et appel autonome n'ont ni historique
     /// ni favoris à effacer.
     let localDataEraser: LocalDataEraser?
+    /// Cloud privé d'Apple ou appareil (mission A4) : instance PARTAGÉE, la Recherche lit la même.
+    /// Son choix n'apparaît que si le cloud est proposé (contrainte de Ben du 2026-11-11).
+    @Bindable private var appleModel: AppleIntelligenceModelCoordinator
+    /// Pour le badge : hors connexion, le moteur Apple répond sur l'appareil (même calcul que l'envoi).
+    private let connectivity: ConnectivityMonitor
 
     @State private var mlxSelectionStore: MLXModelSelectionStore
     @State private var cloudSelectionStore: CloudProviderSelectionStore
@@ -83,8 +88,12 @@ struct SettingsView: View {
         customProviderStore: CustomProviderStore = CustomProviderStore(),
         instanceStore: CustomInstanceStore = CustomInstanceStore(),
         localDataEraser: LocalDataEraser? = nil,
-        navigationPath: Binding<NavigationPath>? = nil
+        navigationPath: Binding<NavigationPath>? = nil,
+        appleModel: AppleIntelligenceModelCoordinator = .shared,
+        connectivity: ConnectivityMonitor = .shared
     ) {
+        _appleModel = Bindable(appleModel)
+        self.connectivity = connectivity
         self.selectedEngine = selectedEngine
         self.onSelectEngine = onSelectEngine
         self.localDataEraser = localDataEraser
@@ -119,21 +128,40 @@ struct SettingsView: View {
         .sheet(item: $presentedSheet, onDismiss: { applyPendingEngine() }) { sheet in
             sheetContent(for: sheet)
         }
+        .task {
+            appleModel.refreshStatus()
+        }
     }
 
     // MARK: Sections
 
     private func engineSection(for engine: AIEngineOption) -> some View {
-        Section("Moteur IA") {
-            EngineBadge(engine: engine)
+        let showsAppleModelChoice = engine == .appleIntelligence && appleModel.isPrivateCloudOffered
+        return Section {
+            EngineBadge(badge: badge(for: engine))
                 .accessibilityIdentifier("settings.engineBadge")
+            if showsAppleModelChoice {
+                AppleIntelligenceModelPicker(selection: $appleModel.effectivePreference)
+            }
             if onSelectEngine != nil {
                 Button("Changer de moteur") {
                     presentedSheet = .engineSelection
                 }
                 .accessibilityIdentifier("settings.changeEngine")
             }
+        } header: {
+            Text("Moteur IA")
+        } footer: {
+            if showsAppleModelChoice {
+                Text(AppleIntelligenceModelCopy.fallbackNote)
+            }
         }
+    }
+
+    /// Badge du modèle que le prochain envoi utilisera, même calcul que la Recherche.
+    private func badge(for engine: AIEngineOption) -> (icon: String, text: String, caption: String) {
+        guard engine == .appleIntelligence else { return engine.privacyBadge }
+        return engine.privacyBadge(appleRoute: appleModel.displayedRoute(isOffline: connectivity.isOffline))
     }
 
     /// Toujours visible, quel que soit le moteur actif : on peut préparer sa
@@ -310,13 +338,12 @@ private nonisolated enum SettingsSheet: String, Identifiable {
 
 /// Badge moteur IA + légende de confidentialité, exactement comme
 /// `TrivaHomeReferenceView` et `EngineStatusView` : même contenu
-/// (`AIEngineOption.privacyBadge`, source unique de vérité — jamais « Sur
-/// l'appareil » pour `.cloudBYOK`), mêmes tailles, même verre teinté.
+/// (`AIEngineOption.privacyBadge(appleRoute:)`, source unique de vérité — jamais « Sur
+/// l'appareil » pour `.cloudBYOK` ni pour le cloud privé d'Apple), mêmes tailles, même verre teinté.
 private struct EngineBadge: View {
-    let engine: AIEngineOption
+    let badge: (icon: String, text: String, caption: String)
 
     var body: some View {
-        let badge = engine.privacyBadge
         VStack(alignment: .leading, spacing: 6) {
             Label(badge.text, systemImage: badge.icon)
                 .font(.footnote.weight(.medium))
@@ -332,6 +359,34 @@ private struct EngineBadge: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Choix cloud privé d'Apple / appareil (mission A4), en sélecteur système intégré à la liste :
+/// une ligne par option, son titre et sa phrase. Chaque changement est appliqué tout de suite,
+/// comme tout réglage système ; la Recherche le lit au prochain envoi et son badge suit aussitôt
+/// (instance partagée).
+private struct AppleIntelligenceModelPicker: View {
+    @Binding var selection: AppleIntelligenceModelKind
+
+    var body: some View {
+        Picker("Modèle d'Apple Intelligence", selection: $selection) {
+            ForEach(AppleIntelligenceModelKind.allCases, id: \.self) { kind in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(AppleIntelligenceModelCopy.title(for: kind))
+                    Text(AppleIntelligenceModelCopy.detail(for: kind))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .tag(kind)
+            }
+        }
+        .pickerStyle(.inline)
+        #if os(iOS)
+        .labelsHidden()
+        #endif
+        .accessibilityIdentifier("settings.appleModelPicker")
     }
 }
 
@@ -400,4 +455,15 @@ private extension View {
 
 #Preview("Avant intégration (moteur non fourni)") {
     SettingsView()
+}
+
+#Preview("Apple Intelligence, cloud privé proposé") {
+    SettingsView(
+        selectedEngine: .appleIntelligence,
+        onSelectEngine: { _ in },
+        appleModel: AppleIntelligenceModelCoordinator(
+            probe: FixedPrivateCloudProbe(status: .available),
+            preferenceStore: AppleIntelligenceModelPreference(userDefaults: UserDefaults(suiteName: "preview.appleModel") ?? .standard)
+        )
+    )
 }

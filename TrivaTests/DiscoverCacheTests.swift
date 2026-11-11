@@ -15,7 +15,11 @@ private enum Offline: Error { case offline }
 
 @MainActor
 private func article(_ topic: DiscoverTopic, _ url: String, title: String = "Titre") -> DiscoverArticle {
-    DiscoverArticle(topic: topic, title: title, url: url, snippet: "Extrait", imageURL: URL(string: "https://img.example/a.jpg"))
+    DiscoverArticle(
+        topic: topic, title: title, url: url, snippet: "Extrait",
+        imageURL: URL(string: "https://img.example/a.jpg"),
+        publishedAt: oldDate, sourceName: "Éditeur"
+    )
 }
 
 @MainActor
@@ -80,7 +84,7 @@ private func cachedSection(_ topic: String, _ url: String, at date: Date = oldDa
     DiscoverCacheSnapshot.Section(
         topic: topic,
         fetchedAt: date,
-        articles: [.init(title: "Ancien \(topic)", url: url, snippet: nil, imageURL: nil)]
+        articles: [.init(title: "Ancien \(topic)", url: url, snippet: nil, imageURL: nil, publishedAt: oldDate, sourceName: "Éditeur")]
     )
 }
 
@@ -96,7 +100,10 @@ struct DiscoverDiskCacheTests {
         DiscoverCacheSnapshot.Section(
             topic: "tech",
             fetchedAt: Date(timeIntervalSince1970: 1_000),
-            articles: [.init(title: "Titre", url: "https://a.example", snippet: "Extrait", imageURL: "https://img.example/a.jpg")]
+            articles: [.init(
+                title: "Titre", url: "https://a.example", snippet: "Extrait", imageURL: "https://img.example/a.jpg",
+                publishedAt: Date(timeIntervalSince1970: 900), sourceName: "Éditeur"
+            )]
         ),
     ])
 
@@ -118,7 +125,7 @@ struct DiscoverDiskCacheTests {
 
     @Test(
         "fichier abîmé : ignoré sans planter",
-        arguments: ["", "pas du json", "{\"version\":1}", "{\"version\":1,\"sections\":[{\"topic\":3}]}"]
+        arguments: ["", "pas du json", "{\"version\":2}", "{\"version\":2,\"sections\":[{\"topic\":3}]}"]
     )
     func corruptFile(contents: String) async throws {
         let file = temporaryFile()
@@ -188,7 +195,7 @@ struct DiscoverViewModelCacheTests {
         let contentA = DiscoverContent(sections: [section(.tech, "https://a.example/a")], failedTopics: [])
         let contentB = DiscoverContent(sections: [section(.art, "https://b.example/a")], failedTopics: [])
         var outcomes = [contentA, contentB]
-        let model = DiscoverViewModel(cache: cache, loadContent: { _ in outcomes.removeFirst() })
+        let model = DiscoverViewModel(cache: cache, now: { laterDate }, loadContent: { _ in outcomes.removeFirst() })
 
         await model.loadIfNeeded()
         await model.refresh()
@@ -262,7 +269,7 @@ struct DiscoverViewModelCacheTests {
             cachedSection("inconnu", "https://a.example/b"),
         ]))
         let source = HeldSource()
-        let model = DiscoverViewModel(cache: cache, loadContent: source.load)
+        let model = DiscoverViewModel(cache: cache, now: { laterDate }, loadContent: source.load)
 
         let load = Task { await model.loadIfNeeded() }
         await waitUntil("réseau en attente") { source.isHolding }

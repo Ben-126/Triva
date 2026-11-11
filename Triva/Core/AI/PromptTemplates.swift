@@ -326,7 +326,7 @@ enum PromptTemplates {
 
         <contexte>
         \(context)
-        </contexte>\(offTopicReminder(for: parts, context: context))\(contextReminder(for: parts.mode, context: context, hasWidgetData: parts.hasWidgetData))
+        </contexte>\(offTopicReminder(for: parts, context: context))\(contextReminder(for: parts.mode, context: context, hasWidgetData: parts.hasWidgetData, complexity: .full))
 
         Date et heure actuelles (UTC, format ISO 8601) : \(formattedDate(parts.currentDate)).
 
@@ -355,15 +355,46 @@ enum PromptTemplates {
     /// les documents étaient hors sujet, malgré une météo juste déjà affichée. Elle garde l'interdit des
     /// connaissances générales mais ne demande jamais le refus : la donnée d'un widget est une source.
     /// Le refus reste pris en charge par le code, pas par ce texte (`SearchArtifacts.rejectsReliableAnswer`).
-    private nonisolated static func contextReminder(for mode: ResponseMode, context: String, hasWidgetData: Bool) -> String {
+    private nonisolated static func contextReminder(
+        for mode: ResponseMode,
+        context: String,
+        hasWidgetData: Bool,
+        complexity: WriterPromptComplexity
+    ) -> String {
         guard case .reliable = mode, context != noSourcesContext else { return "" }
-        guard !hasWidgetData else { return reliableReminderWithWidgetData }
-        return "\n\nRappel du mode Fiable : si les documents ci-dessus ne traitent pas du sujet de la question, n'utilise pas tes connaissances générales, même si tu connais la réponse : réponds exactement « \(noRelevantInformationAnswer) »"
+        switch (complexity, hasWidgetData) {
+        case (.full, true): return reliableReminderWithWidgetData
+        case (.full, false):
+            return "\n\nRappel du mode Fiable : si les documents ci-dessus ne traitent pas du sujet de la question, n'utilise pas tes connaissances générales, même si tu connais la réponse : réponds exactement « \(noRelevantInformationAnswer) »"
+        case (.concise, true): return conciseReliableReminderWithWidgetData
+        case (.concise, false): return conciseReliableReminder
+        }
     }
 
-    /// Voir `contextReminder(for:context:hasWidgetData:)`.
+    /// Voir `contextReminder(for:context:hasWidgetData:complexity:)`.
     private nonisolated static let reliableReminderWithWidgetData =
         "\n\nRappel du mode Fiable : n'utilise pas tes connaissances générales, même si tu connais la réponse. Réponds à partir des données des widgets plus bas, et des documents ci-dessus seulement s'ils traitent du sujet de la question."
+
+    /// Rappel Fiable du prompt CONCIS (Apple Intelligence, MLX compact ; décision de Ben du
+    /// 2026-11-11, mission A3). Le prompt concis n'avait AUCUN rappel : le garde-fou « cite ou refuse »
+    /// n'existait que dans `fullPrompt` (cloud, MLX 4B+), donc le mode Fiable des petits modèles
+    /// répondait de façon vague en citant une page hors sujet.
+    ///
+    /// Mesuré le 2026-11-11 sur Mac avec Apple Intelligence (mode Fiable, préréglage `.appleIntelligence`,
+    /// sources fixes, 3 essais par question) : 3 questions dont les documents sont hors sujet, 9 essais.
+    /// AVANT : 4 refus sur 9 (« Aucune source fiable »), les 5 autres répondaient « non précisé [1] » ou
+    /// « (non confirmé par les sources disponibles) [1] » en citant la page hors sujet. APRÈS : 9 refus sur 9.
+    /// 5 questions dont le document répond, 15 essais : 0 refus à tort avant, 0 après (pas de sur-refus
+    /// mesuré). Échantillon petit et modèle stochastique : un ordre de grandeur, pas une garantie.
+    /// Deux phrases courtes, exprès : un petit modèle perd les consignes longues, et celle-ci arrive
+    /// juste avant la question. Même condition que la version longue (refus seulement si les documents ne
+    /// traitent pas du sujet) : sans condition, elle ferait refuser des questions que les documents couvrent.
+    private nonisolated static let conciseReliableReminder =
+        "\n\nRappel du mode Fiable : si les documents ne parlent pas du sujet de la question, n'utilise pas tes connaissances et réponds exactement « \(noRelevantInformationAnswer) »"
+
+    /// Variante avec widgets du rappel concis : mêmes raisons que `reliableReminderWithWidgetData`.
+    private nonisolated static let conciseReliableReminderWithWidgetData =
+        "\n\nRappel du mode Fiable : n'utilise pas tes connaissances. Réponds avec les données des widgets plus bas, et avec les documents seulement s'ils parlent du sujet de la question."
 
     /// Rappel « documents probablement hors sujet » (mission A2, décisions 5 et 6 de Ben), juste
     /// après le contexte, dans les DEUX verbosités, quand aucune source de la chaîne n'a passé le
@@ -421,7 +452,7 @@ enum PromptTemplates {
 
         <contexte>
         \(context)
-        </contexte>\(offTopicReminder(for: parts, context: context))
+        </contexte>\(offTopicReminder(for: parts, context: context))\(contextReminder(for: parts.mode, context: context, hasWidgetData: parts.hasWidgetData, complexity: .concise))
 
         Date du jour (UTC, ISO 8601) : \(formattedDate(parts.currentDate)).
 
@@ -502,6 +533,7 @@ enum PromptTemplates {
         Tu es Triva. Aucune recherche n'a été faite pour ce message : réponds à partir de l'historique ci-dessous et de tes connaissances générales.
 
         Règles :
+        - Langue : réponds dans la langue de la question, sauf si elle demande explicitement une autre langue.
         - Pas de citation [n] : aucune source n'accompagne cette réponse.
         - N'invente rien. Si tu n'es pas sûr, dis-le.
         - Pas de phrase de remplissage, pas de balise <think> ni <tldr>.

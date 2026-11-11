@@ -229,6 +229,8 @@ nonisolated enum MessageBubblePresentation {
         var webSourceKind: WebSearchSourceKind?
         /// Mission A2 : rédigée sans recherche ni widget, hors salutation.
         var answeredWithoutSearch = false
+        /// Tâche 1.16 : rédigée hors connexion, sans source ; remplace la mention précédente.
+        var answeredOffline = false
         /// Mission A2 : aucune source n'a passé le test lexical de la chaîne.
         var sourcesMayBeOffTopic = false
     }
@@ -288,6 +290,16 @@ nonisolated enum MessageBubblePresentation {
     /// Eiffel, sans source, sans que rien ne signale l'absence de recherche.
     static let answerWithoutSearchLabel = "Réponse sans recherche"
 
+    /// Tâche 1.16 (décision de Ben) : la même précision factuelle quand la cause est l'absence de
+    /// connexion. Une seule mention à la fois : celle-ci l'emporte, elle dit aussi POURQUOI.
+    static let answerOfflineLabel = "Hors connexion, sans source"
+
+    /// La mention à poser sous la réponse, `nil` si aucune.
+    static func answerNote(_ answer: AnswerSnapshot) -> String? {
+        guard showsAnswerWithoutSearch(answer) else { return nil }
+        return answer.answeredOffline ? answerOfflineLabel : answerWithoutSearchLabel
+    }
+
     /// Décision 6 de Ben (mission A2) : aucune source n'a passé le test
     /// lexical, la chaîne a gardé la moins éloignée. « Probablement » : le
     /// test compare des mots, il ne lit pas le sens.
@@ -297,7 +309,7 @@ nonisolated enum MessageBubblePresentation {
     /// fiable » : la mention qualifie une réponse, il en faut une. Ni widget
     /// ni salutation : décidé en amont (`SearchArtifacts.answersWithoutSearch`).
     static func showsAnswerWithoutSearch(_ answer: AnswerSnapshot) -> Bool {
-        answer.answeredWithoutSearch
+        (answer.answeredWithoutSearch || answer.answeredOffline)
             && answer.state != .noReliableSources
             && (answer.hasBody || answer.hasTLDR)
     }
@@ -381,6 +393,7 @@ struct MessageBubbleView: View, Equatable {
             isMediaSearchStarted: !isIdle(message.images) || !isIdle(message.videos),
             webSourceKind: message.webSourceKind,
             answeredWithoutSearch: message.answeredWithoutSearch,
+            answeredOffline: message.answeredOffline,
             sourcesMayBeOffTopic: message.sourcesMayBeOffTopic
         )
     }
@@ -506,11 +519,11 @@ private struct AnswerBubble: View {
             // Mission A2 : précision factuelle, rôle de la légende (DESIGN.md),
             // en `.secondary` plutôt que `.tertiary` : elle change la lecture
             // de la réponse, elle doit se voir.
-            if MessageBubblePresentation.showsAnswerWithoutSearch(answer) {
-                Text(MessageBubblePresentation.answerWithoutSearchLabel)
+            if let note = MessageBubblePresentation.answerNote(answer) {
+                Text(note)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("chat.answerWithoutSearch")
+                    .accessibilityIdentifier(answer.answeredOffline ? "chat.answerOffline" : "chat.answerWithoutSearch")
             }
 
             if !message.sources.isEmpty {
@@ -665,6 +678,16 @@ private let previewSources: [SearXNGSearchResult] = [
         text: "Feuilles rousses au vent,\nle ciel bas se tait,\nl'automne s'installe."
     )
     message.answeredWithoutSearch = true
+    return MessageBubbleView(message: message)
+        .padding(20)
+}
+
+#Preview("Réponse — hors connexion") {
+    var message = ChatViewModel.Message(
+        role: .assistant,
+        text: "Canberra est la capitale de l'Australie."
+    )
+    message.answeredOffline = true
     return MessageBubbleView(message: message)
         .padding(20)
 }

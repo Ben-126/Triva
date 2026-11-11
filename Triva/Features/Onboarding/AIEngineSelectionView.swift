@@ -20,6 +20,10 @@ struct AIEngineSelectionView: View {
     /// renoncer sans devoir reconfirmer un moteur (demande de Ben, 2026-10-08).
     /// Les Réglages ne le passent pas : leur feuille a déjà son propre « Annuler ».
     private let onCancel: (() -> Void)?
+    /// Cloud privé d'Apple ou appareil (mission A4). Le choix n'est montré que si le cloud est
+    /// proposé, et n'est ÉCRIT qu'à « Continuer » : « Annuler » ne change rien (vérifié par Q1).
+    private let appleModel: AppleIntelligenceModelCoordinator
+    @State private var appleModelChoice: AppleIntelligenceModelKind
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -34,6 +38,7 @@ struct AIEngineSelectionView: View {
         capabilityProvider: any DeviceCapabilityProviding = SystemDeviceCapabilityProvider(),
         currentSelection: AIEngineOption? = nil,
         onCancel: (() -> Void)? = nil,
+        appleModel: AppleIntelligenceModelCoordinator = .shared,
         onConfirm: @escaping (AIEngineOption) -> Void
     ) {
         let recommendation = AIProviderSelector.recommend(for: capabilityProvider)
@@ -41,6 +46,13 @@ struct AIEngineSelectionView: View {
         _selection = State(initialValue: currentSelection ?? recommendation.option)
         self.onConfirm = onConfirm
         self.onCancel = onCancel
+        self.appleModel = appleModel
+        _appleModelChoice = State(initialValue: appleModel.effectivePreference)
+    }
+
+    /// Le sélecteur cloud privé / appareil n'existe que si le cloud est proposé.
+    private var showsAppleModelChoice: Bool {
+        selection == .appleIntelligence && appleModel.isPrivateCloudOffered
     }
 
     var body: some View {
@@ -53,8 +65,13 @@ struct AIEngineSelectionView: View {
                         engineCard(
                             option: .appleIntelligence,
                             title: "Apple Intelligence",
-                            subtitle: "Gratuit, sur l'appareil. Nécessite un appareil compatible avec Apple Intelligence activé."
+                            subtitle: appleModel.isPrivateCloudOffered
+                                ? AppleIntelligenceModelCopy.engineCardSubtitle
+                                : "Gratuit, sur l'appareil. Nécessite un appareil compatible avec Apple Intelligence activé."
                         )
+                        if showsAppleModelChoice {
+                            AppleIntelligenceModelSegmentedChoice(selection: $appleModelChoice)
+                        }
                         engineCard(
                             option: .mlxLocal,
                             title: "Modèle local (MLX)",
@@ -69,6 +86,9 @@ struct AIEngineSelectionView: View {
                 }
 
                 Button("Continuer") {
+                    if showsAppleModelChoice {
+                        appleModel.preference = appleModelChoice
+                    }
                     onConfirm(selection)
                 }
                 .buttonStyle(.glassProminent)
@@ -88,6 +108,9 @@ struct AIEngineSelectionView: View {
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
+        }
+        .task {
+            appleModel.refreshStatus()
         }
     }
 
@@ -154,4 +177,14 @@ struct AIEngineSelectionView: View {
 
 #Preview("Changement de moteur") {
     AIEngineSelectionView(currentSelection: .cloudBYOK, onCancel: {}) { _ in }
+}
+
+#Preview("Cloud privé d'Apple proposé") {
+    AIEngineSelectionView(
+        currentSelection: .appleIntelligence,
+        appleModel: AppleIntelligenceModelCoordinator(
+            probe: FixedPrivateCloudProbe(status: .available),
+            preferenceStore: AppleIntelligenceModelPreference(userDefaults: UserDefaults(suiteName: "preview.appleModel") ?? .standard)
+        )
+    ) { _ in }
 }

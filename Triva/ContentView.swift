@@ -170,6 +170,15 @@ final class SearchSession {
     /// `stores.keyStore` (clés IA, `SearchKeyStore.keychainService`).
     let searchKeyStore: SearchKeyStore
 
+    /// État de la connexion (tâche 1.16), lu à chaque envoi et par l'interface. Voir `SearchSession+Offline.swift`.
+    let connectivity: ConnectivityMonitor
+    /// Le modèle MLX d'identifiant donné est-il entièrement sur le disque ? Injectable : un test ne
+    /// doit pas dépendre des modèles de la machine qui le lance.
+    let hasMLXWeights: @MainActor (String) -> Bool
+    /// Cloud privé d'Apple ou appareil, pour le moteur Apple Intelligence (mission A4). Instance
+    /// PARTAGÉE de l'app (voir `AppleIntelligenceModelCoordinator`), injectable pour les tests.
+    let appleModel: AppleIntelligenceModelCoordinator
+
     /// Erreur de disponibilité d'Apple Intelligence (voir
     /// `refreshAppleIntelligenceAvailabilityIfNeeded`).
     private(set) var appleIntelligenceError: AppleIntelligenceError?
@@ -191,7 +200,7 @@ final class SearchSession {
     /// chaque échange du chat. Revalidé à chaque envoi contre
     /// `stores.mlxSelection` : un modèle changé ailleurs (autre fenêtre,
     /// Réglages) est donc pris en compte au prochain envoi.
-    @ObservationIgnored private var preparedMLXProvider: PreparedMLXProvider?
+    @ObservationIgnored var preparedMLXProvider: PreparedMLXProvider?
     /// `FailoverManager` de la session, avec la liste d'instances qui l'a
     /// construit. En recréer un à chaque recherche jetterait son cache de
     /// dernière instance fonctionnelle ; le garder quand la liste a changé
@@ -209,11 +218,21 @@ final class SearchSession {
     /// `TrivaApp.swift` dans son périmètre). Il n'est lu qu'à l'ENVOI : les
     /// aperçus et les tests qui n'envoient rien n'y touchent jamais, ceux qui
     /// envoient injectent un faux trousseau.
-    init(engine: AIEngineOption, stores: TrivaSharedStores, searchKeyStore: SearchKeyStore = SearchKeyStore()) {
+    init(
+        engine: AIEngineOption,
+        stores: TrivaSharedStores,
+        searchKeyStore: SearchKeyStore = SearchKeyStore(),
+        connectivity: ConnectivityMonitor = .shared,
+        hasMLXWeights: @escaping @MainActor (String) -> Bool = { MLXProvider.hasDownloadedWeights(modelID: $0) },
+        appleModel: AppleIntelligenceModelCoordinator = .shared
+    ) {
         self.engine = engine
         self.stores = stores
         self.draft = SearchDraft()
         self.searchKeyStore = searchKeyStore
+        self.connectivity = connectivity
+        self.hasMLXWeights = hasMLXWeights
+        self.appleModel = appleModel
     }
 
     /// Modèle MLX validé (0.5) pour la sélection courante, `nil` tant qu'aucun
@@ -322,6 +341,7 @@ final class SearchSession {
                 guard let self else { throw SearchSessionError.sessionEnded }
                 return self.resolveWebSearchChain(failoverManager: failoverManager)
             },
+            resolveOfflinePlan: { [weak self] in self?.resolveOfflinePlan() },
             // Session disparue : l'envoi a déjà échoué sur `resolveProvider`,
             // ce repli (le budget le plus serré) n'est jamais utilisé.
             resolvePipelineConfiguration: { [weak self] in
@@ -346,7 +366,10 @@ final class SearchSession {
     /// résolution a échoué avant), le budget compact, le plus prudent.
     func pipelineConfigurationForSending() -> SearchPipelineConfiguration {
         switch engine {
-        case .appleIntelligence, .cloudBYOK:
+        case .appleIntelligence:
+            // Cloud privé ou appareil : le modèle retenu par CE même envoi (mission A4).
+            return appleModel.pipelineConfigurationForSending()
+        case .cloudBYOK:
             return SearchPipelineConfiguration.preset(for: engine)
         case .mlxLocal:
             return preparedMLXProvider?.configuration ?? SearchPipelineConfiguration.preset(for: .mlxLocal)
@@ -372,7 +395,7 @@ final class SearchSession {
             // aux fournisseurs personnalisés du moment. Catalogue MLX vide : il
             // n'a rien à faire ici, et un fichier de catalogue illisible ne
             // doit pas empêcher Apple Intelligence ou le cloud de répondre.
-            return try ActiveAIProviderResolver.resolve(
+            let provider = try ActiveAIProviderResolver.resolve(
                 engine: engine,
                 mlxSelection: stores.mlxSelection,
                 mlxCatalog: [],
@@ -380,6 +403,10 @@ final class SearchSession {
                 customCloudPresets: stores.customProviders.customPresets,
                 keyStore: stores.keyStore
             )
+            // Apple Intelligence : le provider local, déjà vérifié disponible, devient le secours
+            // du cloud privé quand celui-ci est proposé et choisi (mission A4) ; sinon, tel quel.
+            guard engine == .appleIntelligence else { return provider }
+            return appleModel.providerForSending(local: provider, isOffline: connectivity.isOffline)
         }
     }
 
@@ -507,7 +534,7 @@ final class SearchSession {
 
 /// Provider MLX préparé, l'id du modèle qu'il porte et le budget de ce modèle
 /// (cache de `SearchSession`) : les trois viennent du même instantané.
-private struct PreparedMLXProvider {
+struct PreparedMLXProvider {
     let modelID: String
     let provider: MLXProvider
     let configuration: SearchPipelineConfiguration
@@ -575,6 +602,13 @@ struct EngineStatusView: View {
     /// Le moteur affiché ET utilisé (voir `SearchSession.engine`).
     private var engine: AIEngineOption { session.engine }
 
+    /// Badge du modèle que le prochain envoi utilisera (cloud privé d'Apple ou appareil, mission
+    /// A4) : même calcul que l'envoi, il suit la connexion et la préférence partagée.
+    private var badge: (icon: String, text: String, caption: String) {
+        guard engine == .appleIntelligence else { return engine.privacyBadge }
+        return engine.privacyBadge(appleRoute: session.appleModel.displayedRoute(isOffline: session.connectivity.isOffline))
+    }
+
     /// Même plafond que `ChatView.contentMaxWidth` (640pt en `regular`,
     /// iPad/Mac) — sans lui, le badge moteur IA et le bouton "Changer de
     /// moteur" restaient collés au bord gauche pendant que `ChatView` juste en
@@ -597,6 +631,13 @@ struct EngineStatusView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 20)
                     .accessibilityIdentifier("search.setupRequirement")
+            }
+
+            if let plan = session.resolveOfflinePlan() {
+                OfflineStatusLine(text: plan.statusText)
+                    .frame(maxWidth: contentMaxWidth ?? .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
             }
 
             if let chatViewModel = session.chatViewModel,
@@ -625,6 +666,7 @@ struct EngineStatusView: View {
         }
         .task {
             session.refreshAppleIntelligenceAvailabilityIfNeeded()
+            if engine == .appleIntelligence { session.appleModel.refreshStatus() }
             session.loadMLXCatalogIfNeeded()
             session.ensureChatViewModel()
             chatPrepared = true
@@ -683,7 +725,7 @@ struct EngineStatusView: View {
         GlassEffectContainer(spacing: 12) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Label(engine.privacyBadge.text, systemImage: engine.privacyBadge.icon)
+                    Label(badge.text, systemImage: badge.icon)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.tint)
                         .padding(.horizontal, 12)
@@ -691,7 +733,7 @@ struct EngineStatusView: View {
                         .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
                         .accessibilityIdentifier("search.engineBadge")
 
-                    Text(engine.privacyBadge.caption)
+                    Text(badge.caption)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 4)

@@ -125,6 +125,7 @@ struct DiscoverView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.calendar) private var calendar
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Ancre du haut du fil : changer de sujet ramène en haut du nouveau
     /// contenu. Posée sur le fil ENTIER, marges comprises, et pas sur les
@@ -143,6 +144,9 @@ struct DiscoverView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     phaseContent
+                        // Le contenu affiché ne change qu'à la fin d'une actualisation, en une fois
+                        // (voir `DiscoverViewModel`) : un fondu plutôt qu'un saut sec (Q1).
+                        .animation(reduceMotion ? nil : .smooth, value: model.phase)
                 }
                 .refreshable {
                     await model.refresh()
@@ -160,6 +164,11 @@ struct DiscoverView: View {
             #endif
             .task {
                 await model.loadIfNeeded()
+            }
+            // Tâche 1.16 : la connexion revient, le cache affiché hors connexion se met à jour.
+            .onChange(of: model.isDeviceOffline) { _, isOffline in
+                guard !isOffline else { return }
+                Task { await model.connectionDidReturn() }
             }
             // À la fin du chargement seulement : pas une annonce par sujet reçu.
             .onChange(of: model.isLoading) { wasLoading, isLoading in
@@ -285,6 +294,7 @@ struct DiscoverView: View {
         let layout = MediaResultsPresentation.listLayout(totalCount: section.articles.count, limit: limit)
         return VStack(alignment: .leading, spacing: 12) {
             sectionHeader(for: section.topic)
+            languageNote(for: section.topic)
             articleGrid(Array(section.articles.prefix(layout.visibleCount)), columns: columns)
             if layout.hiddenCount > 0 {
                 Button {
@@ -306,7 +316,10 @@ struct DiscoverView: View {
     @ViewBuilder
     private func topicArticles(_ topic: DiscoverTopic, in content: DiscoverContent, columns: Int) -> some View {
         if let section = content.sections.first(where: { $0.topic == topic }) {
-            articleGrid(section.articles, columns: columns)
+            VStack(alignment: .leading, spacing: 12) {
+                languageNote(for: topic)
+                articleGrid(section.articles, columns: columns)
+            }
         } else if model.pendingTopics.contains(topic) {
             DiscoverPendingSection(title: title(for: topic), showsHeader: false, columns: columns)
         } else {
@@ -344,15 +357,32 @@ struct DiscoverView: View {
         DiscoverSectionHeader(title: title(for: topic))
     }
 
+    /// Dit que les articles d'un sujet ne sont pas dans la langue de l'appareil, faute de flux
+    /// utilisable dans celle-ci (Sport en français, voir `DiscoverFeedCatalog`).
+    @ViewBuilder
+    private func languageNote(for topic: DiscoverTopic) -> some View {
+        let language = DiscoverLanguage.device()
+        if definition(for: topic)?.usesOtherLanguage(than: language) == true {
+            Text(language == .french ? "Articles en anglais pour ce sujet." : "Articles en français pour ce sujet.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: États
 
     /// « Réessayer » en `.glassProminent` : c'est la seule action de l'écran
     /// dans cet état, donc son action principale (DESIGN.md).
     private var failureView: some View {
         ContentUnavailableView {
-            Label("Actualité indisponible", systemImage: "wifi.exclamationmark")
+            Label(
+                model.isShowingOfflineState ? "Hors connexion" : "Actualité indisponible",
+                systemImage: model.isShowingOfflineState ? "wifi.slash" : "wifi.exclamationmark"
+            )
         } description: {
-            Text("Aucune source n'a répondu. Vérifie ta connexion, puis réessaie.")
+            Text(model.isShowingOfflineState
+                ? "L'actualité a besoin d'Internet. Elle s'affichera au retour de la connexion."
+                : "Aucune source n'a répondu. Vérifie ta connexion, puis réessaie.")
         } actions: {
             Button("Réessayer") {
                 Task { await model.refresh() }
@@ -384,7 +414,7 @@ struct DiscoverView: View {
         ContentUnavailableView {
             Label("Aucun article", systemImage: definition(for: topic)?.systemImage ?? "newspaper")
         } description: {
-            Text("Rien n'a pu être chargé pour ce sujet.")
+            Text("Aucun article récent, ou la source ne répond pas pour le moment.")
         } actions: {
             if isRetryingFromButton && model.isLoading {
                 ProgressView()
@@ -510,16 +540,16 @@ private struct DiscoverPendingSection: View {
     }
 }
 
-/// Ligne neutre aux mêmes polices et à la même vignette qu'une vraie
-/// (`DiscoverArticleRow`). Rédaction système et couleur sémantique : ni animation
-/// ni dégradé décoratif (DESIGN.md).
+/// Ligne neutre aux mêmes polices qu'une vraie (`DiscoverArticleRow`). SANS vignette : la
+/// plupart des flux n'en fournissent pas (Numerama, ESPN, The Conversation…), et une vignette
+/// qui disparaît à l'arrivée des articles changerait la largeur du texte sous les yeux
+/// (finding Q3 51). Rédaction système et couleur sémantique : ni animation ni dégradé
+/// décoratif (DESIGN.md).
 private struct DiscoverPlaceholderRow: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(verbatim: "source.exemple")
+                Text(verbatim: "Éditeur · il y a 3 heures")
                     .font(.caption)
                 Text(verbatim: "Un titre d'article sur deux lignes, comme la plupart de ceux du fil")
                     .font(.headline)
@@ -528,12 +558,6 @@ private struct DiscoverPlaceholderRow: View {
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if !dynamicTypeSize.isAccessibilitySize {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(.quaternary)
-                    .aspectRatio(MediaResultsKind.images.thumbnailAspectRatio, contentMode: .fit)
-                    .frame(width: DiscoverArticleRow.thumbnailWidth)
-            }
         }
         .redacted(reason: .placeholder)
     }

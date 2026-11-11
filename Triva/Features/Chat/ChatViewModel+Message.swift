@@ -85,6 +85,10 @@ extension ChatViewModel {
         /// `SearchArtifacts.answeredWithoutSearch`). Non persisté, comme
         /// `webSourceKind` : un message relu n'affiche pas la mention.
         var answeredWithoutSearch = false
+        /// Rédigée hors connexion, sans recherche ni source (tâche 1.16,
+        /// `SearchArtifacts.answeredOffline`) : la mention « Hors connexion, sans source » remplace
+        /// « Réponse sans recherche ». Non persistée non plus.
+        var answeredOffline = false
         /// Aucune source n'a passé le test lexical de la chaîne : sources
         /// affichées « probablement hors sujet » (mission A2, décision 6,
         /// `WebSearchChainReport.matchesQuestion`). Non persisté non plus.
@@ -138,6 +142,7 @@ extension ChatViewModel {
             searchQuery = artifacts.searchQuery
             webSourceKind = artifacts.webSourceKind
             answeredWithoutSearch = artifacts.answeredWithoutSearch
+            answeredOffline = artifacts.answeredOffline
             sourcesMayBeOffTopic = !artifacts.webSearchReport.matchesQuestion
         }
 
@@ -155,6 +160,7 @@ extension ChatViewModel {
             widgets = []
             webSourceKind = nil
             answeredWithoutSearch = false
+            answeredOffline = false
             sourcesMayBeOffTopic = false
             structureReport = nil
             suggestions = []

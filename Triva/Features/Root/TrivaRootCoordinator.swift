@@ -83,23 +83,23 @@ final class TrivaRootCoordinator {
     /// - Parameters:
     ///   - engine: moteur de la fenêtre, figé dans la session (bug 10).
     ///   - stores: instances UNIQUES de l'app, jamais recréées ici.
-    init(engine: AIEngineOption, stores: TrivaSharedStores) {
+    ///   - discoverFetcher: lecteur de flux de Découvrir ; les tests y mettent un faux (aucun réseau).
+    init(engine: AIEngineOption, stores: TrivaSharedStores, discoverFetcher: any FeedFetching = HTTPFeedFetcher()) {
         let session = SearchSession(engine: engine, stores: stores)
         self.session = session
-        // Découvrir cherche sur la liste d'instances EFFECTIVE (bundle +
-        // modifications de Réglages > Recherche > Avancé) et à travers le
-        // `FailoverManager` de la session : son cache de « dernière instance
-        // qui répond » sert ainsi aux deux espaces, et une liste modifiée est
-        // prise en compte au chargement suivant (le cache se revalide seul,
-        // voir `SearchSession.resolveFailoverManager()`).
+        // Découvrir lit des flux RSS/Atom publics (plus de SearXNG : le budget des
+        // instances publiques ne suffisait pas, mesure T1). Il ne dépend plus de la
+        // liste d'instances, seulement de la session pour savoir quand elle se termine.
         //
         // `weak` : le chargement est une `Task` détenue par le modèle de
         // Découvrir, qui survit à la vue. Une capture forte garderait la
         // session — conversation et modèle MLX préparé compris, plusieurs Go —
         // en vie jusqu'à la fin des requêtes après la fermeture de la fenêtre.
-        self.discover = DiscoverViewModel(cache: stores.discoverCache, loadContent: { [weak session] onTopicFinished in
-            guard let session else { throw SearchSessionError.sessionEnded }
-            return await DiscoverService(failoverManager: session.resolveFailoverManager())
+        // Tâche 1.16 : hors connexion, Découvrir n'envoie aucune requête et montre son cache.
+        let connectivity = session.connectivity
+        self.discover = DiscoverViewModel(cache: stores.discoverCache, isOffline: { connectivity.isOffline }, loadContent: { [weak session] onTopicFinished in
+            guard session != nil else { throw SearchSessionError.sessionEnded }
+            return await DiscoverService(fetcher: discoverFetcher)
                 .fetchTrending(onTopicFinished: onTopicFinished)
         })
     }

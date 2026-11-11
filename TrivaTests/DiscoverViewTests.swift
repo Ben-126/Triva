@@ -16,26 +16,9 @@ private enum ScriptError: Error, Sendable, Equatable {
     case unexpectedCall
 }
 
-/// Résultat SearXNG minimal : l'écran Découvrir ne lit que le titre, l'URL,
-/// l'extrait et l'image.
-private func searchResult(title: String, url: String) -> SearXNGSearchResult {
-    SearXNGSearchResult(
-        title: title,
-        url: url,
-        content: nil,
-        imgSrc: nil,
-        thumbnailSrc: nil,
-        thumbnail: nil,
-        author: nil,
-        iframeSrc: nil
-    )
-}
-
-/// `@MainActor` : `DiscoverArticle` n'est pas annoté dans
-/// `DiscoverService.swift`, donc isolé au main actor côté app, init compris.
 @MainActor
 private func article(_ topic: DiscoverTopic, title: String = "Titre", url: String) -> DiscoverArticle {
-    DiscoverArticle(topic: topic, result: searchResult(title: title, url: url))
+    DiscoverArticle(topic: topic, title: title, url: url, snippet: nil, imageURL: nil)
 }
 
 @MainActor

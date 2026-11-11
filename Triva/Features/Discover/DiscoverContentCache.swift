@@ -16,13 +16,18 @@ import OSLog
 nonisolated struct DiscoverCacheSnapshot: Codable, Sendable, Equatable {
     /// À incrémenter si le format change : un fichier d'une autre version est
     /// ignoré, puis remplacé à la prochaine mise à jour réussie.
-    static let currentVersion = 1
+    /// Version 2 (flux RSS) : date de publication et nom de la source. Les fichiers de la
+    /// version 1 venaient de recherches SearXNG (extraits abîmés, vieux articles sans date) :
+    /// on ne veut pas les réafficher.
+    static let currentVersion = 2
 
     struct Article: Codable, Sendable, Equatable {
         let title: String
         let url: String
         let snippet: String?
         let imageURL: String?
+        let publishedAt: Date?
+        let sourceName: String?
     }
 
     struct Section: Codable, Sendable, Equatable {
@@ -138,7 +143,9 @@ extension DiscoverCacheSnapshot {
                         title: article.title,
                         url: article.url,
                         snippet: article.snippet,
-                        imageURL: article.imageURL?.absoluteString
+                        imageURL: article.imageURL?.absoluteString,
+                        publishedAt: article.publishedAt,
+                        sourceName: article.sourceName
                     )
                 }
             )
@@ -159,7 +166,9 @@ extension DiscoverCacheSnapshot {
                     title: article.title,
                     url: article.url,
                     snippet: article.snippet,
-                    imageURL: article.imageURL.flatMap { URL(string: $0) }
+                    imageURL: article.imageURL.flatMap { URL(string: $0) },
+                    publishedAt: article.publishedAt,
+                    sourceName: article.sourceName
                 )
             }
             sectionsByTopic[topic] = DiscoverTopicSection(topic: topic, articles: articles)

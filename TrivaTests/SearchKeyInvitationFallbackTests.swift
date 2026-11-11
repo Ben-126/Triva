@@ -111,7 +111,8 @@ struct SearchKeyInvitationAfterFallbackTests {
 /// Provider IA factice : classification vide (repli sûr, recherche web générale), puis une réponse
 /// ou, s'il y en a une, `answerError` au moment de rédiger.
 private final class FallbackInvitationAIProvider: AIGenerating {
-    private let answerError: (any Error)?
+    /// Modifiable entre deux envois (mission A5) : une panne, puis le retour à la normale.
+    var answerError: (any Error)?
 
     init(answerError: (any Error)? = nil) {
         self.answerError = answerError
@@ -225,5 +226,80 @@ struct ChatViewModelFallbackInvitationTests {
         await model.send(query: "Et la hauteur de la tour Eiffel avec son antenne ?")
 
         #expect(model.searchKeyInvitation == nil)
+    }
+
+    // MARK: - Une seule fois par conversation (mission A5)
+
+    private static let secondQuestion = "Et la hauteur de la tour Eiffel avec son antenne ?"
+
+    @Test("Deux réponses de secours d'affilée : l'invitation n'est faite qu'à la première")
+    func invitesOnlyOncePerConversation() async {
+        let model = viewModel(chains: [
+            chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+            chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+            chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+        ])
+
+        await model.send(query: Self.question)
+        #expect(model.searchKeyInvitation?.actionTitle == SearchKeyInvitation.addKeyTitle)
+
+        await model.send(query: Self.secondQuestion)
+        #expect(model.searchKeyInvitation == nil)
+        #expect(model.messages.last?.webSourceKind == .wikipedia)
+
+        await model.send(query: Self.question)
+        #expect(model.searchKeyInvitation == nil)
+    }
+
+    @Test("Une nouvelle conversation peut de nouveau recevoir l'invitation")
+    func newConversationInvitesAgain() async {
+        let model = viewModel(chains: [
+            chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+            chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+        ])
+
+        await model.send(query: Self.question)
+        #expect(model.searchKeyInvitation != nil)
+
+        model.startNewConversation()
+        await model.send(query: Self.question)
+
+        #expect(model.searchKeyInvitation?.actionTitle == SearchKeyInvitation.addKeyTitle)
+    }
+
+    @Test("Un échange servi par SearXNG entre deux replis ne consomme pas l'invitation")
+    func aSearXNGAnswerDoesNotConsumeTheInvitation() async {
+        let model = viewModel(chains: [
+            chain(searxng: .results(Self.onTopic), wikipedia: .results(Self.onTopic)),
+            chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+        ])
+
+        await model.send(query: Self.question)
+        #expect(model.searchKeyInvitation == nil)
+
+        await model.send(query: Self.secondQuestion)
+        #expect(model.searchKeyInvitation?.actionTitle == SearchKeyInvitation.addKeyTitle)
+    }
+
+    @Test("Invitation effacée par une panne du moteur IA avant d'avoir été vue : la suivante est permise")
+    func anInvitationLostToAnEngineFailureIsStillOwed() async throws {
+        let aiProvider = FallbackInvitationAIProvider(answerError: ChatViewModelError.emptyResponse)
+        let model = viewModel(
+            aiProvider: aiProvider,
+            chains: [
+                chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+                chain(searxng: .failure(WebSearchError.unavailable), wikipedia: .results(Self.onTopic)),
+            ]
+        )
+
+        await model.send(query: Self.question)
+        #expect(model.searchKeyInvitation == nil)
+        #expect(model.errorDescription != nil)
+
+        aiProvider.answerError = nil
+        await model.send(query: Self.secondQuestion)
+
+        #expect(model.errorDescription == nil)
+        #expect(model.searchKeyInvitation?.actionTitle == SearchKeyInvitation.addKeyTitle)
     }
 }

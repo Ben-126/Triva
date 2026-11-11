@@ -273,11 +273,13 @@ extension TrivaSharedStores {
     ///   dans les tests (aucun appel réseau depuis un test).
     func makeSearXNGMaintenance(
         requester: any HTTPDataRequesting = URLSessionDataRequester(),
-        prober: any InstanceProbing = SearXNGInstanceHealthProbe()
+        prober: any InstanceProbing = SearXNGInstanceHealthProbe(),
+        isOffline: @escaping @MainActor () -> Bool = { ConnectivityMonitor.shared.isOffline }
     ) -> SearXNGMaintenance {
         SearXNGMaintenance(
             refresher: SearXNGDirectoryRefresher(requester: requester, prober: prober, store: searchDirectory),
             prober: prober,
+            isOffline: isOffline,
             makeFailoverManager: { [self] in makeFailoverManager(instances: searXNGInstances) }
         )
     }
@@ -344,6 +346,11 @@ struct TrivaApp: App {
         // réseau réel et des préférences réelles à chaque lancement de suite.
         .onChange(of: scenePhase, initial: true) { _, phase in
             guard phase == .active, !TrivaTestHost.isHostingUnitTests() else { return }
+            searXNGMaintenance.sceneDidBecomeActive()
+        }
+        // Retour de la connexion (tâche 1.16) : le passage ignoré hors connexion a lieu maintenant.
+        .onChange(of: ConnectivityMonitor.shared.status) { _, status in
+            guard status == .online, scenePhase == .active, !TrivaTestHost.isHostingUnitTests() else { return }
             searXNGMaintenance.sceneDidBecomeActive()
         }
 
