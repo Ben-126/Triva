@@ -333,6 +333,15 @@ struct QueryClassifier: Sendable {
         }
     }
 
+    /// Prompt détaillé, port de `classifier.ts` (web). Écarts de la mission A2 :
+    /// `academicSearch` n'est plus déclenché par « des citations » (décision 4
+    /// de Ben : « Cite les 27 pays de l'UE » partait sur arXiv, constat Q1),
+    /// et `discussionSearch` reçoit la ligne proposée et mesurée par T2
+    /// (décision 1 : « Quelles sont les différences entre JavaScript et
+    /// TypeScript ? » était classée discussion 3 fois sur 3, donc envoyée sur
+    /// Reddit). `skipSearch` reste celui du web : mesuré dans l'éval A2 avec
+    /// gpt-6-luna, il saute la recherche pour 6 questions de fait sur 8 —
+    /// arbitrage signalé à Ben, non tranché ici.
     private static let classifierSystemPrompt: String = """
     <role>
     Tu es un système d'IA avancé chargé d'analyser la requête de l'utilisateur et l'historique de la conversation pour déterminer la classification la plus appropriée de l'opération de recherche.
@@ -352,12 +361,14 @@ struct QueryClassifier: Sendable {
        - Mets-le à false si la requête ne référence pas de documents importés ou si l'information peut être obtenue par une recherche web générale.
        - METS TOUJOURS PERSONALSEARCH À FALSE SI TU ES INCERTAIN OU SI LA REQUÊTE EST AMBIGUË. ET METS AUSSI SKIPSEARCH À FALSE DANS CE CAS.
     3. academicSearch (booléen) : Évalue si la requête nécessite de chercher dans des bases académiques ou des articles scientifiques.
-       - Mets-le à true si la requête demande explicitement des informations scientifiques, des articles de recherche, ou des citations, par exemple "Trouve des études récentes sur...", "Que dit la recherche la plus récente sur...", ou "Fournis des citations pour...".
+       - Mets-le à true seulement si la requête demande explicitement des articles scientifiques, des études ou des publications de recherche, par exemple "Trouve des études récentes sur...", "Que dit la recherche la plus récente sur..." ou "Donne-moi des articles scientifiques sur...".
+       - Le verbe "citer" ("Cite les pays de...") demande une liste, pas des sources académiques : mets-le alors à false, comme pour une simple demande d'explication détaillée.
        - Mets-le à false si la requête peut être répondue par une recherche web générale ou ne demande pas spécifiquement de sources académiques.
     4. discussionSearch (booléen) : Évalue si la requête nécessite de chercher dans des forums, des espaces de discussion, ou des plateformes de questions-réponses communautaires.
        - Mets-le à true si la requête cherche des opinions, des expériences personnelles, des conseils communautaires, ou des discussions, par exemple "Que pensent les gens de...", "Y a-t-il des discussions sur...", ou "Quels sont les problèmes courants rencontrés par...".
        - Mets-le à true si l'utilisateur demande des avis ou retours d'utilisateurs sur des produits, services, ou expériences.
        - Mets-le à false si la requête peut être répondue par une recherche web générale ou ne demande pas spécifiquement des plateformes de discussion.
+       - Mets-le à false pour une question factuelle, une définition, une explication ou une comparaison technique, par exemple "Quelles sont les différences entre X et Y ?" : ce n'est pas une demande d'avis.
     5. showWeatherWidget (booléen) : Décide si afficher un widget météo répondrait suffisamment à la requête.
        - Mets-le à true si la requête concerne spécifiquement les conditions météo actuelles, des prévisions, ou toute information liée à la météo pour un lieu donné.
        - Mets-le à true pour des requêtes comme "Quel temps fait-il à [Lieu] ?" ou "Va-t-il pleuvoir demain à [Lieu] ?" ou "Montre-moi la météo" (ici, il s'agit de la météo du lieu actuel de l'utilisateur).
@@ -405,13 +416,30 @@ struct QueryClassifier: Sendable {
     /// directement dans la structure JSON attendue plutôt qu'en labels
     /// séparés — même schéma de sortie, mêmes noms de champs, pour que
     /// `parse` reste identique quelle que soit la variante utilisée.
+    ///
+    /// Mission A2 (décisions 2 et 4 de Ben). `skipSearch` : la liste FERMÉE
+    /// de ce qui se passe de recherche remplace « connaissance générale », qui
+    /// faisait répondre de tête « 330 pieds » à la hauteur de la tour Eiffel
+    /// (constat Q1) ; les faits passent par la recherche. La liste est celle
+    /// de Ben, au mot près : salutation, écriture ou reformulation, calcul. La
+    /// météo n'y est pas : une question météo lance donc une recherche web en
+    /// plus du widget, que le rédacteur peut citer à tort (éval A2 : « couvert
+    /// [2] » renvoyait à l'article Wikipédia de Lyon). L'y ajouter
+    /// (`SearchRoute.webUnlessWeatherAnswered` saute alors le web quand le
+    /// widget répond) est une proposition soumise à Ben, pas une décision.
+    /// Sans effet sur le prompt `.full`, port du web, dont `skipSearch` reste
+    /// inchangé.
+    /// `academicSearch` : ni « citations » ni « recherches » ne déclenchent
+    /// plus la recherche académique. « Cite les 27 pays de l'UE » partait sur
+    /// arXiv (constat Q1), « Explique en détail… » sur OpenAlex (éval A2) ;
+    /// et « fais des recherches sur X » veut dire « cherche X ».
     private static let classifierSystemPromptConcise: String = """
     Analyse la requête ci-dessous (et l'historique de conversation si utile) et réponds UNIQUEMENT avec ce JSON, sans aucun texte autour :
     {
       "classification": {
-        "skipSearch": true si connaissance générale/calcul simple/salutation/écriture, sinon false (mets false si incertain),
+        "skipSearch": true SEULEMENT pour une salutation, une écriture ou reformulation (poème, e-mail, traduction, résumé de la conversation) ou un calcul ; false pour toute question de fait (chiffre, date, prix, personne, lieu, définition, explication), même si tu connais la réponse, et false si incertain,
         "personalSearch": true seulement si la requête parle d'un document importé par l'utilisateur, sinon false,
-        "academicSearch": true seulement si la requête demande explicitement des études/recherches/citations, sinon false,
+        "academicSearch": true seulement si la requête demande explicitement des articles scientifiques ou des études (« Cite… » demande une liste : false), sinon false,
         "discussionSearch": true seulement si la requête demande des avis/opinions/discussions communautaires, sinon false,
         "showWeatherWidget": true seulement si la requête porte sur la météo d'un lieu précis, sinon false,
         "showStockWidget": true seulement si la requête porte sur le cours d'une action précise (jamais pour une analyse de marché), sinon false,

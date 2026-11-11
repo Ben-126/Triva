@@ -38,10 +38,18 @@ nonisolated protocol SearXNGSearching: Sendable {
 /// JSON, pas même les 2 qui le servent à `*/*` : l'annuaire finissait à `.noneVerified`, et ce 429,
 /// qui ne dit rien de l'IP ni du débit, s'affichait « Trop de requêtes » dans les Réglages.
 struct SearXNGClient: SearXNGSearching {
-    private let urlSession: URLSession
+    let urlSession: URLSession
     private let timeoutInterval: TimeInterval
 
-    init(urlSession: URLSession = .shared, timeoutInterval: TimeInterval = 10) {
+    /// Session par défaut SANS cache (`URLSessionDataRequester.uncachedSession`) et non `.shared`.
+    /// `URLSession.shared` écrit chaque GET dans `Library/Caches/<bundle>/Cache.db`, URL comprise : la
+    /// question de l'utilisateur (`q=…`) restait en clair sur le disque, y compris après la
+    /// suppression de la conversation (constaté sur 4 entrées sur 14, mission Q2). Une recherche
+    /// est toujours différente de la précédente : le cache n'avait rien à réutiliser.
+    init(
+        urlSession: URLSession = URLSessionDataRequester.uncachedSession,
+        timeoutInterval: TimeInterval = 10
+    ) {
         self.urlSession = urlSession
         self.timeoutInterval = timeoutInterval
     }

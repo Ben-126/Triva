@@ -239,6 +239,16 @@ enum PromptTemplates {
     /// `standaloneQuery` (bug 1) : la reformulation autonome du classifieur,
     /// celle qui a servi de sujet de recherche. Elle est donnée EN PLUS de la
     /// question, jamais à sa place (voir `reformulationLine`).
+    ///
+    /// `hasWidgetData` (mission A1) : vrai quand `SearchOrchestrator` insérera
+    /// un bloc `<donnees_widgets>` juste avant la question. Il ne change que le
+    /// rappel du mode Fiable (`contextReminder`), seul texte que ces données
+    /// contredisent.
+    ///
+    /// `sourcesMatchQuestion` (mission A2) : faux quand aucune source de la
+    /// chaîne n'a passé le test lexical (`WebSearchChainReport.matchesQuestion`).
+    /// Il ajoute un seul rappel après le contexte (`offTopicReminder`) ; vrai
+    /// (défaut), les gabarits restent identiques au caractère près.
     nonisolated static func writerPrompt(
         query: String,
         standaloneQuery: String? = nil,
@@ -250,7 +260,9 @@ enum PromptTemplates {
         currentDate: Date = Date(),
         maxHistoryMessages: Int = defaultMaxHistoryMessages,
         maxHistoryMessageCharacters: Int = defaultMaxHistoryMessageCharacters,
-        maxScrapedContextCharacters: Int = defaultMaxScrapedContextCharacters
+        maxScrapedContextCharacters: Int = defaultMaxScrapedContextCharacters,
+        hasWidgetData: Bool = false,
+        sourcesMatchQuestion: Bool = true
     ) -> String {
         let prompt = PromptParts(
             query: query,
@@ -261,7 +273,9 @@ enum PromptTemplates {
                 maxHistoryMessageCharacters: maxHistoryMessageCharacters
             ),
             mode: mode,
-            currentDate: currentDate
+            currentDate: currentDate,
+            hasWidgetData: hasWidgetData,
+            sourcesMatchQuestion: sourcesMatchQuestion
         )
         let context = numberedContext(
             sources: sources,
@@ -284,6 +298,10 @@ enum PromptTemplates {
         let history: String
         let mode: ResponseMode
         let currentDate: Date
+        /// Voir `writerPrompt(hasWidgetData:)`.
+        let hasWidgetData: Bool
+        /// Voir `writerPrompt(sourcesMatchQuestion:)`. Vrai hors rédaction.
+        var sourcesMatchQuestion = true
     }
 
     private nonisolated static func fullPrompt(_ parts: PromptParts, context: String) -> String {
@@ -308,7 +326,7 @@ enum PromptTemplates {
 
         <contexte>
         \(context)
-        </contexte>\(contextReminder(for: parts.mode, context: context))
+        </contexte>\(offTopicReminder(for: parts, context: context))\(contextReminder(for: parts.mode, context: context, hasWidgetData: parts.hasWidgetData))
 
         Date et heure actuelles (UTC, format ISO 8601) : \(formattedDate(parts.currentDate)).
 
@@ -327,10 +345,46 @@ enum PromptTemplates {
     /// garde son marqueur `unsupportedClaimMarker`, qu'un « jamais de connaissances générales » sans
     /// condition contredirait. Vide hors du mode Fiable : les autres gabarits restent identiques au
     /// caractère près. Vide aussi sans aucun document (widget seul, le seul cas où la rédaction tourne
-    /// alors) : `modeSection` prévoit déjà `unverifiedSourcesWarning`.
-    private nonisolated static func contextReminder(for mode: ResponseMode, context: String) -> String {
+    /// alors) : `modeSection` prévoit déjà `unverifiedSourcesWarning`. « Aucun document » inclut, depuis
+    /// la mission A1, des sources toutes illisibles : `numberedContext` rend alors exactement
+    /// `noSourcesContext`.
+    ///
+    /// Variante avec données de widgets (mission A1, rapport T2, finding 4) : le bloc
+    /// `<donnees_widgets>` arrive APRÈS ce rappel (`SearchOrchestrator.insertingWidgetContext`). Le
+    /// refus exact y faisait refuser une question mixte (« météo à Lyon et que visiter ? ») dès que
+    /// les documents étaient hors sujet, malgré une météo juste déjà affichée. Elle garde l'interdit des
+    /// connaissances générales mais ne demande jamais le refus : la donnée d'un widget est une source.
+    /// Le refus reste pris en charge par le code, pas par ce texte (`SearchArtifacts.rejectsReliableAnswer`).
+    private nonisolated static func contextReminder(for mode: ResponseMode, context: String, hasWidgetData: Bool) -> String {
         guard case .reliable = mode, context != noSourcesContext else { return "" }
+        guard !hasWidgetData else { return reliableReminderWithWidgetData }
         return "\n\nRappel du mode Fiable : si les documents ci-dessus ne traitent pas du sujet de la question, n'utilise pas tes connaissances générales, même si tu connais la réponse : réponds exactement « \(noRelevantInformationAnswer) »"
+    }
+
+    /// Voir `contextReminder(for:context:hasWidgetData:)`.
+    private nonisolated static let reliableReminderWithWidgetData =
+        "\n\nRappel du mode Fiable : n'utilise pas tes connaissances générales, même si tu connais la réponse. Réponds à partir des données des widgets plus bas, et des documents ci-dessus seulement s'ils traitent du sujet de la question."
+
+    /// Rappel « documents probablement hors sujet » (mission A2, décisions 5 et 6 de Ben), juste
+    /// après le contexte, dans les DEUX verbosités, quand aucune source de la chaîne n'a passé le
+    /// test lexical (`LexicalRelevance`) : la chaîne garde alors la moins éloignée, et le dit.
+    /// Mesuré avant (éval A2, Apple Intelligence) : sur « Cite les 27 pays de l'UE… », avec trois
+    /// thèses OpenAlex sans rapport, le modèle a recopié la réponse précédente de l'historique
+    /// (« La hauteur de la tour Eiffel est de 330 mètres [1] ») ; le constat Q1 donnait « 500 euros
+    /// [3] ». L'état honnête est le refus exact, que le validateur connaît.
+    ///
+    /// CONDITIONNEL (« s'ils ne traitent pas de la question ») : le test est lexical, il se trompe
+    /// parfois (sources pertinentes dans une autre langue) ; un ordre sans condition ferait refuser
+    /// une réponse que les documents permettent. Variante avec widgets : leur donnée répond déjà
+    /// (calcul, météo), le refus la contredirait — même raison que `reliableReminderWithWidgetData`.
+    /// Vide quand les sources passent le test ou sans document : gabarits inchangés.
+    private nonisolated static func offTopicReminder(for parts: PromptParts, context: String) -> String {
+        guard !parts.sourcesMatchQuestion, context != noSourcesContext else { return "" }
+        let note = "\n\nAttention : aucun document ci-dessus ne reprend les mots de la question, ils sont probablement hors sujet."
+        guard !parts.hasWidgetData else {
+            return note + " S'ils ne traitent pas de la question, ne les cite pas et réponds à partir des données des widgets plus bas."
+        }
+        return note + " S'ils ne traitent pas de la question, ne les cite pas et réponds exactement « \(noRelevantInformationAnswer) »"
     }
 
     /// Version courte. Ce qui est gardé et pourquoi : les citations `[n]`
@@ -343,6 +397,11 @@ enum PromptTemplates {
     /// Le validateur continue de vérifier les formulations bannies dans ce
     /// mode : une violation y est une information utile sur le modèle, pas un
     /// reproche — le prompt ne les lui a pas listées.
+    ///
+    /// Gardé aussi depuis la mission A2 : une ligne sur l'historique. Sans
+    /// elle, aucune règle de cette variante ne disait à quoi il sert, et Apple
+    /// Intelligence recopiait la réponse précédente quand les documents ne
+    /// traitaient pas la question (éval A2, constat Q1) — voir `offTopicReminder`.
     private nonisolated static func concisePrompt(_ parts: PromptParts, context: String) -> String {
         """
         Tu es Triva. Réponds à la question en t'appuyant uniquement sur les sources numérotées ci-dessous.
@@ -351,6 +410,7 @@ enum PromptTemplates {
         - Termine chaque affirmation factuelle par le numéro de sa source entre crochets, par exemple : La tour Eiffel mesure 330 mètres[1].
         - Plusieurs sources pour un même fait : [1][2].
         - N'invente rien. Si les sources ne le disent pas, ne l'écris pas.
+        - L'historique sert seulement à comprendre la question : ne recopie jamais une réponse précédente.
         - Pas de phrase de remplissage, pas de répétition, pas de titre principal.
 
         \(modeSection(for: parts.mode, complexity: .concise))
@@ -361,7 +421,7 @@ enum PromptTemplates {
 
         <contexte>
         \(context)
-        </contexte>
+        </contexte>\(offTopicReminder(for: parts, context: context))
 
         Date du jour (UTC, ISO 8601) : \(formattedDate(parts.currentDate)).
 
@@ -393,7 +453,9 @@ enum PromptTemplates {
             reformulation: reformulationLine(query: query, standaloneQuery: standaloneQuery),
             history: formattedHistory(chatHistory, maxHistoryMessages: maxHistoryMessages, maxHistoryMessageCharacters: maxHistoryMessageCharacters),
             mode: mode,
-            currentDate: currentDate
+            currentDate: currentDate,
+            // Sans contexte, aucun rappel Fiable : le drapeau n'a rien à adapter.
+            hasWidgetData: false
         )
         switch complexity {
         case .full:
@@ -404,6 +466,15 @@ enum PromptTemplates {
     }
 
     /// Les deux verbosités du prompt sans recherche, séparées comme `fullPrompt`/`concisePrompt`.
+    ///
+    /// Pas de règle « ne recopie pas une réponse précédente » ici, contrairement aux prompts de
+    /// rédaction (mission A2, décision 5 de Ben) : mesurée contre-productive sur Apple Intelligence.
+    /// « Bonjour ! » envoyé après un haïku (vu sur iPad et iPhone : le haïku recopié mot pour mot),
+    /// 6 générations par version : sans règle, recopie 2 fois ; avec « …sauf si ce message demande
+    /// de la reprendre ; à une salutation, réponds par une courte salutation », 0 fois, mais
+    /// « Bonjour. » s'invitait devant une demande de traduction 3 fois sur 3 ; sans la clause
+    /// salutation, 5 fois. Le cas mesuré est réglé en amont, sans prompt : une salutation pure part
+    /// au rédacteur sans historique (`SmallTalk.isBareSalutation`). Jamais mesurée sur cloud ni MLX.
     private nonisolated static func fullConversationPrompt(_ parts: PromptParts) -> String {
         """
         Tu es Triva, un assistant de recherche précis et direct. Aucune recherche web n'a été lancée pour ce message : il ne demande ni information récente ni source (salutation, tâche d'écriture, culture générale, ou demande qui porte sur la conversation elle-même — traduire, résumer, reformuler, développer une réponse précédente).
@@ -467,7 +538,7 @@ enum PromptTemplates {
     private nonisolated static let coreRulesSection: String = """
     ### Principes fondamentaux
     - **Langue** : réponds dans la langue de la question, sauf si la question demande explicitement une autre langue. Ne mélange jamais deux langues dans une même réponse.
-    - **Continuité de la conversation** : l'historique est fourni plus bas. Si la question est courte, ambiguë ou renvoie implicitement à un message précédent (« pourquoi ? », « et le deuxième ? », « développe », « et en France ? »), identifie le sujet dans l'historique et réponds dans ce contexte — ne la traite jamais comme une question isolée. Les numéros [n] de l'historique désignaient les sources d'échanges précédents : ne les recopie pas, cite uniquement le contexte ci-dessous.
+    - **Continuité de la conversation** : l'historique est fourni plus bas. Si la question est courte, ambiguë ou renvoie implicitement à un message précédent (« pourquoi ? », « et le deuxième ? », « développe », « et en France ? »), identifie le sujet dans l'historique et réponds dans ce contexte — ne la traite jamais comme une question isolée. Les numéros [n] de l'historique désignaient les sources d'échanges précédents : ne les recopie pas, cite uniquement le contexte ci-dessous. L'historique sert à comprendre la question, jamais à y répondre : ne recopie jamais une réponse précédente, elle répondait à une autre question.
     - **Précision d'abord** : chaque affirmation factuelle doit porter une citation [n] renvoyant au contexte. Une affirmation qui ne peut pas être sourcée doit être supprimée, pas nuancée.
     - **Aucune spéculation** : n'utilise jamais une tournure prudente pour faire passer un fait non sourcé. Formulations interdites : \(quotedList(bannedSpeculationPhrases)).
     - **Aucun remplissage** : formulations interdites, en français comme en anglais : \(quotedList(bannedFillerPhrases)).
@@ -513,6 +584,22 @@ enum PromptTemplates {
     /// des balises ouvertes jamais refermées, qui s'affichent brutes dans la
     /// bulle de réponse. Le validateur reçoit donc la verbosité, pour ne
     /// jamais reprocher au modèle une consigne qu'on ne lui a pas donnée.
+    ///
+    /// Longueur de `deep` + `.concise` (mission A2, décision 8) : la ligne
+    /// n'en fixait aucune, et « N'invente rien » de `concisePrompt` faisait le
+    /// reste — une phrase de 142 caractères (constat Q1), 962 caractères pour
+    /// quatre sections creuses (éval A2), avec des sources académiques hors
+    /// sujet. La cause principale était la route (« Explique en détail »
+    /// classé académique, corrigé dans `QueryClassifier`) ; la cible donne le
+    /// reste. 300 à 400 mots, et non les 500 du `.full` : sous Apple
+    /// Intelligence (~4 096 jetons, prompt ET réponse), le pire prompt mesuré
+    /// (~10 800 caractères, ~2 900 jetons) laisse ~1 200 jetons, soit ~800
+    /// mots français au plus ; 400 mots en gardent la moitié en réserve.
+    /// Mesuré après (éval A2) : 4 798 caractères sur des articles hors sujet
+    /// (respiration, évolution) que le modèle résumait pour atteindre la
+    /// cible, en écrivant lui-même que la photosynthèse n'y figurait pas ;
+    /// la première version disait « écris tout ce qu'elles disent ». D'où
+    /// « jamais le résumé d'un document qui parle d'autre chose ».
     nonisolated static func modeSection(for mode: ResponseMode, complexity: WriterPromptComplexity) -> String {
         switch (mode, complexity) {
         case (.quick, .full):
@@ -542,7 +629,7 @@ enum PromptTemplates {
             """
         case (.deep, .concise):
             return """
-            Format : réponse structurée en 3 à 5 sections avec des titres ##, puis une section ## Conclusion de 2 phrases maximum qui apporte une idée nouvelle. Pas de balise <think> ni <tldr>.
+            Format : réponse structurée en 3 à 5 sections avec des titres ##, puis une section ## Conclusion de 2 phrases maximum qui apporte une idée nouvelle. Vise 300 à 400 mots si les sources le permettent ; n'écris que ce qu'elles disent de la question, sans rien inventer, et jamais le résumé d'un document qui parle d'autre chose. Pas de balise <think> ni <tldr>.
             """
         case (.reliable, .full):
             return """
@@ -567,6 +654,11 @@ enum PromptTemplates {
     /// chaîne vide en `.concise`. `complexity` reste un paramètre (plutôt
     /// qu'un appel réservé à `.full`) pour que la fonction soit totale et
     /// testable des deux côtés.
+    ///
+    /// Ligne des numéros reformulée par la mission A1 : « ne dépasse le
+    /// nombre de documents » devenait faux avec un trou de numérotation ([1]
+    /// et [3] montrés : 2 documents, mais [3] valide), et poussait à citer [2],
+    /// la page omise parce que jamais lue.
     nonisolated static func checklistSection(for mode: ResponseMode, complexity: WriterPromptComplexity) -> String {
         guard complexity == .full else { return "" }
 
@@ -576,7 +668,7 @@ enum PromptTemplates {
         - Chaque phrase qui énonce un fait porte une citation [n].
         - Aucune des formulations interdites listées plus haut n'apparaît (relis mot à mot).
         - Aucune phrase ne répète un point déjà fait.
-        - Aucun numéro de citation ne dépasse le nombre de documents du contexte, et aucun n'est [0].
+        - Chaque numéro de citation est celui d'un document du contexte, et aucun n'est [0].
         """
 
         switch mode {
@@ -601,150 +693,6 @@ enum PromptTemplates {
             - Mode Fiable : aucun bloc <think> ni <tldr>, la réponse commence directement.
             """
         }
-    }
-
-    // MARK: - Contexte numéroté
-
-    /// Construit le bloc de contexte que les citations `[n]` référencent.
-    ///
-    /// Décision structurante : **une page scrapée n'obtient PAS son propre
-    /// numéro si son URL correspond déjà à une source de recherche.** Son
-    /// contenu est fusionné dans le document de cette source. Sans cette
-    /// fusion, la même page apparaîtrait deux fois sous deux numéros
-    /// différents, et le modèle citerait indifféremment l'un ou l'autre : la
-    /// liste de sources affichée sous la réponse (0.8) ne correspondrait plus
-    /// aux numéros cités — c'est-à-dire exactement la promesse de l'app qui
-    /// casse. Une page scrapée dont l'URL n'est dans aucune source est ajoutée
-    /// à la suite, avec son propre numéro — cas que le pipeline ne produit
-    /// plus (bug 8) : `SearchOrchestrator` ne scrape que des sources
-    /// affichées et recopie l'URL exacte de la source sur chaque page. Ce
-    /// repli ne sert plus qu'à un appelant direct.
-    ///
-    /// Format volontairement différent de l'ancien `<result index=… title=…>`
-    /// du prompt minimal de 0.7/1.2 (remplacé par ce prompt depuis le
-    /// branchement de 1.4) : le numéro est écrit
-    /// `[1]`, exactement sous la forme qu'on demande au modèle de recopier.
-    /// Un modèle reproduit ce qu'il voit ; lui montrer `index=1` et lui
-    /// demander d'écrire `[1]` ajoute une transformation gratuite.
-    ///
-    /// Les pages scrapées en échec (`succeeded == false`) ou vides sont
-    /// ignorées : elles n'ajouteraient qu'un document citable creux.
-    nonisolated static func numberedContext(
-        sources: [SearXNGSearchResult],
-        scrapedPages: [ScrapedPage] = [],
-        maxScrapedContextCharacters: Int = defaultMaxScrapedContextCharacters
-    ) -> String {
-        let documents = citableDocuments(sources: sources, scrapedPages: scrapedPages)
-        guard !documents.isEmpty else {
-            return noSourcesContext
-        }
-
-        // Répartition équitable du budget de caractères entre les documents
-        // qui portent du contenu scrapé — protection anti-overflow « NIVEAU 2 »
-        // du pipeline (elle vivait dans `SearchOrchestrator.formatScrapedPages`
-        // avant le branchement de 1.4) : un plafond consommé au fil de l'eau
-        // laisserait le premier document manger tout le budget.
-        let scrapedDocumentCount = documents.filter { !$0.scrapedContent.isEmpty }.count
-        let budgetPerDocument = scrapedDocumentCount > 0
-            ? max(1, maxScrapedContextCharacters / scrapedDocumentCount)
-            : 0
-
-        return documents.enumerated()
-            .map { index, document in
-                var block = "[\(index + 1)] \(document.title) — \(document.url)"
-                if !document.snippet.isEmpty {
-                    block += "\nExtrait : \(document.snippet)"
-                }
-                if !document.scrapedContent.isEmpty, budgetPerDocument > 0 {
-                    block += "\nContenu de la page : \(document.scrapedContent.prefix(budgetPerDocument))"
-                }
-                return block
-            }
-            .joined(separator: "\n\n")
-    }
-
-    /// Nombre de documents citables — donc le plus grand `n` valide dans une
-    /// citation `[n]`. Exposé pour que l'appelant qui branche ce prompt le
-    /// passe tel quel à `ResponseStructureValidator` sans re-dériver la règle
-    /// de fusion par URL et tomber sur un autre compte.
-    nonisolated static func citableDocumentCount(
-        sources: [SearXNGSearchResult],
-        scrapedPages: [ScrapedPage] = []
-    ) -> Int {
-        citableDocuments(sources: sources, scrapedPages: scrapedPages).count
-    }
-
-    /// Un document citable, dans l'ordre de numérotation final.
-    /// `nonisolated` pour la même raison que `WriterPromptComplexity` : sa
-    /// conformance `Equatable` doit rester utilisable hors du main actor.
-    private nonisolated struct CitableDocument: Sendable, Equatable {
-        let url: String
-        let title: String
-        let snippet: String
-        let scrapedContent: String
-    }
-
-    private nonisolated static func citableDocuments(
-        sources: [SearXNGSearchResult],
-        scrapedPages: [ScrapedPage]
-    ) -> [CitableDocument] {
-        let usablePages = scrapedPages.filter { $0.succeeded && !$0.content.isEmpty }
-
-        // Première page gagne en cas de doublon d'URL : cohérent avec la
-        // déduplication « premier arrivé » de `SearchOrchestrator.accumulate`.
-        var pagesByNormalizedURL: [String: ScrapedPage] = [:]
-        for page in usablePages {
-            let key = normalizedURL(page.url)
-            guard pagesByNormalizedURL[key] == nil else { continue }
-            pagesByNormalizedURL[key] = page
-        }
-
-        var consumedURLs: Set<String> = []
-        var documents: [CitableDocument] = sources.map { source in
-            let key = normalizedURL(source.url)
-            guard let matchingPage = pagesByNormalizedURL[key] else {
-                return CitableDocument(
-                    url: source.url,
-                    title: source.title,
-                    snippet: source.content ?? "",
-                    scrapedContent: ""
-                )
-            }
-            consumedURLs.insert(key)
-            return CitableDocument(
-                url: source.url,
-                title: source.title,
-                snippet: source.content ?? "",
-                scrapedContent: matchingPage.content
-            )
-        }
-
-        for page in usablePages {
-            let key = normalizedURL(page.url)
-            guard !consumedURLs.contains(key) else { continue }
-            consumedURLs.insert(key)
-            documents.append(
-                CitableDocument(url: page.url, title: page.title, snippet: "", scrapedContent: page.content)
-            )
-        }
-
-        return documents
-    }
-
-    /// Normalisation minimale et volontairement prudente pour comparer deux
-    /// URLs : espaces retirés, casse ignorée, slash final ignoré. On ne
-    /// touche PAS au schéma (http/https), ni au sous-domaine `www.`, ni aux
-    /// paramètres de requête : deux URLs qui ne diffèrent que par ça peuvent
-    /// pointer vers des contenus réellement différents, et fusionner à tort
-    /// deux documents attribuerait au modèle une citation qui ne correspond
-    /// pas à la source affichée — le bug précis que la fusion cherche à
-    /// éviter.
-    private nonisolated static func normalizedURL(_ url: String) -> String {
-        var normalized = url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        while normalized.hasSuffix("/") {
-            normalized.removeLast()
-        }
-        return normalized
     }
 
     // MARK: - Historique et utilitaires

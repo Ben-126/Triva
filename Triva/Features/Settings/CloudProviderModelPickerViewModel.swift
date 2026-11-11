@@ -43,10 +43,15 @@ final class CloudProviderModelPickerViewModel {
     private let selectionStore: CloudProviderSelectionStore
     private let modelListService: CloudModelListService
 
-    /// Calculée une seule fois à l'initialisation : la liste des clés
+    /// Remplie UNE fois par `loadConfiguredProviders()` : la liste des clés
     /// enregistrées ne change pas pendant la durée de vie de cet écran (les
-    /// clés se gèrent depuis `BYOKProvidersView`, un écran distinct).
-    let configuredProviders: [ConfiguredCloudProvider]
+    /// clés se gèrent depuis `BYOKProvidersView`, un écran distinct). Vide tant
+    /// que `hasLoadedProviders` est faux : la vue n'affiche alors ni liste ni
+    /// état vide (« aucune clé »), qui serait faux.
+    private(set) var configuredProviders: [ConfiguredCloudProvider] = []
+
+    /// Vrai une fois la lecture du Trousseau terminée (même si aucune clé).
+    private(set) var hasLoadedProviders = false
 
     private(set) var modelListState: CloudModelListState = .idle
 
@@ -81,20 +86,32 @@ final class CloudProviderModelPickerViewModel {
         self.customPresets = customPresets
         self.selectionStore = selectionStore
         self.modelListService = modelListService
+    }
+
+    /// Lit le Trousseau HORS du main actor puis publie la liste des
+    /// fournisseurs configurés. Avant, ces lectures (jusqu'à ~15 appels
+    /// `SecItemCopyMatching`) étaient synchrones dans l'`init`, donc sur le fil
+    /// principal : sur Mac, l'invite d'autorisation du trousseau gelait tout
+    /// l'écran tant qu'elle restait ouverte (constaté par Q2). Chaque lecture
+    /// passe par `APIKeyStoring.readAPIKey`, qui quitte le main actor. Idempotent :
+    /// un second appel ne relit rien.
+    ///
+    /// Ordre d'affichage : Claude, catalogue, puis fournisseurs personnalisés.
+    func loadConfiguredProviders() async {
+        guard !hasLoadedProviders else { return }
 
         var providers: [ConfiguredCloudProvider] = []
-        if Self.hasStoredKey(keyStore: keyStore, account: CloudProviderSelectionResolver.claudeProviderID) {
+        if await Self.hasStoredKey(keyStore: keyStore, account: CloudProviderSelectionResolver.claudeProviderID) {
             providers.append(
                 ConfiguredCloudProvider(id: CloudProviderSelectionResolver.claudeProviderID, displayName: "Claude")
             )
         }
-        for preset in CloudProviderCatalog.presets where Self.hasStoredKey(keyStore: keyStore, account: preset.id) {
-            providers.append(ConfiguredCloudProvider(id: preset.id, displayName: preset.displayName))
-        }
-        for preset in customPresets where Self.hasStoredKey(keyStore: keyStore, account: preset.id) {
+        for preset in CloudProviderCatalog.presets + customPresets
+        where await Self.hasStoredKey(keyStore: keyStore, account: preset.id) {
             providers.append(ConfiguredCloudProvider(id: preset.id, displayName: preset.displayName))
         }
         configuredProviders = providers
+        hasLoadedProviders = true
     }
 
     /// Sélectionne `id` comme fournisseur actif. Si c'était déjà le
@@ -169,7 +186,7 @@ final class CloudProviderModelPickerViewModel {
             modelListState = .idle
             return
         }
-        guard let apiKey = (try? keyStore.apiKey(account: providerID)) ?? nil, !apiKey.isEmpty else {
+        guard let apiKey = (try? await keyStore.readAPIKey(account: providerID)) ?? nil, !apiKey.isEmpty else {
             modelListState = .noKey
             return
         }
@@ -226,8 +243,8 @@ final class CloudProviderModelPickerViewModel {
         CloudProviderCatalog.presets + customPresets
     }
 
-    private static func hasStoredKey(keyStore: any APIKeyStoring, account: String) -> Bool {
-        ((try? keyStore.apiKey(account: account)) ?? nil)?.isEmpty == false
+    private static func hasStoredKey(keyStore: any APIKeyStoring, account: String) async -> Bool {
+        ((try? await keyStore.readAPIKey(account: account)) ?? nil)?.isEmpty == false
     }
 
     /// Nom lisible d'un modèle Claude dérivé de son id (ex.

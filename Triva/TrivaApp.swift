@@ -126,6 +126,12 @@ struct TrivaSharedStores {
         self.isHistoryStorageVolatile = isHistoryStorageVolatile
     }
 
+    /// Action « Tout effacer » des Réglages, branchée sur les MÊMES stores que
+    /// le reste de l'app (historique et favoris partagés, cache Découvrir).
+    func makeLocalDataEraser() -> LocalDataEraser {
+        LocalDataEraser(chatHistory: chatHistory, favorites: favorites, discoverCache: discoverCache)
+    }
+
     /// Les stores réels : `UserDefaults.standard`, base SwiftData sur disque
     /// (`TrivaModelContainer.shared`, avec son repli en mémoire si le fichier
     /// est illisible), trousseau réel, liste SearXNG du bundle plus les
@@ -308,6 +314,18 @@ struct TrivaApp: App {
         let stores = TrivaSharedStores.live()
         _stores = State(initialValue: stores)
         _searXNGMaintenance = State(initialValue: stores.makeSearXNGMaintenance())
+        Self.purgeLegacyURLCacheOnce()
+    }
+
+    /// Purge UNIQUE du cache HTTP hérité (voir `URLCachePurger`), en tâche de
+    /// fond : le lancement n'attend pas le disque. Jamais sous les tests
+    /// unitaires, qui tournent dans l'app et toucheraient le vrai cache et les
+    /// vraies préférences de la machine.
+    private static func purgeLegacyURLCacheOnce() {
+        guard !TrivaTestHost.isHostingUnitTests() else { return }
+        Task(priority: .utility) {
+            await URLCachePurger().purgeIfNeeded()
+        }
     }
 
     var body: some Scene {
@@ -374,7 +392,8 @@ private struct TrivaSettingsWindow: View {
             mlxSelectionStore: stores.mlxSelection,
             cloudSelectionStore: stores.cloudSelection,
             customProviderStore: stores.customProviders,
-            instanceStore: stores.searchInstances
+            instanceStore: stores.searchInstances,
+            localDataEraser: stores.makeLocalDataEraser()
         )
         // Taille minimale : en dessous, les écrans poussés depuis les Réglages
         // (liste d'instances SearXNG, modèles MLX) deviennent illisibles.

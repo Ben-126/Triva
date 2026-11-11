@@ -81,15 +81,16 @@ nonisolated extension URLFetching {
 /// Implémentation `URLSession` réelle. User-Agent desktop custom, même
 /// intention que le spoofing de `scraper.ts` (web) — sans le masquage de
 /// `navigator.webdriver`, sans objet hors d'un vrai navigateur. Session
-/// `.shared` par défaut (widget météo) ; le scraping injecte la sienne, voir
-/// `ScrapeService.scrapingSession`.
+/// sans cache par défaut (widget météo : la ville et les coordonnées sont des
+/// données personnelles qui n'ont pas à rester dans `Cache.db`) ; le scraping
+/// injecte la sienne, voir `ScrapeService.scrapingSession`.
 nonisolated struct URLSessionFetcher: URLFetching {
     private static let userAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-    private let urlSession: URLSession
+    let urlSession: URLSession
 
-    init(urlSession: URLSession = .shared) {
+    init(urlSession: URLSession = URLSessionDataRequester.uncachedSession) {
         self.urlSession = urlSession
     }
 

@@ -552,14 +552,17 @@ struct SearchSessionWebSearchChainTests {
 
     @Test("Étape SearXNG de la session : sur le FailoverManager reçu de ChatViewModel")
     func theSearXNGStepUsesTheGivenManager() async throws {
-        let client = ChainSearXNGClient(results: F.found)
+        // Un résultat qui reprend les mots de la question (mission A2, `LexicalRelevance`) : sinon la
+        // chaîne passerait aux sources ouvertes RÉELLES de la session, donc au réseau.
+        let found = [ChainFixtures.result("Tour Eiffel", url: "https://trouve.example/tour-eiffel")]
+        let client = ChainSearXNGClient(results: found)
         let session = SearchSession(engine: .appleIntelligence, stores: try makeStores(), searchKeyStore: ChainFixtures.searchKeys())
 
         let result = try await session.resolveWebSearchChain(failoverManager: F.manager(client))
             .search(query: "Tour Eiffel", options: WebSearchOptions())
 
         #expect(result.source == .searxng)
-        #expect(result.response.results == F.found)
+        #expect(result.response.results == found)
         #expect(await client.receivedQueries == ["Tour Eiffel"])
     }
 }

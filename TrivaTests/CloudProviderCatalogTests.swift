@@ -32,6 +32,31 @@ struct CloudProviderCatalogTests {
         }
     }
 
+    @Test("Aucun modèle par défaut n'est un modèle retiré ou déprécié (revue du 2026-11-10)")
+    func defaultsAreNotRetiredModels() {
+        let retired: Set<String> = [
+            "gpt-4o-mini", "openai/gpt-4o-mini", "gemini-2.5-flash", "deepseek-chat", "deepseek-reasoner",
+            "meta-llama/Llama-3.3-70B-Instruct-Turbo", "accounts/fireworks/models/llama-v3p3-70b-instruct",
+            "mistral-large-latest", "llama-3.3-70b-versatile",
+        ]
+        for preset in CloudProviderCatalog.presets {
+            #expect(!retired.contains(preset.defaultModel), "\(preset.id) : \(preset.defaultModel)")
+        }
+    }
+
+    @Test("Modèles par défaut vérifiés dans la documentation officielle le 2026-11-10")
+    func reviewedDefaults() {
+        let defaults = Dictionary(uniqueKeysWithValues: CloudProviderCatalog.presets.map { ($0.id, $0.defaultModel) })
+        #expect(defaults["openai"] == "gpt-6-luna")
+        #expect(defaults["groq"] == "openai/gpt-oss-120b")
+        #expect(defaults["openrouter"] == "openai/gpt-6-luna")
+        #expect(defaults["gemini"] == "gemini-3.5-flash-lite")
+        #expect(defaults["deepseek"] == "deepseek-flash")
+        #expect(defaults["xai"] == "grok-4.3")
+        #expect(defaults["together"] == "openai/gpt-oss-120b")
+        #expect(defaults["fireworks"] == "accounts/fireworks/models/deepseek-v4p1-flash-1017")
+    }
+
     @Test("chatCompletionsURL ajoute /chat/completions sans doubler le slash final")
     func chatCompletionsURLHandlesTrailingSlash() {
         let withoutTrailingSlash = URL(string: "https://api.groq.com/openai/v1")!

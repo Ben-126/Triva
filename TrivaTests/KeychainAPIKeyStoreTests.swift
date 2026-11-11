@@ -31,6 +31,17 @@ struct KeychainAPIKeyStoreTests {
         #expect(try store.apiKey(account: "claude") == nil)
     }
 
+    @Test("readAPIKey() (lecture hors main actor) renvoie la même valeur que apiKey()")
+    func offMainReadMatchesSyncRead() async throws {
+        let store = KeychainAPIKeyStore(service: uniqueService())
+        defer { try? store.deleteAPIKey(account: "claude") }
+
+        #expect(try await store.readAPIKey(account: "claude") == nil)
+        try store.save(apiKey: "sk-test-456", account: "claude")
+
+        #expect(try await store.readAPIKey(account: "claude") == "sk-test-456")
+    }
+
     @Test("save() écrase une clé existante pour le même compte")
     func saveOverwritesExistingKey() throws {
         let store = KeychainAPIKeyStore(service: uniqueService())

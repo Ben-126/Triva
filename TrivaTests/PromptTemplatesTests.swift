@@ -185,6 +185,86 @@ struct PromptTemplatesTests {
         #expect(PromptTemplates.checklistSection(for: .reliable, complexity: .full).contains("Mode Fiable"))
     }
 
+    // MARK: - Rappel du mode Fiable (mission A1, rapport T2 finding 9)
+
+    /// Ouverture du rappel, juste après la balise fermante du contexte.
+    private static let reliableReminderOpening = "</contexte>\n\nRappel du mode Fiable : "
+
+    /// Prompt de rédaction détaillé (seul à porter le rappel), date fixée.
+    private static func fullWriterPrompt(
+        mode: ResponseMode,
+        sources: [SearXNGSearchResult],
+        hasWidgetData: Bool = false
+    ) -> String {
+        PromptTemplates.writerPrompt(
+            query: "Quelles sont les différences entre JavaScript et TypeScript ?",
+            sources: sources,
+            mode: mode,
+            complexity: .full,
+            currentDate: Self.fixedDate,
+            hasWidgetData: hasWidgetData
+        )
+    }
+
+    /// Mesure du 2026-11-05 (rapport T2) : sans ce rappel, un document hors sujet
+    /// suffisait à une réponse de tête, sans citation ni marqueur, en mode Fiable.
+    @Test("Mode Fiable, contexte non vide : le rappel suit le contexte, avant la date, et impose le refus exact")
+    func reliableReminderFollowsANonEmptyContext() throws {
+        let prompt = Self.fullWriterPrompt(mode: .reliable, sources: [Self.source()])
+
+        let reminder = try #require(prompt.range(of: Self.reliableReminderOpening))
+        let date = try #require(prompt.range(of: "Date et heure actuelles"))
+        #expect(reminder.upperBound < date.lowerBound)
+        #expect(prompt[reminder.upperBound...].contains("réponds exactement « \(PromptTemplates.noRelevantInformationAnswer) »"))
+    }
+
+    /// « Aucune source disponible. » : sources absentes, ou toutes sans contenu
+    /// (mission A1, `numberedContext`) — le cas widget seul, où `modeSection`
+    /// impose déjà l'avertissement.
+    @Test("Mode Fiable sans document lisible (aucune source, ou sources sans contenu) : aucun rappel")
+    func reliableReminderIsAbsentWithNoSourcesContext() {
+        let noSource = Self.fullWriterPrompt(mode: .reliable, sources: [])
+        let unreadable = Self.fullWriterPrompt(
+            mode: .reliable,
+            sources: [Self.source(title: "Page jamais lue", url: "https://exemple.fr/nue", content: nil)]
+        )
+
+        for prompt in [noSource, unreadable] {
+            #expect(prompt.contains("<contexte>\n\(PromptTemplates.noSourcesContext)\n</contexte>"))
+            #expect(!prompt.contains("Rappel du mode Fiable"))
+        }
+        #expect(!unreadable.contains("Page jamais lue"))
+    }
+
+    @Test("Modes Rapide et Approfondi : jamais de rappel Fiable, même avec un contexte non vide", arguments: [ResponseMode.quick, .deep])
+    func reliableReminderIsAbsentInOtherModes(mode: ResponseMode) {
+        let prompt = Self.fullWriterPrompt(mode: mode, sources: [Self.source()])
+
+        #expect(!prompt.contains("Rappel du mode Fiable"))
+    }
+
+    /// Rapport T2, finding 4 : `<donnees_widgets>` arrive après le rappel ; un
+    /// refus exact y ferait refuser une question mixte malgré un widget valide.
+    @Test("Mode Fiable avec données de widgets : rappel adapté, qui ne demande jamais le refus exact")
+    func reliableReminderWithWidgetDataNeverAsksForTheRefusal() throws {
+        let prompt = Self.fullWriterPrompt(mode: .reliable, sources: [Self.source()], hasWidgetData: true)
+
+        let reminder = try #require(prompt.range(of: Self.reliableReminderOpening))
+        let tail = prompt[reminder.upperBound...]
+        #expect(tail.contains("données des widgets"))
+        #expect(tail.contains("n'utilise pas tes connaissances générales"))
+        #expect(!tail.contains(PromptTemplates.noRelevantInformationAnswer))
+        #expect(Self.fullWriterPrompt(mode: .quick, sources: [Self.source()], hasWidgetData: true) == Self.fullWriterPrompt(mode: .quick, sources: [Self.source()]))
+    }
+
+    @Test("Checklist : la règle des numéros ne parle plus d'un nombre de documents, faux avec un trou de numérotation")
+    func checklistCitationRuleToleratesNumberingGaps() {
+        let checklist = PromptTemplates.checklistSection(for: .quick, complexity: .full)
+
+        #expect(checklist.contains("Chaque numéro de citation est celui d'un document du contexte, et aucun n'est [0]."))
+        #expect(!checklist.contains("nombre de documents"))
+    }
+
     // MARK: - Injection du contexte
 
     @Test("Le contexte est numéroté sous la forme exacte demandée au modèle : [1], titre, URL, extrait")

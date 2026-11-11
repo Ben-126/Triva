@@ -366,6 +366,7 @@ private struct TrivaRootShell: View {
                 cloudSelectionStore: stores.cloudSelection,
                 customProviderStore: stores.customProviders,
                 instanceStore: stores.searchInstances,
+                localDataEraser: stores.makeLocalDataEraser(),
                 navigationPath: $coordinator.settingsPath
             )
         }

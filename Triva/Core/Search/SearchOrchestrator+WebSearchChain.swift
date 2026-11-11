@@ -13,10 +13,12 @@ import Foundation
 /// Fonction STATIQUE à paramètres explicites : les propriétés de l'orchestrateur sont `private`,
 /// donc invisibles depuis ce fichier.
 extension SearchOrchestrator {
-    /// Sortie du tour seedé et source web qui l'a fournie (`SearchArtifacts.webSourceKind`).
+    /// Sortie du tour seedé, source web qui l'a fournie (`SearchArtifacts.webSourceKind`) et constat
+    /// de la chaîne (`SearchArtifacts.webSearchReport`, mission A2).
     nonisolated struct SeededWebSearch: Sendable {
         let output: SearchActionOutput
         let sourceKind: WebSearchSourceKind
+        let report: WebSearchChainReport
     }
 
     /// Tour seedé : l'action de la famille (`WebSearchFlavor.action(webSearchChain:)`), qui passe
@@ -48,9 +50,9 @@ extension SearchOrchestrator {
         let first = try await action.searchWeb(query: query, failoverManager: failoverManager)
         guard first.response.results.isEmpty,
               let fallback = await flavor.emptyResultFallback(webSearchChain: webSearchChain) else {
-            return SeededWebSearch(output: .searchResults(first.response.results), sourceKind: first.source)
+            return SeededWebSearch(output: .searchResults(first.response.results), sourceKind: first.source, report: first.report)
         }
         let second = try await fallback.searchWeb(query: query, failoverManager: failoverManager)
-        return SeededWebSearch(output: .searchResults(second.response.results), sourceKind: second.source)
+        return SeededWebSearch(output: .searchResults(second.response.results), sourceKind: second.source, report: second.report)
     }
 }

@@ -65,8 +65,8 @@ final class ChatViewModel {
     /// Échec de l'échange : SEULE source du bandeau d'erreur, jamais recopiée
     /// dans la bulle (le même texte deux fois à l'écran).
     private(set) var errorDescription: String?
-    /// Toutes les sources de recherche ont échoué : invitation à gérer ses clés
-    /// de recherche, sous le bandeau. Même durée de vie que `errorDescription`.
+    /// Toutes les sources de recherche ont échoué, ou SearXNG n'a rien donné
+    /// (mission A2) : invitation à gérer ses clés, en bas du fil. Même durée de vie que `errorDescription`.
     private(set) var searchKeyInvitation: SearchKeyInvitation?
     /// Échec d'écriture de l'historique ou des favoris : séparé, la réponse a
     /// abouti — n'écrase jamais `errorDescription`.
@@ -174,7 +174,8 @@ final class ChatViewModel {
     /// Envoie `query` (ignorée si vide/blanche ou si un envoi est en cours).
     /// Ajoute la question (texte trimmé, fichiers joints apparus depuis la
     /// précédente) puis une réponse en streaming ; sources et widgets sont
-    /// attachés AVANT le premier morceau de texte. Toute erreur va dans
+    /// attachés AVANT le premier morceau de texte (en Fiable sans widget : AVEC
+    /// le premier texte montré, voir `consume`). Toute erreur va dans
     /// `errorDescription`, et la réponse sort TOUJOURS du streaming.
     func send(query: String) async {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -280,17 +281,29 @@ final class ChatViewModel {
                 media: []
             )
             let artifacts = streamingAnswer.artifacts
+            // Mission A2 : SearXNG laissé de côté, une source de secours a répondu.
+            // Remplacée par `fail` si l'échange échoue ensuite (erreur du moteur IA).
+            if activeExchangeID == exchangeID {
+                searchKeyInvitation = SearchKeyInvitation(
+                    afterFallback: artifacts.webSearchReport,
+                    retainedSource: artifacts.webSourceKind,
+                    webSourceCount: artifacts.sources.count - artifacts.attachmentSourceCount
+                )
+            }
             if Self.lacksReliableSources(artifacts) {
                 // Décision (c) : jamais de réponse sans source en mode Fiable.
                 // Flux non lu ; relâché, son `onTermination` annule la génération.
-                let date = now()
-                updateMessage(id: exchange.answerID) { $0.markNoReliableSources(searchQuery: artifacts.searchQuery, at: date) }
-                persistNoReliableSources(exchange: exchange)
+                concludeWithoutReliableSources(exchange, searchQuery: artifacts.searchQuery)
                 return
             }
             answer.sources = artifacts.sources
-            updateMessage(id: exchange.answerID) { $0.attach(artifacts) }
-            answer = await consume(streamingAnswer.textStream, into: answer, exchange: exchange, exchangeID: exchangeID)
+            // Mission A1 : en Fiable sans widget, artefacts et texte attendent la
+            // première citation d'une page lue (`CitedAnswerGate`, dans `consume`) :
+            // une liste de sources sous le spinner, puis effacée par un refus, non.
+            if !artifacts.requiresCitedAnswer {
+                updateMessage(id: exchange.answerID) { $0.attach(artifacts) }
+            }
+            answer = await consume(streamingAnswer.textStream, into: answer, artifacts: artifacts, exchange: exchange, exchangeID: exchangeID)
             if answer.isComplete {
                 didComplete(exchange, exchangeID: exchangeID, text: answer.text, artifacts: artifacts, orchestrator: orchestrator, provider: provider)
             }
@@ -307,23 +320,40 @@ final class ChatViewModel {
 
     /// Lit le flux. C'est le CONTENU du dernier snapshot qui dit si le modèle a
     /// répondu : un unique yield de `""` vaut un flux à 0 yield (`.emptyResponse`).
+    ///
+    /// Mode Fiable sans widget (mission A1) : texte RETENU tant qu'il ne cite
+    /// aucune page lue (`CitedAnswerGate`), puis contrôlé une fois fini
+    /// (`SearchArtifacts.rejectsReliableAnswer`) : refus exact ou aucune page
+    /// lue citée -> état `.noReliableSources`, avec la relance en Rapide. Un
+    /// texte jamais montré (Stop, erreur, refus) n'est jamais persisté non
+    /// plus : le brouillon rendu est vide, `persistAnswer` n'écrit rien.
     private func consume(
         _ textStream: AsyncThrowingStream<String, Error>,
         into draft: AnswerDraft,
+        artifacts: SearchArtifacts,
         exchange: Exchange,
         exchangeID: UUID
     ) async -> AnswerDraft {
         var answer = draft
+        var gate = CitedAnswerGate(artifacts: artifacts)
         do {
             for try await snapshot in textStream {
                 answer.text = snapshot
-                let date = now()
-                updateMessage(id: exchange.answerID) { $0.apply(snapshot: snapshot, at: date) }
+                let wasOpen = gate.isOpen
+                guard gate.admits(snapshot) else { continue }
+                reveal(snapshot, attaching: wasOpen ? nil : artifacts, answerID: exchange.answerID)
             }
             let hasContent = !answer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if Task.isCancelled {
                 finishAnswer(exchange.answerID, as: .interrupted)
+            } else if hasContent, artifacts.rejectsReliableAnswer(answer.text) {
+                concludeWithoutReliableSources(exchange, searchQuery: artifacts.searchQuery)
+                return AnswerDraft()
             } else if hasContent {
+                if !gate.isOpen {
+                    gate.open()
+                    reveal(answer.text, attaching: artifacts, answerID: exchange.answerID)
+                }
                 answer.isComplete = true
                 finishAnswer(exchange.answerID, as: .completed)
             } else {
@@ -338,7 +368,27 @@ final class ChatViewModel {
                 fail(answerID: exchange.answerID, exchangeID: exchangeID, error: error)
             }
         }
+        if !gate.isOpen { answer.text = "" }
         return answer
+    }
+
+    /// Affiche un instantané ; `artifacts` à l'ouverture de la porte Fiable
+    /// seulement (mission A1), sinon ils sont déjà attachés (`perform`).
+    private func reveal(_ snapshot: String, attaching artifacts: SearchArtifacts?, answerID: UUID) {
+        let date = now()
+        updateMessage(id: answerID) { message in
+            if let artifacts { message.attach(artifacts) }
+            message.apply(snapshot: snapshot, at: date)
+        }
+    }
+
+    /// État fixe « Aucune source fiable » (décision (c)), persisté : avant la
+    /// génération (rien de citable), ou depuis la mission A1 à la fin d'un flux
+    /// Fiable refusé — `markNoReliableSources` efface alors ce qu'il portait.
+    private func concludeWithoutReliableSources(_ exchange: Exchange, searchQuery: String) {
+        let date = now()
+        updateMessage(id: exchange.answerID) { $0.markNoReliableSources(searchQuery: searchQuery, at: date) }
+        persistNoReliableSources(exchange: exchange)
     }
 
     /// Réponse terminée et non vide : diagnostic de structure, puis
@@ -736,18 +786,6 @@ final class ChatViewModel {
     /// même règle que `SearchOrchestrator.suggestionsHistory`.
     static func visibleText(of segments: ReasoningSegments) -> String {
         segments.body.isEmpty ? (segments.tldr ?? "") : segments.body
-    }
-
-    /// Décision (c) : mode Fiable, recherche faite, AUCUNE source (le filtre
-    /// « domaines fiables » a tout retiré, ou rien trouvé). Sans
-    /// `searchPerformed`, un « Bonjour » déclencherait l'état ; sans le test
-    /// des widgets, un calcul juste serait caché (la donnée d'un widget est une
-    /// source). Les fichiers joints comptent comme sources.
-    static func lacksReliableSources(_ artifacts: SearchArtifacts) -> Bool {
-        artifacts.mode.restrictsToTrustedDomains
-            && artifacts.searchPerformed
-            && artifacts.sources.isEmpty
-            && artifacts.widgets.isEmpty
     }
 
     /// Mode MÉMORISÉ (1.13), relu à chaque envoi : `ResponseModeSettingsStore`

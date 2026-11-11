@@ -55,6 +55,10 @@ struct SettingsView: View {
     /// la racine reconstruit alors toute la coquille (`.id(selected)` dans
     /// `TrivaRootView`), Réglages compris. `nil` : bouton masqué.
     let onSelectEngine: ((AIEngineOption) -> Void)?
+    /// Action « Tout effacer » (voir `LocalDataEraser`). `nil` : section masquée,
+    /// comme `onSelectEngine` — aperçus et appel autonome n'ont ni historique
+    /// ni favoris à effacer.
+    let localDataEraser: LocalDataEraser?
 
     @State private var mlxSelectionStore: MLXModelSelectionStore
     @State private var cloudSelectionStore: CloudProviderSelectionStore
@@ -78,10 +82,12 @@ struct SettingsView: View {
         cloudSelectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore(),
         customProviderStore: CustomProviderStore = CustomProviderStore(),
         instanceStore: CustomInstanceStore = CustomInstanceStore(),
+        localDataEraser: LocalDataEraser? = nil,
         navigationPath: Binding<NavigationPath>? = nil
     ) {
         self.selectedEngine = selectedEngine
         self.onSelectEngine = onSelectEngine
+        self.localDataEraser = localDataEraser
         _mlxSelectionStore = State(initialValue: mlxSelectionStore)
         _cloudSelectionStore = State(initialValue: cloudSelectionStore)
         _customProviderStore = State(initialValue: customProviderStore)
@@ -98,6 +104,9 @@ struct SettingsView: View {
                 apiKeySection
                 searchSection
                 storageSection
+                if let localDataEraser {
+                    LocalDataEraseSection(eraser: localDataEraser)
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("Réglages")

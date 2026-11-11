@@ -14,6 +14,21 @@ protocol APIKeyStoring: Sendable {
     func apiKey(account: String) throws -> String?
     func save(apiKey: String, account: String) throws
     func deleteAPIKey(account: String) throws
+
+    /// Lecture qui ne doit PAS tenir le fil principal. `apiKey(account:)` est isolée au
+    /// main actor (comme tout ce protocole) : sur Mac, une invite d'autorisation du
+    /// trousseau la bloque tant qu'elle est ouverte, et l'écran gèle avec elle.
+    /// Les écrans qui lisent beaucoup de clés d'un coup (`CloudProviderModelPickerViewModel`)
+    /// passent par celle-ci. Défaut : saute sur le main actor et appelle `apiKey(account:)`,
+    /// ce qui garde le comportement des faux magasins de test ; `KeychainAPIKeyStore`
+    /// la surcharge avec une vraie lecture hors main actor.
+    nonisolated func readAPIKey(account: String) async throws -> String?
+}
+
+extension APIKeyStoring {
+    nonisolated func readAPIKey(account: String) async throws -> String? {
+        try await MainActor.run { try apiKey(account: account) }
+    }
 }
 
 enum KeychainAPIKeyStoreError: Error, Sendable, Equatable {
@@ -32,7 +47,20 @@ struct KeychainAPIKeyStore: APIKeyStoring {
     }
 
     func apiKey(account: String) throws -> String? {
-        var query = baseQuery(account: account)
+        try Self.copyAPIKey(service: service, account: account)
+    }
+
+    /// Lecture réelle hors du main actor : `@concurrent` est indispensable, une
+    /// fonction `nonisolated async` s'exécuterait sinon sur l'acteur de l'appelant
+    /// (voir CLAUDE.md, section concurrence). Sert à `CloudProviderModelPickerViewModel`.
+    @concurrent
+    func readAPIKey(account: String) async throws -> String? {
+        try Self.copyAPIKey(service: service, account: account)
+    }
+
+    /// `SecItemCopyMatching` seul, sans état : appelable de n'importe quel contexte.
+    nonisolated private static func copyAPIKey(service: String, account: String) throws -> String? {
+        var query = query(service: service, account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -78,6 +106,10 @@ struct KeychainAPIKeyStore: APIKeyStoring {
     }
 
     private func baseQuery(account: String) -> [String: Any] {
+        Self.query(service: service, account: account)
+    }
+
+    nonisolated private static func query(service: String, account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

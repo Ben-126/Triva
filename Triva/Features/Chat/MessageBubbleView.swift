@@ -227,6 +227,10 @@ nonisolated enum MessageBubblePresentation {
         /// Service qui a fourni les sources web, `nil` sans recherche web ou
         /// pour un message relu (non persisté).
         var webSourceKind: WebSearchSourceKind?
+        /// Mission A2 : rédigée sans recherche ni widget, hors salutation.
+        var answeredWithoutSearch = false
+        /// Mission A2 : aucune source n'a passé le test lexical de la chaîne.
+        var sourcesMayBeOffTopic = false
     }
 
     /// Une bulle sans rien dedans (échec ou arrêt avant le moindre texte, la
@@ -277,6 +281,30 @@ nonisolated enum MessageBubblePresentation {
     static func resultsOriginLabel(_ answer: AnswerSnapshot) -> String? {
         guard let kind = answer.webSourceKind, kind != .searxng, answer.webSourceCount > 0 else { return nil }
         return "Résultats\u{00A0}: \(kind.displayName)"
+    }
+
+    /// Décision 3 de Ben (mission A2) : une réponse rédigée sans aucune
+    /// recherche le dit. Constat Q1 : « 330 pieds » pour la hauteur de la tour
+    /// Eiffel, sans source, sans que rien ne signale l'absence de recherche.
+    static let answerWithoutSearchLabel = "Réponse sans recherche"
+
+    /// Décision 6 de Ben (mission A2) : aucune source n'a passé le test
+    /// lexical, la chaîne a gardé la moins éloignée. « Probablement » : le
+    /// test compare des mots, il ne lit pas le sens.
+    static let offTopicSourcesLabel = "Sources probablement hors sujet"
+
+    /// Sous un texte, pas sur une bulle vide ni sur l'état « Aucune source
+    /// fiable » : la mention qualifie une réponse, il en faut une. Ni widget
+    /// ni salutation : décidé en amont (`SearchArtifacts.answersWithoutSearch`).
+    static func showsAnswerWithoutSearch(_ answer: AnswerSnapshot) -> Bool {
+        answer.answeredWithoutSearch
+            && answer.state != .noReliableSources
+            && (answer.hasBody || answer.hasTLDR)
+    }
+
+    /// Avec au moins une source web affichée : sans elle, rien à qualifier.
+    static func showsOffTopicSources(_ answer: AnswerSnapshot) -> Bool {
+        answer.sourcesMayBeOffTopic && answer.webSourceCount > 0
     }
 }
 
@@ -351,7 +379,9 @@ struct MessageBubbleView: View, Equatable {
             sourceCount: message.sources.count,
             webSourceCount: max(0, message.sources.count - message.attachmentSourceCount),
             isMediaSearchStarted: !isIdle(message.images) || !isIdle(message.videos),
-            webSourceKind: message.webSourceKind
+            webSourceKind: message.webSourceKind,
+            answeredWithoutSearch: message.answeredWithoutSearch,
+            sourcesMayBeOffTopic: message.sourcesMayBeOffTopic
         )
     }
 
@@ -473,9 +503,26 @@ private struct AnswerBubble: View {
                     .equatable()
             }
 
+            // Mission A2 : précision factuelle, rôle de la légende (DESIGN.md),
+            // en `.secondary` plutôt que `.tertiary` : elle change la lecture
+            // de la réponse, elle doit se voir.
+            if MessageBubblePresentation.showsAnswerWithoutSearch(answer) {
+                Text(MessageBubblePresentation.answerWithoutSearchLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("chat.answerWithoutSearch")
+            }
+
             if !message.sources.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     SourcesListView(sources: message.sources)
+
+                    if MessageBubblePresentation.showsOffTopicSources(answer) {
+                        Text(MessageBubblePresentation.offTopicSourcesLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("chat.offTopicSources")
+                    }
 
                     // Rôle de la légende de confidentialité (DESIGN.md) : une
                     // précision factuelle, sans verre ni icône.
@@ -610,6 +657,29 @@ private let previewSources: [SearXNGSearchResult] = [
     message.webSourceKind = .wikipedia
     return MessageBubbleView(message: message)
         .padding(20)
+}
+
+#Preview("Réponse — sans recherche") {
+    var message = ChatViewModel.Message(
+        role: .assistant,
+        text: "Feuilles rousses au vent,\nle ciel bas se tait,\nl'automne s'installe."
+    )
+    message.answeredWithoutSearch = true
+    return MessageBubbleView(message: message)
+        .padding(20)
+}
+
+#Preview("Réponse — sources probablement hors sujet, sombre") {
+    var message = ChatViewModel.Message(
+        role: .assistant,
+        text: PromptTemplates.noRelevantInformationAnswer,
+        sources: previewSources
+    )
+    message.webSourceKind = .wikipedia
+    message.sourcesMayBeOffTopic = true
+    return MessageBubbleView(message: message)
+        .padding(20)
+        .preferredColorScheme(.dark)
 }
 
 #Preview("Réponse — aucune source fiable") {

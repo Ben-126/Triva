@@ -48,7 +48,7 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("Ne liste que les fournisseurs pour lesquels une clé est enregistrée")
-    func onlyListsProvidersWithStoredKey() {
+    func onlyListsProvidersWithStoredKey() async {
         let keyStore = MockAPIKeyStore(storedKeys: [
             "claude": "sk-claude",
             "groq": "sk-groq"
@@ -59,13 +59,14 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [],
             selectionStore: uniqueSelectionStore()
         )
+        await viewModel.loadConfiguredProviders()
 
         let ids = Set(viewModel.configuredProviders.map(\.id))
         #expect(ids == ["claude", "groq"])
     }
 
     @Test("Inclut les fournisseurs personnalisés configurés")
-    func includesConfiguredCustomProviders() {
+    func includesConfiguredCustomProviders() async {
         let custom = CloudProviderPreset(
             id: "custom:abc",
             displayName: "Mon LLM",
@@ -78,36 +79,39 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [custom],
             selectionStore: uniqueSelectionStore()
         )
+        await viewModel.loadConfiguredProviders()
 
         #expect(viewModel.configuredProviders.map(\.id) == ["custom:abc"])
     }
 
     @Test("Ignore les clés vides comme non configurées")
-    func treatsEmptyKeyAsNotConfigured() {
+    func treatsEmptyKeyAsNotConfigured() async {
         let keyStore = MockAPIKeyStore(storedKeys: ["claude": ""])
         let viewModel = CloudProviderModelPickerViewModel(
             keyStore: keyStore,
             customPresets: [],
             selectionStore: uniqueSelectionStore()
         )
+        await viewModel.loadConfiguredProviders()
 
         #expect(viewModel.configuredProviders.isEmpty)
     }
 
     @Test("État vide géré sans crash quand aucun fournisseur n'est configuré")
-    func emptyStateWhenNoProviderConfigured() {
+    func emptyStateWhenNoProviderConfigured() async {
         let viewModel = CloudProviderModelPickerViewModel(
             keyStore: MockAPIKeyStore(),
             customPresets: [],
             selectionStore: uniqueSelectionStore()
         )
+        await viewModel.loadConfiguredProviders()
 
         #expect(viewModel.configuredProviders.isEmpty)
         #expect(viewModel.selectedProviderID == nil)
     }
 
     @Test("Sélectionner Claude met à jour le store avec sonnet5 par défaut")
-    func selectingClaudeUsesDefaultModel() {
+    func selectingClaudeUsesDefaultModel() async {
         let keyStore = MockAPIKeyStore(storedKeys: ["claude": "sk-claude"])
         let selectionStore = uniqueSelectionStore()
         let viewModel = CloudProviderModelPickerViewModel(
@@ -115,6 +119,7 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
 
         viewModel.selectProvider(id: "claude")
 
@@ -123,7 +128,7 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("Sélectionner un preset du catalogue utilise son defaultModel")
-    func selectingCatalogPresetUsesItsDefaultModel() {
+    func selectingCatalogPresetUsesItsDefaultModel() async {
         let preset = CloudProviderCatalog.presets.first { $0.id == "groq" }!
         let keyStore = MockAPIKeyStore(storedKeys: ["groq": "sk-groq"])
         let selectionStore = uniqueSelectionStore()
@@ -132,6 +137,7 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
 
         viewModel.selectProvider(id: "groq")
 
@@ -139,7 +145,7 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("Sélectionner un preset personnalisé utilise son defaultModel")
-    func selectingCustomPresetUsesItsDefaultModel() {
+    func selectingCustomPresetUsesItsDefaultModel() async {
         let custom = CloudProviderPreset(
             id: "custom:abc",
             displayName: "Mon LLM",
@@ -153,6 +159,7 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [custom],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
 
         viewModel.selectProvider(id: "custom:abc")
 
@@ -160,7 +167,7 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("Re-sélectionner le fournisseur déjà actif conserve son modèle actuel")
-    func reselectingSameProviderKeepsCurrentModel() {
+    func reselectingSameProviderKeepsCurrentModel() async {
         let keyStore = MockAPIKeyStore(storedKeys: ["claude": "sk-claude"])
         let selectionStore = uniqueSelectionStore()
         selectionStore.selection = CloudProviderSelection(providerID: "claude", model: "claude-opus-5")
@@ -169,6 +176,7 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
 
         viewModel.selectProvider(id: "claude")
 
@@ -176,7 +184,7 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("Changer le modèle du fournisseur sélectionné met à jour la sélection persistée")
-    func changingModelUpdatesPersistedSelection() {
+    func changingModelUpdatesPersistedSelection() async {
         let keyStore = MockAPIKeyStore(storedKeys: ["groq": "sk-groq"])
         let selectionStore = uniqueSelectionStore()
         let viewModel = CloudProviderModelPickerViewModel(
@@ -184,6 +192,7 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
         viewModel.selectProvider(id: "groq")
 
         viewModel.updateModel(to: "llama-3.1-8b-instant")
@@ -192,13 +201,14 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("updateModel sans fournisseur sélectionné ne fait rien")
-    func updateModelWithoutSelectionDoesNothing() {
+    func updateModelWithoutSelectionDoesNothing() async {
         let selectionStore = uniqueSelectionStore()
         let viewModel = CloudProviderModelPickerViewModel(
             keyStore: MockAPIKeyStore(),
             customPresets: [],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
 
         viewModel.updateModel(to: "peu importe")
 
@@ -206,7 +216,7 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("selectedConfiguredProviderID reflète selectedProviderID quand il est configuré")
-    func selectedConfiguredProviderIDMatchesWhenConfigured() {
+    func selectedConfiguredProviderIDMatchesWhenConfigured() async {
         let keyStore = MockAPIKeyStore(storedKeys: ["claude": "sk-claude"])
         let selectionStore = uniqueSelectionStore()
         let viewModel = CloudProviderModelPickerViewModel(
@@ -214,6 +224,7 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
 
         viewModel.selectProvider(id: "claude")
 
@@ -221,7 +232,7 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("selectedConfiguredProviderID est nil quand la sélection persistée est orpheline")
-    func selectedConfiguredProviderIDNilWhenOrphaned() {
+    func selectedConfiguredProviderIDNilWhenOrphaned() async {
         // La sélection pointe vers "custom:abc", mais aucune clé n'est
         // enregistrée pour ce fournisseur : simule la suppression de la clé
         // (ou du preset personnalisé) depuis `BYOKProvidersView` après coup.
@@ -232,13 +243,14 @@ struct CloudProviderModelPickerViewModelTests {
             customPresets: [],
             selectionStore: selectionStore
         )
+        await viewModel.loadConfiguredProviders()
 
         #expect(viewModel.selectedProviderID == "custom:abc")
         #expect(viewModel.selectedConfiguredProviderID == nil)
     }
 
     @Test("Nom lisible d'un modèle Claude dérivé de son id")
-    func claudeModelDisplayNameDerivedFromID() {
+    func claudeModelDisplayNameDerivedFromID() async {
         #expect(CloudProviderModelPickerViewModel.claudeModelDisplayName(for: .sonnet5) == "Sonnet 5")
         #expect(CloudProviderModelPickerViewModel.claudeModelDisplayName(for: .opus4_8) == "Opus 4.8")
         #expect(CloudProviderModelPickerViewModel.claudeModelDisplayName(for: .haiku4_5) == "Haiku 4.5")
@@ -250,21 +262,23 @@ struct CloudProviderModelPickerViewModelTests {
         keys: [String: String],
         selection: CloudProviderSelection?,
         requester: StubModelListRequester
-    ) -> CloudProviderModelPickerViewModel {
+    ) async -> CloudProviderModelPickerViewModel {
         let selectionStore = uniqueSelectionStore()
         selectionStore.selection = selection
-        return CloudProviderModelPickerViewModel(
+        let viewModel = CloudProviderModelPickerViewModel(
             keyStore: MockAPIKeyStore(storedKeys: keys),
             customPresets: [],
             selectionStore: selectionStore,
             modelListService: CloudModelListService(requester: requester, cache: CloudModelListCache())
         )
+        await viewModel.loadConfiguredProviders()
+        return viewModel
     }
 
     @Test("Charge la liste et la propose dans le menu")
     func loadsModelsIntoMenu() async {
         let requester = StubModelListRequester(body: #"{"data":[{"id":"llama-3.3-70b-versatile"},{"id":"llama-3.1-8b-instant"}]}"#)
-        let viewModel = makeViewModel(
+        let viewModel = await makeViewModel(
             keys: ["groq": "sk-groq"],
             selection: CloudProviderSelection(providerID: "groq", model: "llama-3.3-70b-versatile"),
             requester: requester
@@ -279,7 +293,7 @@ struct CloudProviderModelPickerViewModelTests {
     @Test("Le modèle courant absent de la liste reste proposé, en tête")
     func currentModelMissingFromListStaysVisible() async {
         let requester = StubModelListRequester(body: #"{"data":[{"id":"llama-3.1-8b-instant"}]}"#)
-        let viewModel = makeViewModel(
+        let viewModel = await makeViewModel(
             keys: ["groq": "sk-groq"],
             selection: CloudProviderSelection(providerID: "groq", model: "mon-modele-retire"),
             requester: requester
@@ -293,7 +307,7 @@ struct CloudProviderModelPickerViewModelTests {
     @Test("Choisir un modèle du menu met à jour la sélection persistée")
     func choosingMenuModelUpdatesSelection() async {
         let requester = StubModelListRequester(body: #"{"data":[{"id":"a"},{"id":"b"}]}"#)
-        let viewModel = makeViewModel(
+        let viewModel = await makeViewModel(
             keys: ["groq": "sk-groq"],
             selection: CloudProviderSelection(providerID: "groq", model: "a"),
             requester: requester
@@ -309,7 +323,7 @@ struct CloudProviderModelPickerViewModelTests {
     @Test("Changer de fournisseur réinitialise l'état de la liste")
     func switchingProviderResetsListState() async {
         let requester = StubModelListRequester(body: #"{"data":[{"id":"a"}]}"#)
-        let viewModel = makeViewModel(
+        let viewModel = await makeViewModel(
             keys: ["groq": "sk-groq", "mistral": "sk-mistral"],
             selection: CloudProviderSelection(providerID: "groq", model: "a"),
             requester: requester
@@ -335,6 +349,7 @@ struct CloudProviderModelPickerViewModelTests {
             selectionStore: selectionStore,
             modelListService: CloudModelListService(requester: requester, cache: CloudModelListCache())
         )
+        await viewModel.loadConfiguredProviders()
 
         await viewModel.loadModels()
 
@@ -346,7 +361,7 @@ struct CloudProviderModelPickerViewModelTests {
     @Test("Erreur temporaire → .failed, pas de saisie manuelle, Réessayer refait l'appel")
     func temporaryFailureOffersRetryOnly() async {
         let requester = StubModelListRequester(statusCode: 503, body: "{}")
-        let viewModel = makeViewModel(
+        let viewModel = await makeViewModel(
             keys: ["groq": "sk-groq-secret"],
             selection: CloudProviderSelection(providerID: "groq", model: "a"),
             requester: requester
@@ -380,6 +395,7 @@ struct CloudProviderModelPickerViewModelTests {
                 cache: CloudModelListCache()
             )
         )
+        await viewModel.loadConfiguredProviders()
 
         await viewModel.loadModels()
 
@@ -389,7 +405,7 @@ struct CloudProviderModelPickerViewModelTests {
 
     @Test("Format de liste inconnu → saisie manuelle en repli")
     func unknownListFormatFallsBackToManualEntry() async {
-        let viewModel = makeViewModel(
+        let viewModel = await makeViewModel(
             keys: ["groq": "sk-groq"],
             selection: CloudProviderSelection(providerID: "groq", model: "a"),
             requester: StubModelListRequester(body: #"{"models":"inattendu"}"#)
@@ -409,7 +425,7 @@ struct CloudProviderModelPickerViewModelTests {
           {"id":"claude-haiku-4-5-20251001","display_name":"Claude Haiku 4.5"}
         ]}
         """)
-        let viewModel = makeViewModel(
+        let viewModel = await makeViewModel(
             keys: ["claude": "sk-claude"],
             selection: CloudProviderSelection(providerID: "claude", model: "claude-opus-5"),
             requester: requester
@@ -426,8 +442,8 @@ struct CloudProviderModelPickerViewModelTests {
     }
 
     @Test("Claude avant chargement : tous les modèles connus restent proposés")
-    func claudeFallsBackToKnownModels() {
-        let viewModel = makeViewModel(
+    func claudeFallsBackToKnownModels() async {
+        let viewModel = await makeViewModel(
             keys: ["claude": "sk-claude"],
             selection: CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5"),
             requester: StubModelListRequester(body: "{}")
@@ -435,6 +451,87 @@ struct CloudProviderModelPickerViewModelTests {
 
         #expect(viewModel.modelMenuOptions.map(\.id) == CloudProviderSelectionResolver.knownClaudeModels.map(\.id))
     }
+
+    // MARK: - Trousseau hors du fil principal
+
+    @Test("L'init ne lit pas le Trousseau : aucune lecture avant loadConfiguredProviders")
+    func initDoesNotTouchKeychain() {
+        let keyStore = ThreadRecordingKeyStore()
+        let viewModel = CloudProviderModelPickerViewModel(
+            keyStore: keyStore,
+            customPresets: [],
+            selectionStore: uniqueSelectionStore()
+        )
+
+        #expect(keyStore.totalReads == 0)
+        #expect(!viewModel.hasLoadedProviders)
+        #expect(viewModel.configuredProviders.isEmpty)
+    }
+
+    @Test("loadConfiguredProviders lit le Trousseau hors du fil principal")
+    func providersAreReadOffTheMainThread() async {
+        let keyStore = ThreadRecordingKeyStore()
+        let viewModel = CloudProviderModelPickerViewModel(
+            keyStore: keyStore,
+            customPresets: [],
+            selectionStore: uniqueSelectionStore()
+        )
+
+        await viewModel.loadConfiguredProviders()
+
+        #expect(keyStore.totalReads > 0)
+        #expect(keyStore.mainThreadReads == 0)
+        #expect(keyStore.syncReads == 0)
+        #expect(viewModel.hasLoadedProviders)
+        #expect(viewModel.configuredProviders.map(\.id) == ["groq"])
+    }
+
+    @Test("loadConfiguredProviders est idempotent : un second appel ne relit rien")
+    func loadingProvidersTwiceReadsOnce() async {
+        let keyStore = ThreadRecordingKeyStore()
+        let viewModel = CloudProviderModelPickerViewModel(
+            keyStore: keyStore,
+            customPresets: [],
+            selectionStore: uniqueSelectionStore()
+        )
+
+        await viewModel.loadConfiguredProviders()
+        let readsAfterFirst = keyStore.totalReads
+        await viewModel.loadConfiguredProviders()
+
+        #expect(keyStore.totalReads == readsAfterFirst)
+    }
+}
+
+/// Enregistre si une lecture du Trousseau a eu lieu sur le fil principal.
+private nonisolated final class ThreadRecordingKeyStore: APIKeyStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _mainThreadReads = 0
+    private var _totalReads = 0
+    private var _syncReads = 0
+
+    var mainThreadReads: Int { lock.withLock { _mainThreadReads } }
+    var totalReads: Int { lock.withLock { _totalReads } }
+    /// Appels à la lecture SYNCHRONE (isolée au main actor) : le view model n'en fait plus.
+    var syncReads: Int { lock.withLock { _syncReads } }
+
+    func apiKey(account: String) throws -> String? {
+        lock.withLock { _syncReads += 1 }
+        return account == "groq" ? "sk-groq" : nil
+    }
+
+    @concurrent
+    func readAPIKey(account: String) async throws -> String? {
+        // `pthread_main_np` : `Thread.isMainThread` est interdit dans un contexte async.
+        let onMain = pthread_main_np() != 0
+        lock.withLock {
+            _totalReads += 1
+            if onMain { _mainThreadReads += 1 }
+        }
+        return account == "groq" ? "sk-groq" : nil
+    }
+    func save(apiKey: String, account: String) throws {}
+    func deleteAPIKey(account: String) throws {}
 }
 
 /// Clé lisible au premier accès (init du view model), absente ensuite.

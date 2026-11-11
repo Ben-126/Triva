@@ -34,6 +34,11 @@ struct SearchKeysView: View {
             } footer: {
                 Text("Facultatif. Ta clé reste dans le Trousseau de cet appareil et ne part que vers ce service. Chaque test consomme une requête de ton quota.")
             }
+            Section {
+                Text(CloudWebSearchCostNotice.sentence)
+            } header: {
+                Text("Recherche par ton fournisseur IA")
+            }
             // Ordre d'essai de la chaîne : l'écran montre d'abord la clé qui sert d'abord.
             ForEach(BYOKSearchSource.preferenceOrder, id: \.self) { source in
                 SearchKeySection(source: source, viewModel: viewModel)

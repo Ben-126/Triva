@@ -11,6 +11,9 @@ import SwiftUI
 
 /// Invitation posée sous le bandeau d'erreur du chat quand la recherche a échoué parce que TOUTES
 /// les sources de la chaîne ont levé une erreur (`WebSearchChainError.allSourcesFailed`, mission RI2).
+/// Depuis la mission A2, aussi après une réponse RÉUSSIE venue d'une source de secours parce que
+/// SearXNG n'a rien donné (`init(afterFallback:retainedSource:)`) : même place, en bas du fil, sans
+/// bandeau puisqu'il n'y a pas d'erreur.
 ///
 /// Le constat lui-même (« Aucune source de recherche n'a répondu… ») reste dans le bandeau
 /// (`ChatViewModel.errorDescription`) : l'invitation n'ajoute que ce qu'il ne dit pas, sans le répéter.
@@ -55,6 +58,42 @@ nonisolated struct SearchKeyInvitation: Sendable, Equatable {
         } else {
             explanation = Self.failedKeysExplanation(failedKeys)
             actionTitle = Self.checkKeysTitle
+        }
+    }
+
+    /// Invitation DISCRÈTE après une réponse obtenue sans SearXNG (mission A2, décision 7 de Ben) :
+    /// la chaîne l'a laissé de côté (en échec, à vide ou hors sujet) et une source de secours a
+    /// répondu. Mesuré (rapport T1) : sans clé, toutes les réponses venaient de Wikipédia, et
+    /// l'invitation, posée seulement quand TOUT échoue, ne s'affichait jamais.
+    ///
+    /// `nil`, pas d'invitation :
+    /// - sans recherche web, ou si SearXNG n'a pas été laissé de côté (il a fourni les résultats,
+    ///   ou une clé personnelle a répondu AVANT lui) ;
+    /// - sans aucune source web affichée (`webSourceCount`, fichiers joints exclus) : toutes les
+    ///   sources ont répondu à vide, la question n'a simplement aucun résultat (décision D3 de
+    ///   RI1b, même règle que `init(for:)`) ;
+    /// - si la réponse retenue vient d'une clé personnelle (meilleure réponse écartée, retenue faute
+    ///   de mieux) : en ajouter une n'y changerait rien ;
+    /// - si une clé a répondu sans rien de retenu : elle marche, en ajouter une autre n'est pas la
+    ///   réponse. Une clé en ÉCHEC (refusée, quota, illisible) donne la forme « Vérifier ».
+    init?(afterFallback report: WebSearchChainReport, retainedSource: WebSearchSourceKind?, webSourceCount: Int) {
+        let keySources = BYOKSearchSource.preferenceOrder
+        guard webSourceCount > 0,
+              let retainedSource,
+              !keySources.contains(where: { $0.kind == retainedSource }),
+              report.passedOver.contains(where: { $0.source == .searxng }) else { return nil }
+        let keyAttempts = report.passedOver.filter { attempt in keySources.contains { $0.kind == attempt.source } }
+        let failedKeys = keySources.filter { source in
+            keyAttempts.contains { $0.source == source.kind && $0.reason != .noUsableAnswer }
+        }
+        if !failedKeys.isEmpty {
+            explanation = Self.failedKeysExplanation(failedKeys)
+            actionTitle = Self.checkKeysTitle
+        } else if keyAttempts.isEmpty {
+            explanation = Self.addKeyExplanation
+            actionTitle = Self.addKeyTitle
+        } else {
+            return nil
         }
     }
 

@@ -45,6 +45,13 @@ nonisolated struct DiscoverCacheSnapshot: Codable, Sendable, Equatable {
 nonisolated protocol DiscoverContentCaching: Sendable {
     func load() async -> DiscoverCacheSnapshot?
     func save(_ snapshot: DiscoverCacheSnapshot) async
+    /// Supprime ce qui est en cache (action « Tout effacer » des Réglages).
+    func clear() async
+}
+
+extension DiscoverContentCaching {
+    /// Par défaut, rien à supprimer : seul un cache sur disque a quelque chose à effacer.
+    func clear() async {}
 }
 
 /// Aucun cache : défaut des tests et des aperçus, qui ne touchent pas au disque.
@@ -102,6 +109,18 @@ nonisolated struct DiscoverDiskCache: DiscoverContentCaching {
             try data.write(to: fileURL, options: .atomic)
         } catch {
             Self.logger.error("Écriture impossible : \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Supprime le fichier de CETTE langue. Un fichier déjà absent n'est pas une erreur.
+    @concurrent
+    func clear() async {
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+        } catch CocoaError.fileNoSuchFile {
+            return
+        } catch {
+            Self.logger.error("Suppression impossible : \(error.localizedDescription, privacy: .public)")
         }
     }
 }

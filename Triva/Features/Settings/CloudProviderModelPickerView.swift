@@ -38,7 +38,12 @@ struct CloudProviderModelPickerView: View {
             VStack(alignment: .leading, spacing: 32) {
                 header
 
-                if viewModel.configuredProviders.isEmpty {
+                if !viewModel.hasLoadedProviders {
+                    // Lecture du Trousseau en cours (hors main actor) : ni liste
+                    // ni « aucune clé », qui serait faux pendant ce court instant.
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else if viewModel.configuredProviders.isEmpty {
                     emptyState
                 } else {
                     GlassEffectContainer(spacing: 12) {
@@ -52,6 +57,10 @@ struct CloudProviderModelPickerView: View {
                     if let selectedProviderID = viewModel.selectedConfiguredProviderID {
                         modelSection(for: selectedProviderID)
                     }
+
+                    Text(CloudWebSearchCostNotice.sentence)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: contentMaxWidth, alignment: .leading)
@@ -60,6 +69,7 @@ struct CloudProviderModelPickerView: View {
             .padding(.top, 24)
             .padding(.bottom, 40)
         }
+        .task { await viewModel.loadConfiguredProviders() }
     }
 
     private var header: some View {

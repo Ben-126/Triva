@@ -35,9 +35,9 @@ nonisolated enum CloudWebSearchService: String, Sendable, Equatable, CaseIterabl
     var defaultModel: String? {
         switch self {
         case .perplexity: nil
-        case .openAI: "gpt-4.1-mini"
-        case .anthropic: "claude-haiku-4-5"
-        case .gemini: "gemini-2.5-flash-lite"
+        case .openAI: "gpt-6-luna"
+        case .anthropic: "claude-haiku-5-5"
+        case .gemini: "gemini-3.5-flash-lite"
         }
     }
 }
@@ -51,16 +51,25 @@ nonisolated enum CloudWebSearchService: String, Sendable, Equatable, CaseIterabl
 ///
 /// COÛT : chaque recherche de repli est UN APPEL PAYANT sur le compte de l'utilisateur (zéro
 /// serveur, la requête part de l'appareil vers le fournisseur). Ordres de grandeur, d'après les
-/// tarifs publiés le 2026-10-28 :
+/// tarifs publiés, relus le 2026-11-10 :
 /// - Perplexity : 5 $ / 1 000 requêtes (API Search, aucun jeton) ;
-/// - OpenAI : 10 $ / 1 000 appels + un bloc fixe de 8 000 jetons d'entrée facturé au tarif du
-///   modèle (gpt-4.1-mini : 0,40 $ / M) + une sortie plafonnée à ~120 jetons ;
-/// - Anthropic : 10 $ / 1 000 recherches + jetons de claude-haiku-4-5 (résultats comptés en
-///   entrée) ; une requête sans recherche n'est pas facturée comme telle ;
-/// - Gemini : gemini-2.5-flash-lite, 500 requêtes/jour gratuites (offre gratuite) ou 1 500/jour
-///   (offre payante), puis 35 $ / 1 000 requêtes ancrées.
+/// - OpenAI : 10 $ / 1 000 appels + les jetons de contenu de recherche, facturés au tarif du modèle
+///   (gpt-6-luna : 0,10 $ / M en entrée, 0,50 $ / M en sortie). Mesuré le 2026-11-10 avec
+///   gpt-6-luna : 8 692 jetons d'entrée (dont 4 342 déjà en cache) et 62 de sortie, soit environ
+///   0,0105 $ par recherche, dont 0,010 $ pour l'outil lui-même. Avec gpt-4.1-mini, le fournisseur
+///   facture un bloc fixe de 8 000 jetons à 0,40 $ / M (≈ 0,0132 $) : le changement de modèle
+///   baisse un peu la facture, c'est l'outil qui en fait l'essentiel ;
+/// - Anthropic : 10 $ / 1 000 recherches + jetons de claude-haiku-5-5 (résultats comptés en
+///   entrée, à partir de 0,10 $ / M) ; une recherche en échec n'est pas facturée ;
+/// - Gemini : gemini-3.5-flash-lite, 5 000 requêtes par mois gratuites (partagées entre les modèles
+///   Gemini 3 et suivants), puis 14 $ / 1 000 requêtes, plafond par défaut de 1 500 par jour sur
+///   les offres payantes ; le contenu retrouvé n'est pas facturé en jetons d'entrée.
+///   Tarifs Gemini et Anthropic lus dans la documentation, NON essayés en réel (pas de clé).
 ///
-/// Sources officielles consultées le 2026-10-28 :
+/// Ces coûts sont signalés à l'utilisateur dans les Réglages (« Clés de recherche ») : voir
+/// `CloudWebSearchCostNotice`.
+///
+/// Sources officielles consultées le 2026-10-28 (OpenAI, Anthropic et Gemini relues le 2026-11-10) :
 /// - Perplexity : https://docs.perplexity.ai/api-reference/search-post.md (endpoint, champs,
 ///   réponse `results[]`), https://docs.perplexity.ai/docs/getting-started/pricing.md ;
 ///   https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview.md ;
@@ -105,12 +114,18 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
     /// Délai d'une requête. Plus long que les 10 s des sources de recherche pures
     /// (`BYOKSearchHTTP.timeout`) : ici un modèle de langage lance la recherche puis résume.
     static let requestTimeout: TimeInterval = 30
-    /// Plafond de sortie (jetons) : suffit pour « une phrase », les sources sont dans les
-    /// métadonnées, pas dans le texte. Large pour Anthropic/Gemini, où un plafond trop bas
-    /// couperait la génération avant l'appel à l'outil de recherche.
-    static let maxOutputTokens = 256
-    /// OpenAI : minimum accepté 16 ; 128 suffit pour une phrase.
-    static let openAIMaxOutputTokens = 128
+    /// Plafond de sortie (jetons) : la phrase demandée est courte, les sources sont dans les
+    /// métadonnées, pas dans le texte. Large pour Anthropic/Gemini : leurs modèles actuels
+    /// (claude-haiku-5-5 à réflexion adaptative, gemini-3.5-flash-lite) comptent la RÉFLEXION dans
+    /// ce plafond, et un plafond trop bas couperait la génération avant l'appel à l'outil de
+    /// recherche. Un plafond n'est facturé que s'il est consommé : le relever ne coûte rien de plus
+    /// quand le modèle reste bref. (Passé de 256 à 1 024 le 2026-11-10 avec le changement de modèle ;
+    /// non essayé en réel pour ces deux fournisseurs, faute de clé.)
+    static let maxOutputTokens = 1024
+    /// OpenAI : minimum accepté 16. gpt-6-luna a utilisé 62 jetons dont 33 de réflexion pour une
+    /// question simple (mesuré le 2026-11-10) : 256 laisse de la marge. Une réponse « incomplete »
+    /// garde de toute façon ses sources, `CloudWebSearchParsers.openAI` ne lit pas le statut.
+    static let openAIMaxOutputTokens = 256
     /// Longueur maximale d'un extrait : au-delà, ce serait du contenu de page, pas un extrait.
     static let maxSnippetLength = 500
     static let perplexityMaxResults = 20
@@ -586,38 +601,30 @@ nonisolated enum CloudWebSearchParsers {
                     }
                     let web: Web?
                 }
-                nonisolated struct Support: Decodable {
-                    nonisolated struct Segment: Decodable { let text: String? }
-                    let segment: Segment?
-                    let groundingChunkIndices: [Int]?
-                }
+                // `groundingSupports` n'est plus décodé (mission A1) : son texte est celui du
+                // modèle, jamais un extrait de page (voir `gemini(_:)`).
                 let groundingChunks: [Chunk]?
-                let groundingSupports: [Support]?
             }
             let groundingMetadata: Metadata?
         }
         let candidates: [Candidate]?
     }
 
-    /// Sources = `groundingChunks[].web` ; extrait = texte des segments (`groundingSupports`) qui
-    /// pointent vers ce chunk, c'est-à-dire la phrase que ce site a servi à justifier. Les indices
-    /// des chunks sont conservés même quand un chunk n'est pas un lien web (ex. contexte de
-    /// récupération) : sinon les extraits seraient attribués au mauvais site.
+    /// Sources = `groundingChunks[].web`, SANS extrait. Mission A1 (décision de Ben du 2026-11-10 :
+    /// jamais le message du modèle comme extrait) : le texte des `groundingSupports`, utilisé jusque-là
+    /// comme extrait, est un segment de la RÉPONSE DE GEMINI (la phrase que ce site a servi à
+    /// justifier), pas un passage de la page. Présenté au rédacteur comme « Extrait », il lui faisait
+    /// citer une page pour une phrase qu'elle ne contient peut-être pas ; le rapport T2 (mesure #20) a
+    /// montré ce que vaut un texte de modèle pris pour une source : un tarif inventé sur un garage
+    /// inventé. Sans extrait, la page est lue par l'orchestrateur (`SearchOrchestrator+PreRead.swift`),
+    /// ou reste non citable si elle ne peut pas l'être. Les chunks non web (contexte de récupération)
+    /// sont sautés.
     static func gemini(_ data: Data) throws -> [SearXNGSearchResult] {
         let decoded = try BYOKSearchHTTP.decode(GeminiResponse.self, from: data)
         guard let metadata = decoded.candidates?.first?.groundingMetadata else { return [] }
-
-        var segmentsByChunk: [Int: [String]] = [:]
-        for support in metadata.groundingSupports ?? [] {
-            guard let text = support.segment?.text, !text.isEmpty else { continue }
-            for index in support.groundingChunkIndices ?? [] where !(segmentsByChunk[index]?.contains(text) ?? false) {
-                segmentsByChunk[index, default: []].append(text)
-            }
-        }
-
-        return (metadata.groundingChunks ?? []).enumerated().compactMap { index, chunk in
+        return (metadata.groundingChunks ?? []).compactMap { chunk in
             guard let web = chunk.web else { return nil }
-            return result(title: web.title, url: web.uri, content: segmentsByChunk[index]?.joined(separator: " "))
+            return result(title: web.title, url: web.uri, content: nil)
         }
     }
 }

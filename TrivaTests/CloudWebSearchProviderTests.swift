@@ -53,7 +53,7 @@ private enum CloudSearchFixtures {
       "id": "resp_0123",
       "object": "response",
       "status": "completed",
-      "model": "gpt-4.1-mini-2025-04-14",
+      "model": "gpt-6-luna",
       "output": [
         {
           "type": "web_search_call",
@@ -264,9 +264,9 @@ struct CloudWebSearchSupportTests {
     @Test("Modèle par défaut : le moins cher qui supporte la recherche, jamais pour Perplexity")
     func defaultModels() {
         #expect(CloudWebSearchService.perplexity.defaultModel == nil)
-        #expect(CloudWebSearchService.openAI.defaultModel == "gpt-4.1-mini")
-        #expect(CloudWebSearchService.anthropic.defaultModel == "claude-haiku-4-5")
-        #expect(CloudWebSearchService.gemini.defaultModel == "gemini-2.5-flash-lite")
+        #expect(CloudWebSearchService.openAI.defaultModel == "gpt-6-luna")
+        #expect(CloudWebSearchService.anthropic.defaultModel == "claude-haiku-5-5")
+        #expect(CloudWebSearchService.gemini.defaultModel == "gemini-3.5-flash-lite")
     }
 
     @Test("Le provider s'annonce comme recherche du fournisseur IA")
@@ -280,7 +280,7 @@ struct CloudWebSearchSupportTests {
     @Test("Un modèle personnalisé remplace le défaut, un modèle vide non")
     func modelOverride() {
         #expect(cloudProvider(.openAI, body: "{}", model: "gpt-5-nano").provider.model == "gpt-5-nano")
-        #expect(cloudProvider(.openAI, body: "{}", model: "  ").provider.model == "gpt-4.1-mini")
+        #expect(cloudProvider(.openAI, body: "{}", model: "  ").provider.model == "gpt-6-luna")
         #expect(cloudProvider(.perplexity, body: "{}", model: "sonar").provider.model == "sonar")
     }
 }
@@ -312,7 +312,7 @@ struct CloudWebSearchFactoryTests {
         let selection = CloudProviderSelection(providerID: "claude", model: "claude-opus-5-5")
         let provider = try CloudWebSearchProvider.make(for: selection, keyStore: stored)
         #expect(provider?.service == .anthropic)
-        #expect(provider?.model == "claude-haiku-4-5")
+        #expect(provider?.model == "claude-haiku-5-5")
     }
 
     @Test("Aucune sélection : pas de provider")
@@ -458,7 +458,7 @@ struct CloudWebSearchOpenAITests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer \(cloudSearchSecret)")
 
         let body = requestBody(request)
-        #expect(body["model"] as? String == "gpt-4.1-mini")
+        #expect(body["model"] as? String == "gpt-6-luna")
         #expect(body["tool_choice"] as? String == "required")
         #expect(body["include"] as? [String] == ["web_search_call.action.sources"])
         #expect(body["max_output_tokens"] as? Int == CloudWebSearchProvider.openAIMaxOutputTokens)
@@ -510,7 +510,7 @@ struct CloudWebSearchAnthropicTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
 
         let body = requestBody(request)
-        #expect(body["model"] as? String == "claude-haiku-4-5")
+        #expect(body["model"] as? String == "claude-haiku-5-5")
         #expect(body["max_tokens"] as? Int == CloudWebSearchProvider.maxOutputTokens)
         let tools = try #require(body["tools"] as? [[String: Any]])
         #expect(tools[0]["type"] as? String == "web_search_20250305")
@@ -569,7 +569,9 @@ struct CloudWebSearchAnthropicTests {
 
 @Suite("CloudWebSearchProvider — Gemini (ancrage Google Search)")
 struct CloudWebSearchGeminiTests {
-    @Test("Sources = groundingChunks[].web ; extraits = segments des groundingSupports ; indices alignés")
+    /// Mission A1 : les segments des `groundingSupports` sont le texte de la RÉPONSE de Gemini,
+    /// jamais un extrait de la page ; la fixture en contient, aucun ne doit ressortir.
+    @Test("Sources = groundingChunks[].web, chunk non web sauté ; aucun extrait tiré du texte du modèle")
     func parsesGroundingMetadata() async throws {
         let (provider, _) = cloudProvider(.gemini, body: CloudSearchFixtures.gemini)
         let response = try await provider.search(query: "finale ligue des champions", options: WebSearchOptions())
@@ -577,10 +579,8 @@ struct CloudWebSearchGeminiTests {
         #expect(response.results.count == 2)
         #expect(response.results[0].url == "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQ-aaa")
         #expect(response.results[0].title == "lemonde.fr")
-        #expect(response.results[0].content == "Le PSG a gagné la finale.")
-        // Le chunk d'index 1 (non web) est sauté sans décaler les extraits du chunk d'index 2.
         #expect(response.results[1].title == "bbc.com")
-        #expect(response.results[1].content == "Le PSG a gagné la finale. Score de 3 à 1.")
+        #expect(response.results.allSatisfy { $0.content == nil })
     }
 
     @Test("Forme de la requête : generateContent, outil google_search, clé en en-tête")
@@ -591,7 +591,7 @@ struct CloudWebSearchGeminiTests {
         let request = try #require(requester.requests.first)
         #expect(request.httpMethod == "POST")
         #expect(request.url?.absoluteString
-            == "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent")
+            == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
         #expect(request.value(forHTTPHeaderField: "x-goog-api-key") == cloudSearchSecret)
         #expect(request.url?.query == nil)
 

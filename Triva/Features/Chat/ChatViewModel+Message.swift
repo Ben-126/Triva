@@ -80,6 +80,15 @@ extension ChatViewModel {
         /// message relu ne le connaît plus, et n'affiche rien plutôt qu'une
         /// supposition.
         var webSourceKind: WebSearchSourceKind?
+        /// Réponse rédigée sans aucune recherche ni widget, hors salutation :
+        /// « Réponse sans recherche » sous la bulle (mission A2, décision 3,
+        /// `SearchArtifacts.answeredWithoutSearch`). Non persisté, comme
+        /// `webSourceKind` : un message relu n'affiche pas la mention.
+        var answeredWithoutSearch = false
+        /// Aucune source n'a passé le test lexical de la chaîne : sources
+        /// affichées « probablement hors sujet » (mission A2, décision 6,
+        /// `WebSearchChainReport.matchesQuestion`). Non persisté non plus.
+        var sourcesMayBeOffTopic = false
         /// Seule la dernière réponse terminée en porte.
         var suggestions: [String] = []
         var attachedFiles: [AttachedFile] = []
@@ -128,9 +137,27 @@ extension ChatViewModel {
             widgets = artifacts.widgets.compactMap { Widget($0) }
             searchQuery = artifacts.searchQuery
             webSourceKind = artifacts.webSourceKind
+            answeredWithoutSearch = artifacts.answeredWithoutSearch
+            sourcesMayBeOffTopic = !artifacts.webSearchReport.matchesQuestion
         }
 
+        /// État fixe « Aucune source fiable » : il ne porte RIEN d'autre que la
+        /// requête (sujet d'une éventuelle relance). Depuis la mission A1, une
+        /// réponse Fiable refusée en fin de flux peut avoir reçu des artefacts,
+        /// voire du texte (refus cité) : tout est vidé, parce que
+        /// `MessageBubbleView` affiche encore corps et sources s'ils ne sont
+        /// pas vides, et qu'un diagnostic ou des suggestions n'ont pas de sens ici.
         mutating func markNoReliableSources(searchQuery: String, at date: Date) {
+            text = ""
+            reasoningTiming = ReasoningTiming()
+            sources = []
+            attachmentSourceCount = 0
+            widgets = []
+            webSourceKind = nil
+            answeredWithoutSearch = false
+            sourcesMayBeOffTopic = false
+            structureReport = nil
+            suggestions = []
             self.searchQuery = searchQuery
             finish(.noReliableSources, at: date)
         }

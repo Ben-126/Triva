@@ -38,8 +38,11 @@ nonisolated struct SearchArtifacts: Sendable {
     /// Verbosité des consignes envoyées : à passer à
     /// `ResponseStructureValidator.validate(_:mode:complexity:citableSourceCount:)`.
     let promptComplexity: WriterPromptComplexity
-    /// Nombre de documents citables du prompt (`PromptTemplates.citableDocumentCount`),
-    /// 0 sans recherche : le `citableSourceCount` du validateur.
+    /// Plus grand numéro `[n]` citable du prompt (`PromptTemplates.citableDocumentCount`),
+    /// 0 sans recherche ou sans document lisible : le `citableSourceCount` du
+    /// validateur. Depuis la mission A1, ce n'est plus un compte dès que la
+    /// numérotation a un trou ([1] et [3] montrés : 3) ; les numéros sautés
+    /// sont dans `uncitableSourceNumbers`.
     let citableSourceCount: Int
     /// Vrai si une recherche (web ou fichiers joints) a eu lieu ; faux sur le
     /// chemin sans recherche (salutation, calcul pur, météo répondue par son
@@ -54,6 +57,23 @@ nonisolated struct SearchArtifacts: Sendable {
     /// défaut, seule forme qui garde l'init memberwise compatible avec les
     /// appels existants (dont les tests) : un ajout, pas une rupture.
     var webSourceKind: WebSearchSourceKind? = nil
+    /// Numéros `[n]` des sources affichées mais NON CITABLES (mission A1) :
+    /// sans extrait et dont la page n'a pas pu être lue, elles ne sont pas
+    /// montrées au modèle (`PromptTemplates.uncitableDocumentNumbers`). Elles
+    /// restent dans `sources` à leur rang : les retirer décalerait tous les
+    /// numéros suivants.
+    /// Une citation vers l'une d'elles ne compte jamais comme sourcée
+    /// (`citesReadSource(in:)`). Vide par défaut, même raison que
+    /// `webSourceKind`.
+    var uncitableSourceNumbers: Set<Int> = []
+    /// Constat de la chaîne de repli (mission A2) : sources laissées de côté,
+    /// réponse probablement hors sujet. Vide hors recherche web ou sans chaîne.
+    var webSearchReport = WebSearchChainReport()
+    /// Réponse rédigée SANS AUCUNE recherche, ni widget, à autre chose qu'une
+    /// salutation : la bulle le dit (« Réponse sans recherche », décision 3 de
+    /// Ben, `SearchArtifacts.answersWithoutSearch`). Décidé ICI, où la question
+    /// brute est connue : la reformulation d'un « Bonjour » n'en est plus un.
+    var answeredWithoutSearch = false
 }
 
 /// Résultat du pipeline (0.7) : le texte généré et ses `artifacts`.
@@ -472,10 +492,17 @@ nonisolated struct SearchOrchestrator: Sendable {
     ) async throws -> SearchOrchestratorResult {
         let request = SearchRequest(query: query, chatHistory: chatHistory, attachments: attachments, media: media)
         let prepared = try await prepareFinalPrompt(request)
-        guard !lacksReliableSources(prepared.artifacts) else {
+        guard !prepared.artifacts.lacksReliableSources else {
             return SearchOrchestratorResult(answer: "", artifacts: prepared.artifacts)
         }
         let answerText = try await aiProvider.generate(prompt: prepared.prompt)
+        // Mission A1 : même contrôle de fin de réponse que `ChatViewModel` en
+        // streaming. Une réponse vide signifie ici « rien de fiable à montrer »,
+        // avant génération (ci-dessus) comme après (refus exact, aucune page lue
+        // citée) ; `artifacts` reste complet dans les deux cas.
+        guard !prepared.artifacts.rejectsReliableAnswer(answerText) else {
+            return SearchOrchestratorResult(answer: "", artifacts: prepared.artifacts)
+        }
         return SearchOrchestratorResult(answer: answerText, artifacts: prepared.artifacts)
     }
 
@@ -495,24 +522,17 @@ nonisolated struct SearchOrchestrator: Sendable {
     ) async throws -> StreamingAnswer {
         let request = SearchRequest(query: query, chatHistory: chatHistory, attachments: attachments, media: media)
         let prepared = try await prepareFinalPrompt(request)
-        guard !lacksReliableSources(prepared.artifacts) else {
+        // Décision (c) de Ben : rien de citable en mode Fiable -> on ne génère
+        // RIEN (pas de requête cloud lancée puis annulée). Critère partagé avec
+        // `ChatViewModel` : `SearchArtifacts+ReliableMode.swift`. Le contrôle
+        // de fin de flux (`rejectsReliableAnswer`) revient à l'appelant, seul à
+        // lire le texte.
+        guard !prepared.artifacts.lacksReliableSources else {
             // Aucune requête au moteur : flux vide déjà terminé.
             return StreamingAnswer(artifacts: prepared.artifacts, textStream: AsyncThrowingStream { $0.finish() })
         }
         let textStream = await aiProvider.streamGenerate(prompt: prepared.prompt)
         return StreamingAnswer(artifacts: prepared.artifacts, textStream: textStream)
-    }
-
-    /// Décision (c) de Ben : mode Fiable, recherche faite, aucune source ni
-    /// widget -> on ne génère RIEN (pas de requête cloud lancée puis annulée).
-    /// Même critère que `ChatViewModel.lacksReliableSources(_:)`, mais lu sur
-    /// la copie `restrictsToTrustedDomains` : les propriétés de `ResponseMode`
-    /// sont isolées au main actor, inaccessibles depuis ce point `@concurrent`.
-    private func lacksReliableSources(_ artifacts: SearchArtifacts) -> Bool {
-        restrictsToTrustedDomains
-            && artifacts.searchPerformed
-            && artifacts.sources.isEmpty
-            && artifacts.widgets.isEmpty
     }
 
     /// Historique à passer à `SuggestionsService.generateSuggestions(chatHistory:)`
@@ -573,6 +593,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         let media: MediaSearchResults
         /// `SearchArtifacts.webSourceKind`.
         let webSourceKind: WebSearchSourceKind?
+        /// `SearchArtifacts.webSearchReport` (mission A2).
+        var webSearchReport = WebSearchChainReport()
     }
 
     /// Recherche complète puis prompt final, partagés par `answer` et
@@ -591,23 +613,32 @@ nonisolated struct SearchOrchestrator: Sendable {
             total: maxScrapedContextCharacters,
             attachmentSources: Array(research.sources.prefix(research.attachmentSourceCount))
         )
+        // Salutation pure : ni historique ni reformulation pour le rédacteur (mission A2, le haïku
+        // recopié en réponse à « Bonjour ! », voir `SmallTalk.isBareSalutation`).
+        let bareSalutation = SmallTalk.isBareSalutation(request.query)
         let prompt = Self.buildPrompt(
             query: request.query,
-            standaloneQuery: research.searchQuery,
+            standaloneQuery: bareSalutation ? nil : research.searchQuery,
             sources: research.sources,
             scrapedPages: research.scrapedPages,
-            chatHistory: request.chatHistory,
+            chatHistory: bareSalutation ? [] : request.chatHistory,
             mode: responseMode,
             complexity: writerComplexity,
             searchPerformed: research.searchPerformed,
             maxHistoryMessages: maxHistoryMessages,
             maxHistoryMessageCharacters: maxHistoryMessageCharacters,
             maxScrapedContextCharacters: scrapedBudget,
-            widgetContext: research.widgets.combinedLLMContext
+            widgetContext: research.widgets.combinedLLMContext,
+            sourcesMatchQuestion: research.webSearchReport.matchesQuestion
         )
         let citableCount = research.searchPerformed
             ? PromptTemplates.citableDocumentCount(sources: research.sources, scrapedPages: research.scrapedPages)
             : 0
+        // Sur la liste FINALE (fichiers joints en tête, puis le web) : c'est
+        // elle que `numberedContext` vient de numéroter.
+        let uncitableNumbers = research.searchPerformed
+            ? PromptTemplates.uncitableDocumentNumbers(sources: research.sources, scrapedPages: research.scrapedPages)
+            : []
         let artifacts = SearchArtifacts(
             sources: research.sources,
             attachmentSourceCount: research.attachmentSourceCount,
@@ -619,7 +650,14 @@ nonisolated struct SearchOrchestrator: Sendable {
             citableSourceCount: citableCount,
             searchPerformed: research.searchPerformed,
             searchQuery: research.searchQuery,
-            webSourceKind: research.webSourceKind
+            webSourceKind: research.webSourceKind,
+            uncitableSourceNumbers: uncitableNumbers,
+            webSearchReport: research.webSearchReport,
+            answeredWithoutSearch: SearchArtifacts.answersWithoutSearch(
+                question: request.query,
+                searchPerformed: research.searchPerformed,
+                widgetCount: research.widgets.outputs.count
+            )
         )
         return PreparedAnswer(prompt: prompt, artifacts: artifacts)
     }
@@ -671,7 +709,8 @@ nonisolated struct SearchOrchestrator: Sendable {
             searchPerformed: gathered.searchPerformed,
             widgets: widgets,
             media: gathered.media,
-            webSourceKind: gathered.webSourceKind
+            webSourceKind: gathered.webSourceKind,
+            webSearchReport: gathered.webSearchReport
         )
     }
 
@@ -688,6 +727,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         let searchPerformed: Bool
         /// Source web des `webSources`, `nil` hors recherche web.
         let webSourceKind: WebSearchSourceKind?
+        /// Constat de la chaîne (mission A2), vide hors recherche web.
+        var webSearchReport = WebSearchChainReport()
 
         static let noSearch = GatheredSearch(
             documents: [], webSources: [], scrapedPages: [], media: .notRequested, searchPerformed: false, webSourceKind: nil
@@ -702,6 +743,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         let scrapedPages: [ScrapedPage]
         /// Source qui a fourni le tour seedé (RI1b).
         let webSourceKind: WebSearchSourceKind
+        /// Constat de la chaîne sur ce tour (mission A2).
+        let webSearchReport: WebSearchChainReport
     }
 
     /// Mène la recherche d'une route. Aucune ne fait d'appel réseau hors
@@ -741,7 +784,8 @@ nonisolated struct SearchOrchestrator: Sendable {
                 scrapedPages: research.scrapedPages,
                 media: media,
                 searchPerformed: true,
-                webSourceKind: research.webSourceKind
+                webSourceKind: research.webSourceKind,
+                webSearchReport: research.webSearchReport
             )
         }
     }
@@ -894,9 +938,13 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///    planner ne fait que scraper (ou consulter les fichiers joints), elle
     ///    n'ajoute jamais de source web. Si un jour le planner peut relancer
     ///    une recherche web, il faudra reclasser après chaque tour ;
-    /// 3. boucle planner sur les seules sources classées, puis
-    ///    `pagesBackedBySources` : invariant des citations garanti en un
-    ///    seul point, quelle que soit l'origine d'une page.
+    /// 3. lecture sans LLM des sources classées SANS EXTRAIT, dans tous les
+    ///    modes (mission A1, `SearchOrchestrator+PreRead.swift`) : le repli
+    ///    cloud rend des URL nues, et le mode Rapide n'a pas de planner pour
+    ///    les lire ;
+    /// 4. boucle planner sur les seules sources classées, qui sait ces pages
+    ///    déjà tentées, puis `pagesBackedBySources` : invariant des citations
+    ///    garanti en un seul point, quelle que soit l'origine d'une page.
     private func webResearch(flavor: WebSearchFlavor, uploads: UploadsSearchAction?, searchQuery: String) async throws -> WebResearch {
         let seeded = try await seededSearch(flavor: flavor, query: searchQuery)
         var searchResults: [SearXNGSearchResult] = []
@@ -917,9 +965,23 @@ nonisolated struct SearchOrchestrator: Sendable {
             trustedDomainsOnly: restrictsToTrustedDomains
         ).map(\.result)
 
-        let harvest = try await runPlannerLoop(query: searchQuery, sources: sources, uploads: uploads)
+        // Copie locale : voir `runPlannerLoop` (SE-0352).
+        let roundClock = clock
+        let alreadyRead = try await Self.preRead(
+            sources,
+            using: scrapeService,
+            timeout: Self.preReadTimeout(for: responseMode, scrapeRoundTimeout: scrapeRoundTimeout),
+            clock: roundClock
+        )
+        let harvest = try await runPlannerLoop(query: searchQuery, sources: sources, uploads: uploads, alreadyRead: alreadyRead)
         let pages = Self.pagesBackedBySources(seededPages + harvest.pages, sources: sources)
-        return WebResearch(documents: harvest.documents, sources: sources, scrapedPages: pages, webSourceKind: seeded.sourceKind)
+        return WebResearch(
+            documents: harvest.documents,
+            sources: sources,
+            scrapedPages: pages,
+            webSourceKind: seeded.sourceKind,
+            webSearchReport: seeded.report
+        )
     }
 
     /// Tour seedé, avec le repli du bug 5 (sans chaîne) ou la chaîne de repli
@@ -952,21 +1014,29 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///   pas servi, UNE fois au plus (un second passage reclasserait les
     ///   mêmes fragments, pour un coût d'embeddings de plusieurs secondes sur
     ///   l'appareil). Les documents trouvés s'ajoutent en tête des sources.
+    /// - Pages déjà lues sans LLM (`alreadyRead`, mission A1) : elles ouvrent
+    ///   la récolte et comptent comme tentées, succès comme échec — le
+    ///   planner les voit déjà lues et ne les redemande pas ; toutes lues, il
+    ///   ne reste rien à scraper et aucun tour (donc aucun appel LLM) n'a
+    ///   lieu. Sans planner (mode Rapide), elles sont rendues telles quelles :
+    ///   c'est tout l'intérêt de les lire avant.
     private func runPlannerLoop(
         query: String,
         sources: [SearXNGSearchResult],
-        uploads: UploadsSearchAction?
+        uploads: UploadsSearchAction?,
+        alreadyRead: [ScrapedPage]
     ) async throws -> PlannerHarvest {
-        guard maxIterations >= 2, !sources.isEmpty || uploads != nil else { return PlannerHarvest() }
+        let preRead = PlannerHarvest(pages: alreadyRead)
+        guard maxIterations >= 2, !sources.isEmpty || uploads != nil else { return preRead }
 
         let sourceKeys = Set(sources.map { Self.urlKey($0.url) })
         // Copie locale indispensable : passée directement, la propriété
         // `any Clock` n'est pas ouverte vers le générique de `scrapeAll`
         // (SE-0352) dès que Foundation est importé — vérifié en Swift 6.4.
         let roundClock = clock
-        var attemptedKeys: Set<String> = []
+        var attemptedKeys = Set(alreadyRead.map { Self.urlKey($0.url) })
         var pendingUploads = uploads
-        var harvest = PlannerHarvest()
+        var harvest = preRead
         for iteration in 2...maxIterations {
             try Task.checkCancellation()
             let canScrape = !sourceKeys.isSubset(of: attemptedKeys)
@@ -1146,7 +1216,9 @@ nonisolated struct SearchOrchestrator: Sendable {
     /// (`URLSession` async) ; une page arrivée après l'échéance est ignorée.
     /// `clock.now` est lu ICI, sur l'exécuteur de l'orchestrateur, et non
     /// dans la tâche minuteur : un test s'en sert comme sonde du `@concurrent`.
-    private static func scrapeAll<C: Clock<Duration>>(
+    /// Non `private` depuis la mission A1 : la lecture des sources sans
+    /// extrait (`SearchOrchestrator+PreRead.swift`) réutilise ce même tour.
+    static func scrapeAll<C: Clock<Duration>>(
         _ urls: [String],
         using scrapeService: any ScrapeServing,
         timeout: Duration,
@@ -1324,7 +1396,13 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///
     /// `widgetContext` (1.5) : `WidgetExecutionReport.combinedLLMContext`,
     /// inséré juste avant la question (`insertingWidgetContext`) ; vide, le
-    /// prompt est inchangé.
+    /// prompt est inchangé. Non vide, il adapte aussi le rappel du mode
+    /// Fiable (`writerPrompt(hasWidgetData:)`, mission A1) : le refus exact
+    /// qu'il impose contredirait la donnée d'un widget insérée APRÈS lui.
+    ///
+    /// `sourcesMatchQuestion` (mission A2) : faux quand aucune source n'a
+    /// passé le test lexical de la chaîne (`WebSearchChainReport`) ; le
+    /// prompt de rédaction prévient alors le modèle (`writerPrompt`).
     static func buildPrompt(
         query: String,
         standaloneQuery: String? = nil,
@@ -1338,7 +1416,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         maxHistoryMessages: Int = PromptTemplates.defaultMaxHistoryMessages,
         maxHistoryMessageCharacters: Int = PromptTemplates.defaultMaxHistoryMessageCharacters,
         maxScrapedContextCharacters: Int = PromptTemplates.defaultMaxScrapedContextCharacters,
-        widgetContext: String = ""
+        widgetContext: String = "",
+        sourcesMatchQuestion: Bool = true
     ) -> String {
         let prompt = searchPerformed
             ? PromptTemplates.writerPrompt(
@@ -1352,7 +1431,9 @@ nonisolated struct SearchOrchestrator: Sendable {
                 currentDate: currentDate,
                 maxHistoryMessages: maxHistoryMessages,
                 maxHistoryMessageCharacters: maxHistoryMessageCharacters,
-                maxScrapedContextCharacters: maxScrapedContextCharacters
+                maxScrapedContextCharacters: maxScrapedContextCharacters,
+                hasWidgetData: !widgetContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                sourcesMatchQuestion: sourcesMatchQuestion
             )
             : PromptTemplates.conversationPrompt(
                 query: query,
