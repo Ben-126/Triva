@@ -93,6 +93,16 @@ extension ChatViewModel {
         /// affichées « probablement hors sujet » (mission A2, décision 6,
         /// `WebSearchChainReport.matchesQuestion`). Non persisté non plus.
         var sourcesMayBeOffTopic = false
+        /// Numéros `[n]` des sources affichées mais jamais LUES (`SearchArtifacts.uncitableSourceNumbers`,
+        /// mission A1) : leur citation s'affiche en texte simple, pas en pastille, et la liste les
+        /// marque « non lue » (mission C1). Non persisté : un message relu ne le sait plus.
+        var uncitableSourceNumbers: Set<Int> = []
+        /// SearXNG n'a pas répondu à cette recherche (`ChatViewModel.searXNGUnreachable`) : les
+        /// boutons « Rechercher des images / vidéos », qui ne passent que par SearXNG, sont masqués
+        /// (décision de Ben, mission C1). Non persisté : un message relu montre les boutons.
+        var searXNGUnreachable = false
+        /// Étape affichée près de l'indicateur de génération (finding 31). Voir `GenerationStage`.
+        var generationStage: GenerationStage = .searching
         /// Seule la dernière réponse terminée en porte.
         var suggestions: [String] = []
         var attachedFiles: [AttachedFile] = []
@@ -136,8 +146,10 @@ extension ChatViewModel {
         }
 
         mutating func attach(_ artifacts: SearchArtifacts) {
-            sources = artifacts.sources
+            sources = ChatViewModel.displayedSources(of: artifacts)
             attachmentSourceCount = artifacts.attachmentSourceCount
+            uncitableSourceNumbers = artifacts.uncitableSourceNumbers
+            searXNGUnreachable = ChatViewModel.searXNGUnreachable(artifacts.webSearchReport)
             widgets = artifacts.widgets.compactMap { Widget($0) }
             searchQuery = artifacts.searchQuery
             webSourceKind = artifacts.webSourceKind
@@ -157,6 +169,8 @@ extension ChatViewModel {
             reasoningTiming = ReasoningTiming()
             sources = []
             attachmentSourceCount = 0
+            uncitableSourceNumbers = []
+            searXNGUnreachable = false
             widgets = []
             webSourceKind = nil
             answeredWithoutSearch = false

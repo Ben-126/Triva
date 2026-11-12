@@ -62,6 +62,12 @@ final class TrivaUITests: XCTestCase {
         step("Apple Intelligence → Recherche, bon badge") {
             element("engine.card.appleIntelligence").tap()
             element("engine.continue").tap()
+            // Étape facultative de clé de recherche (mission C2) : aucune saisie n'est exigée,
+            // « Commencer » la passe.
+            XCTAssertTrue(app.staticTexts["Une clé de recherche ?"].waitForExistence(timeout: Timeout.launch), "Étape de clé de recherche absente.")
+            XCTAssertTrue(element("onboarding.searchKey.add").exists, "« Ajouter une clé » absent.")
+            capture("01-1b Étape clé de recherche")
+            require(element("onboarding.searchKey.start"), "« Commencer » absent de l'étape de clé de recherche.").tap()
             let badge = require(engineBadgeText, "Badge moteur absent après le choix.")
             XCTAssertEqual(badge.label, "Apple Intelligence · Sur l'appareil")
             XCTAssertEqual(element("search.engineCaption").label, "Aucune IA cloud utilisée")
@@ -477,8 +483,18 @@ final class TrivaUITests: XCTestCase {
         }
     }
 
-    private func checkDiscoverArticles(firstArticle article: XCUIElement) {
+    /// Sources dont les articles n'offrent pas « Chercher dans Triva » (`FeedSource.allowsAIUse` à
+    /// faux dans `DiscoverFeedCatalog`, décision de Ben du 2026-11-11). Le libellé VoiceOver d'un
+    /// article porte « titre, source, date » : on écarte ces sources par leur nom entre virgules.
+    /// Sans ce tri, test07 échouait dès qu'un article Numerama arrivait en tête (mission V, iPad,
+    /// 2026-11-12) alors que l'app faisait exactement ce que Ben a décidé.
+    private static let sourcesWithoutAIUse = ["Numerama"]
+
+    private func checkDiscoverArticles(firstArticle: XCUIElement) {
         XCTAssertGreaterThan(elements("discover.chip").count, 1, "Puces de sujets absentes.")
+        let article = elements("discover.article").allElementsBoundByIndex.first { candidate in
+            !Self.sourcesWithoutAIUse.contains { candidate.label.contains(", \($0), ") }
+        } ?? firstArticle
         step("Chercher dans Triva pré-remplit la barre sans envoyer") {
             let title = article.label
             article.press(forDuration: 1.2)
@@ -517,7 +533,7 @@ final class TrivaUITests: XCTestCase {
             capture("08-3 Clés API")
             app.navigationBars.firstMatch.swipeDown(velocity: .fast)
             require(element("settings.cloudModel"), "La feuille des clés API ne se referme pas.").tap()
-            require(element(labelPrefix: "Fournisseur & modèle"), "Écran fournisseur et modèle absent.")
+            require(element(labelPrefix: "Fournisseur et modèle"), "Écran fournisseur et modèle absent.")
             capture("08-4 Fournisseur et modèle")
             goBack(to: Space.settings.rawValue)
         }

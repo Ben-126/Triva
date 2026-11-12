@@ -301,6 +301,10 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if viewModel.messages.isEmpty, !viewModel.isGenerating {
+                        ChatEmptyStateView(onSelect: { example in sendSuggestion(example) })
+                    }
+
                     // UN seul conteneur pour tout le verre du fil : bulles,
                     // widgets, boutons des médias et de relance (DESIGN.md).
                     // Les suggestions ouvrent le leur, donc restent dehors.
@@ -359,9 +363,12 @@ struct ChatView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
             }
-            // Une conversation rouverte (Bibliothèque, favori) s'ouvre sur
-            // sa fin, comme Messages.
+            // Une conversation rouverte (Bibliothèque, favori) s'ouvre au DÉBUT de sa dernière
+            // réponse (`showLastAnswerStart`, mission C1) : sur sa fin, on tombait sur les
+            // sources et pas sur la réponse (QA Q1, pt 14). L'ancrage par défaut en bas reste
+            // pour le premier rendu, avant que la réponse ne soit posée.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .onAppear { showLastAnswerStart(proxy: proxy) }
             // Sur iPhone, le clavier cache la barre d'onglets, et Retour ENVOIE dès qu'un brouillon
             // existe : sans ces gestes, impossible de quitter l'écran sans envoyer ni tout effacer,
             // ou de lire la réponse (constaté à l'écran, QA Q1). Un fil vide ne défile pas, d'où le
@@ -411,11 +418,15 @@ struct ChatView: View {
                 }
             }
             .onChange(of: viewModel.messages.count) {
-                // Un nouvel échange (nouvelle question envoyée), une
-                // conversation rouverte ou vidée reprend toujours le suivi,
-                // même si l'utilisateur avait remonté pour relire.
-                setPinned(true)
-                scrollToBottom(proxy: proxy)
+                // Un nouvel échange (nouvelle question envoyée) reprend toujours le suivi, même
+                // si l'utilisateur avait remonté pour relire. Une conversation rouverte (aucune
+                // génération en cours) s'ouvre au début de sa dernière réponse.
+                if viewModel.isGenerating || viewModel.messages.isEmpty {
+                    setPinned(true)
+                    scrollToBottom(proxy: proxy)
+                } else {
+                    showLastAnswerStart(proxy: proxy)
+                }
             }
             .onChange(of: viewModel.errorDescription) { _, newValue in
                 scrollToBottom(proxy: proxy)
@@ -460,6 +471,15 @@ struct ChatView: View {
         }
     }
 
+    /// Conversation rouverte, rien en cours : début de la dernière réponse en haut de l'écran,
+    /// suivi du bas coupé (sinon le premier changement de géométrie ramènerait aux sources).
+    private func showLastAnswerStart(proxy: ScrollViewProxy) {
+        guard !viewModel.isGenerating,
+              let last = viewModel.messages.last(where: { $0.role == .assistant }) else { return }
+        setPinned(false)
+        proxy.scrollTo(ChatTranscriptRow.answerStartID(last.id), anchor: .top)
+    }
+
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
         if animated {
             withAnimation {
@@ -480,72 +500,19 @@ struct ChatView: View {
 
     // MARK: Barre de saisie
 
-    /// Fichiers joints au-dessus (`FileAttachmentTray`, frère du conteneur :
-    /// il ouvre le sien), puis la barre : trombone, mode de réponse, champ,
-    /// envoi. Trombone et mode en `.glass` (actions secondaires), envoi seul en
-    /// `.glassProminent` (DESIGN.md). Même largeur plafonnée que le fil.
+    /// Voir `ChatComposerView` (sortie de ce fichier, mission C1).
     private var composer: some View {
-        VStack(spacing: 0) {
-            if !viewModel.attachmentController.isEmpty {
-                FileAttachmentTray(controller: viewModel.attachmentController)
-                    .frame(maxWidth: contentMaxWidth)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-            }
-
-            GlassEffectContainer(spacing: 12) {
-                HStack(spacing: 12) {
-                    // Le contrôleur du ViewModel, jamais un `@State` d'ici :
-                    // ses fichiers n'atteindraient pas le pipeline.
-                    FileAttachmentPicker(controller: viewModel.attachmentController)
-
-                    ResponseModeSelector(store: responseModeStore)
-
-                    TextField("Pose ta question…", text: draftBinding)
-                        .focused($isDraftFocused)
-                        .onSubmit(send)
-                        .accessibilityIdentifier("chat.input")
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        // PAS `.interactive()`, écart assumé avec DESIGN.md (« Barre de recherche ») :
-                        // le verre interactif volait le toucher au menu du mode de réponse, ouvert
-                        // par-dessus ce champ. Sur iPhone, toucher « Fiable » ne faisait rien, et le
-                        // menu restait ouvert (constaté à l'écran, QA Q1).
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
-
-                    sendButton
-                }
-                .frame(maxWidth: contentMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-            }
-        }
-    }
-
-    private var sendButton: some View {
-        Button {
-            if viewModel.isGenerating {
-                // Affordance d'annulation : sans elle, une génération qui ne
-                // répond plus (ex. connexion BYOK qui pend) tourne jusqu'au
-                // timeout réseau par défaut, sans aucun moyen de l'arrêter
-                // autrement qu'en quittant l'écran (ce qui annule aussi via
-                // `.onDisappear`, mais fait perdre l'écran).
-                sendTask?.cancel()
-            } else {
-                send()
-            }
-        } label: {
-            Image(systemName: viewModel.isGenerating ? "stop.fill" : "arrow.up")
-        }
-        .buttonStyle(.glassProminent)
-        .disabled(viewModel.isGenerating ? false : isSendDisabled)
-        .accessibilityLabel(viewModel.isGenerating ? "Arrêter la génération" : "Envoyer")
-        .accessibilityIdentifier("chat.send")
-        // Échap arrête la génération (clavier matériel, Mac et iPad) ; rien
-        // le reste du temps, pour ne jamais envoyer par accident.
-        .keyboardShortcut(viewModel.isGenerating ? KeyboardShortcut.cancelAction : nil)
+        ChatComposerView(
+            attachmentController: viewModel.attachmentController,
+            responseModeStore: responseModeStore,
+            draft: draftBinding,
+            isDraftFocused: $isDraftFocused,
+            isGenerating: viewModel.isGenerating,
+            isSendDisabled: isSendDisabled,
+            contentMaxWidth: contentMaxWidth,
+            onSend: send,
+            onStop: { sendTask?.cancel() }
+        )
     }
 
     // MARK: Actions

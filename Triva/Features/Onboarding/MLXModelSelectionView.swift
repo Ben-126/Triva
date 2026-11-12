@@ -24,6 +24,7 @@ struct MLXModelSelectionView: View {
     @State private var lastAnnouncedProgressMilestone = 0
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dismiss) private var dismiss
 
     /// Largeur de contenu plafonnée en `regular` (iPad/Mac) — même principe
     /// que `AIEngineSelectionView.contentMaxWidth` / `ChatView.contentMaxWidth`,
@@ -43,7 +44,36 @@ struct MLXModelSelectionView: View {
         _coordinator = State(initialValue: MLXModelSelectionCoordinator(onValidated: onValidated))
     }
 
+    /// `NavigationStack` ET non une seconde feuille pour « Voir tous les modèles » : deux feuilles
+    /// empilées se voyaient l'une derrière l'autre et, en fermant la seconde, on retombait sur la
+    /// première sans repère (finding Q3 n°23, HIG sheets.md : « Display only one sheet at a time »).
+    /// La liste complète est poussée dans la pile de cette feuille, avec son bouton retour.
     var body: some View {
+        NavigationStack {
+            content
+                .navigationTitle("Modèle local")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    // Seule sortie visible de la feuille sur iPhone et iPad : jusqu'ici, seul le geste
+                    // de glissement la fermait, sans que rien ne l'indique (finding Q3 n°22). Sur Mac,
+                    // la barre du bas de `EngineStatusView` porte déjà « Fermer ».
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Fermer") { dismiss() }
+                            .accessibilityIdentifier("mlx.selection.close")
+                    }
+                }
+                #endif
+                .navigationDestination(isPresented: $showingFullCatalog) {
+                    fullCatalogList
+                }
+        }
+        .onChange(of: coordinator.phase) { oldValue, newValue in
+            handlePhaseChange(from: oldValue, to: newValue)
+        }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 switch coordinator.phase {
@@ -64,12 +94,6 @@ struct MLXModelSelectionView: View {
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
-        }
-        .sheet(isPresented: $showingFullCatalog) {
-            fullCatalogSheet
-        }
-        .onChange(of: coordinator.phase) { oldValue, newValue in
-            handlePhaseChange(from: oldValue, to: newValue)
         }
     }
 
@@ -114,7 +138,7 @@ struct MLXModelSelectionView: View {
     private var choosingContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Choisis ton modèle local")
-                .font(.system(size: 28, weight: .semibold))
+                .screenTitleFont()
             Text("Basé sur la puissance de ton appareil. Tu pourras en changer à tout moment.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -150,15 +174,7 @@ struct MLXModelSelectionView: View {
             coordinator.select(entry)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(entry.displayName).font(.headline)
-                    Text(badge)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tint)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
-                    Spacer()
+                CardTitleRow(title: entry.displayName, badge: badge) {
                     Text(Self.formattedSize(entry.downloadSizeBytes))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -182,7 +198,7 @@ struct MLXModelSelectionView: View {
         if let entry = coordinator.selectedEntry {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Téléchargement de \(entry.displayName)")
-                    .font(.system(size: 28, weight: .semibold))
+                    .screenTitleFont()
                 Text("\(Self.formattedSize(entry.downloadSizeBytes)) • Wi-Fi requis")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -210,7 +226,7 @@ struct MLXModelSelectionView: View {
         if let entry = coordinator.selectedEntry {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Mode essai — \(entry.displayName)")
-                    .font(.system(size: 28, weight: .semibold))
+                    .screenTitleFont()
                 Text("Pose quelques questions de démo avant de valider ce modèle par défaut.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -279,7 +295,7 @@ struct MLXModelSelectionView: View {
         if let entry = coordinator.selectedEntry {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(entry.displayName) est prêt")
-                    .font(.system(size: 28, weight: .semibold))
+                    .screenTitleFont()
                 Text("Ce modèle est maintenant ton choix par défaut.")
                     .foregroundStyle(.secondary)
             }
@@ -293,7 +309,7 @@ struct MLXModelSelectionView: View {
             // limitation d'environnement (ex. Simulateur sans GPU Metal
             // complet) : rien n'a jamais été téléchargé dans ce cas.
             Text(isEnvironmentLimitation ? "Indisponible dans cet environnement" : "Le téléchargement a échoué")
-                .font(.system(size: 28, weight: .semibold))
+                .screenTitleFont()
             Text(description)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -306,85 +322,65 @@ struct MLXModelSelectionView: View {
 
     // MARK: - Liste complète
 
-    private var fullCatalogSheet: some View {
-        NavigationStack {
-            List(catalog) { entry in
-                Button {
-                    showingFullCatalog = false
-                    coordinator.select(entry)
-                } label: {
+    private var fullCatalogList: some View {
+        List(catalog) { entry in
+            Button {
+                showingFullCatalog = false
+                coordinator.select(entry)
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
                     VStack(alignment: .leading, spacing: 6) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(entry.displayName).font(.headline)
-                                Spacer()
-                                Text(Self.formattedSize(entry.downloadSizeBytes))
+                        CardTitleRow(title: entry.displayName) {
+                            Text(Self.formattedSize(entry.downloadSizeBytes))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(entry.summary)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        "\(entry.displayName), \(Self.formattedSize(entry.downloadSizeBytes)), \(entry.summary)"
+                    )
+
+                    if !entry.strengths.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(entry.strengths, id: \.self) { strength in
+                                HangingLabel(strength, systemImage: "checkmark.circle")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            Text(entry.summary)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
                         }
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel(
-                            "\(entry.displayName), \(Self.formattedSize(entry.downloadSizeBytes)), \(entry.summary)"
-                        )
-
-                        if !entry.strengths.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(entry.strengths, id: \.self) { strength in
-                                    Label(strength, systemImage: "checkmark.circle")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("Points forts : \(entry.strengths.joined(separator: ", "))")
-                        }
-
-                        if !entry.tradeoffs.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(entry.tradeoffs, id: \.self) { tradeoff in
-                                    Label(tradeoff, systemImage: "exclamationmark.triangle")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("Compromis : \(entry.tradeoffs.joined(separator: ", "))")
-                        }
+                        .accessibilityLabel("Points forts : \(entry.strengths.joined(separator: ", "))")
                     }
-                    .padding(.vertical, 4)
+
+                    if !entry.tradeoffs.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(entry.tradeoffs, id: \.self) { tradeoff in
+                                HangingLabel(tradeoff, systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Compromis : \(entry.tradeoffs.joined(separator: ", "))")
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 4)
             }
-            .navigationTitle("Tous les modèles")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Fermer") { showingFullCatalog = false }
-                }
-            }
+            .buttonStyle(.plain)
         }
-        .fullCatalogSheetFrame()
+        .navigationTitle("Tous les modèles")
+        #if os(iOS)
+        // Titre en ligne : le grand titre était tronqué à AX3 (« Tous les modè… », finding Q3 n°15).
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     private static func formattedSize(_ bytes: UInt64) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
-    }
-}
-
-private extension View {
-    /// Sur Mac, une feuille prend la taille idéale de son contenu, et une `List`
-    /// n'en a pas : sans taille plancher, la liste a une hauteur nulle et la feuille
-    /// paraît vide. Sans effet sur iPhone et iPad.
-    @ViewBuilder
-    func fullCatalogSheetFrame() -> some View {
-        #if os(macOS)
-        frame(minWidth: 520, idealWidth: 560, minHeight: 560, idealHeight: 640)
-        #else
-        self
-        #endif
+        ByteCountText.string(forByteCount: bytes)
     }
 }
 

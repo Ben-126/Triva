@@ -26,6 +26,9 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
     /// Nom de l'éditeur (« Numerama »), cité sous chaque article comme l'exigent les
     /// conditions de plusieurs flux (ESPN, PMC).
     let sourceName: String?
+    /// Faux si la source interdit l'usage de ses articles par une IA (`FeedSource.allowsAIUse`) :
+    /// l'interface ne propose alors aucune action qui enverrait l'article, ou son titre, à l'IA.
+    let allowsAIUse: Bool
 
     init(topic: DiscoverTopic, item: FeedItem, source: FeedSource) {
         self.init(
@@ -35,7 +38,8 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
             snippet: item.summary,
             imageURL: source.usesThumbnails ? item.imageURL.flatMap { URL(string: $0) } : nil,
             publishedAt: item.publishedAt,
-            sourceName: source.name
+            sourceName: source.name,
+            allowsAIUse: source.allowsAIUse
         )
     }
 
@@ -48,7 +52,8 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
         snippet: String?,
         imageURL: URL?,
         publishedAt: Date? = nil,
-        sourceName: String? = nil
+        sourceName: String? = nil,
+        allowsAIUse: Bool = true
     ) {
         self.topic = topic
         self.title = title
@@ -57,6 +62,7 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
         self.imageURL = imageURL
         self.publishedAt = publishedAt
         self.sourceName = sourceName
+        self.allowsAIUse = allowsAIUse
         self.id = Self.normalizedKey(for: url)
     }
 

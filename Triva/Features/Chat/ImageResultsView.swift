@@ -437,7 +437,7 @@ private struct ImageViewerPage: View {
     }
 
     private var fullImage: some View {
-        AsyncImage(url: image.imageURL, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+        UncachedRemoteImage(url: image.imageURL, maxPixelSize: UncachedImageLoader.viewerPixelSize) { phase in
             switch phase {
             case .success(let loadedImage):
                 loadedImage
@@ -446,9 +446,7 @@ private struct ImageViewerPage: View {
                     .clipShape(.rect(cornerRadius: 20))
             case .failure:
                 MediaLoadFailureLabel(kind: .images)
-            case .empty:
-                ProgressView()
-            @unknown default:
+            case .loading:
                 ProgressView()
             }
         }
@@ -462,7 +460,7 @@ private struct ImageViewerPage: View {
 ///
 /// Images : PNG unis de 4 × 3 pixels encodés en `data:`, tous différents (la
 /// grille déduplique sur l'URL de l'image, d'où 10 images au plus).
-/// `URLSession`, que `AsyncImage` utilise, les sert sans aucun accès réseau
+/// `URLSession`, que `UncachedImageLoader` utilise, les sert sans aucun accès réseau
 /// (vérifié : un `data:` renvoie ses octets et le type `image/png`). Jamais de
 /// vrai réseau dans une preview, même règle que les previews de `ChatView`.
 /// Les URLs `.example` (réservées par la RFC 2606, jamais résolues) montrent

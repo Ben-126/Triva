@@ -208,6 +208,10 @@ struct FavoritesView: View {
                 onRequestRemoval: { pendingRemoval = $0 }, onRetry: { retryCount += 1 }
             )
             .navigationTitle("Favoris")
+            // Titre en ligne, comme Bibliothèque et Découvrir (finding Q3 n°30).
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .searchable(text: $query, prompt: Text("Rechercher dans les favoris"))
             .task(id: FavoritesLoadKey(query: query, revision: store.revision, retry: retryCount)) {
                 await reload()
@@ -596,6 +600,14 @@ private struct FavoriteDetailContentView: View {
     let onOpenConversation: (@MainActor () -> Void)?
 
     @Environment(\.calendar) private var calendar
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Colonne de lecture de 640 pt hors `compact`, comme la réponse dans la Recherche
+    /// (`ChatView.contentMaxWidth`) : sans elle, le texte s'étirait sur toute la largeur d'un iPad ou
+    /// d'un Mac, collé à gauche (finding Q3 n°47).
+    private var readingColumnMaxWidth: CGFloat? {
+        horizontalSizeClass == .regular ? 640 : nil
+    }
 
     var body: some View {
         let segments = ReasoningSegmenter.segment(content.answer, isStreaming: false)
@@ -626,7 +638,8 @@ private struct FavoriteDetailContentView: View {
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: readingColumnMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
     }
 

@@ -269,6 +269,9 @@ struct SuggestionsView: View {
                 }
             }
         }
+        // Les puces défilent jusqu'au bord de l'écran au lieu d'être coupées net à 20 pt de lui
+        // (QA Q3, finding 34), comme Découvrir (`DiscoverView`).
+        .scrollClipDisabled()
         #endif
     }
 

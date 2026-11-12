@@ -25,6 +25,14 @@ struct AIEngineSelectionView: View {
     private let appleModel: AppleIntelligenceModelCoordinator
     @State private var appleModelChoice: AppleIntelligenceModelKind
 
+    /// `true` au premier lancement (aucun moteur encore choisi) : logo, titre d'accroche et phrase
+    /// d'accueil. En changement de moteur, ce texte n'a pas de sens — on y est déjà, depuis les
+    /// Réglages, et il n'y a pas de « suite » (finding Q3 n°18, HIG writing.md : « Match your tone
+    /// to the context »). Le titre est alors porté par la barre de navigation de l'appelant.
+    private let isFirstLaunch: Bool
+    /// Hauteur visible de la zone de défilement, pour centrer le contenu sur un grand écran (iPad).
+    @State private var viewportHeight: CGFloat = 0
+
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Largeur de contenu plafonnée en `regular` (iPad/Mac) — même principe
@@ -46,6 +54,7 @@ struct AIEngineSelectionView: View {
         _selection = State(initialValue: currentSelection ?? recommendation.option)
         self.onConfirm = onConfirm
         self.onCancel = onCancel
+        self.isFirstLaunch = currentSelection == nil
         self.appleModel = appleModel
         _appleModelChoice = State(initialValue: appleModel.effectivePreference)
     }
@@ -58,7 +67,9 @@ struct AIEngineSelectionView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
-                header
+                if isFirstLaunch {
+                    header
+                }
 
                 GlassEffectContainer(spacing: 12) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -80,12 +91,12 @@ struct AIEngineSelectionView: View {
                         engineCard(
                             option: .cloudBYOK,
                             title: "Clé API personnelle",
-                            subtitle: "Le plus puissant. Payant selon le fournisseur choisi, ta clé reste uniquement sur cet appareil."
+                            subtitle: Self.cloudKeyCardSubtitle
                         )
                     }
                 }
 
-                Button("Continuer") {
+                Button(isFirstLaunch ? "Continuer" : "Utiliser ce moteur") {
                     if showsAppleModelChoice {
                         appleModel.preference = appleModelChoice
                     }
@@ -104,15 +115,28 @@ struct AIEngineSelectionView: View {
                 }
             }
             .frame(maxWidth: contentMaxWidth)
-            .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 40)
+            // Sur grand écran, le contenu est centré dans la hauteur visible : calé en haut, il
+            // laissait ≈ 60 % de l'iPad vide et se lisait comme un écran d'iPhone posé là
+            // (finding Q3 n°52). Sur iPhone la hauteur du contenu dépasse déjà la zone visible.
+            .frame(maxWidth: .infinity, minHeight: horizontalSizeClass == .regular ? viewportHeight : nil)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         .task {
             appleModel.refreshStatus()
         }
     }
+
+    /// Texte de la carte « Clé API personnelle » (finding Q3 n°2). L'ancienne phrase, « ta clé reste
+    /// uniquement sur cet appareil », était fausse dans le sens rassurant : la clé part à chaque
+    /// requête chez le fournisseur, avec les questions, et rien ne le disait au moment du choix.
+    /// Ce texte dit les deux : où vont les questions, et où reste la clé. Il n'y a aucun serveur de
+    /// Triva entre les deux (À VALIDER PAR BEN).
+    static let cloudKeyCardSubtitle =
+        "Le plus puissant. Payant selon le fournisseur choisi. Tes questions lui sont envoyées "
+        + "directement\u{00A0}; ta clé reste dans le Trousseau de cet appareil."
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -123,7 +147,7 @@ struct AIEngineSelectionView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Choisis ton moteur IA")
-                    .font(.system(size: 28, weight: .semibold))
+                    .screenTitleFont()
                 Text("Tu pourras en changer à tout moment depuis les Réglages.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -140,24 +164,16 @@ struct AIEngineSelectionView: View {
             selection = option
         } label: {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(title).font(.headline)
-                    if isRecommended {
-                        Text("Recommandé")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
-                    }
-                    Spacer()
+                CardTitleRow(title: title, badge: isRecommended ? "Recommandé" : nil) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                        .accessibilityHidden(true)
                 }
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,6 +183,7 @@ struct AIEngineSelectionView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("engine.card.\(option.rawValue)")
     }
 }

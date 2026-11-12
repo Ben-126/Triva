@@ -241,6 +241,22 @@ nonisolated struct CitationParser: Sendable {
         return scan(text, sourceCount: sourceCount)
     }
 
+    /// Comme `parse(_:sourceCount:)`, mais une citation vers un numéro de `unread` reste du
+    /// TEXTE (mission C1, rapport E2) : ces sources sont affichées à leur rang sans avoir été
+    /// lues (`SearchArtifacts.uncitableSourceNumbers`), le modèle n'a pu les citer qu'en
+    /// inventant. Une pastille touchable vers elles présenterait comme sourcée une phrase qui
+    /// ne l'est pas. Le texte d'origine est conservé tel quel (`reconstructedText` inchangé),
+    /// et les identifiants des segments aussi.
+    static func parse(_ text: String, sourceCount: Int, unread: Set<Int>) -> CitationParseResult {
+        let result = parse(text, sourceCount: sourceCount)
+        guard !unread.isEmpty else { return result }
+        let segments = result.segments.map { segment in
+            guard let index = segment.citationIndex, unread.contains(index) else { return segment }
+            return CitationSegment(id: segment.id, kind: .text, text: segment.text)
+        }
+        return CitationParseResult(segments: segments, pendingSuffix: result.pendingSuffix)
+    }
+
     /// Renvoie la source désignée par un indice 1-based, ou `nil` si l'indice
     /// tombe hors de la liste.
     ///

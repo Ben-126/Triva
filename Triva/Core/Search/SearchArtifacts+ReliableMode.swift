@@ -35,8 +35,8 @@ import Foundation
 /// affichée au-dessus de la réponse (rapport T2, finding 4 : un calcul juste ne
 /// doit jamais être refusé parce que les documents web sont hors sujet).
 nonisolated extension SearchArtifacts {
-    /// Décision (c) : mode Fiable, recherche faite, AUCUN document citable ni
-    /// widget. Sans `searchPerformed`, un « Bonjour » déclencherait l'état ; sans
+    /// Décision (c) : mode Fiable, recherche WEB faite (`controlsReliableSearch`), AUCUN document
+    /// citable ni widget. Sans `searchPerformed`, un « Bonjour » déclencherait l'état ; sans
     /// le test des widgets, un calcul juste serait caché. Les fichiers joints
     /// comptent comme sources.
     ///
@@ -46,7 +46,26 @@ nonisolated extension SearchArtifacts {
     /// à l'ancien critère tant que chaque source porte un extrait.
     var lacksReliableSources: Bool {
         guard case .reliable = mode else { return false }
-        return searchPerformed && citableSourceCount == 0 && widgets.isEmpty
+        return controlsReliableSearch && citableSourceCount == 0 && widgets.isEmpty
+    }
+
+    /// Le contrôle Fiable s'applique-t-il ? Seulement si une recherche WEB a eu lieu (décision
+    /// de Ben, 2026-11-11, mission C1). La route « fichiers joints seuls » (recherche faite, mais
+    /// dans les fichiers de l'utilisateur, `webSourceKind == nil`) en est exclue : un fichier
+    /// joint est une source fiable par nature, et « Aucune source fiable pour ce type de
+    /// question » sous un document de l'utilisateur était un message absurde (rapport E2).
+    ///
+    /// Reconnu sur la forme des artefacts plutôt que sur `webSourceKind` seul : des artefacts
+    /// construits sans source web connue (tests, anciens appelants) ne portent pas forcément de
+    /// `webSourceKind`, et ne doivent pas perdre le contrôle pour autant. Une salutation dont la
+    /// classification échoue ne cherche plus sur le web (`SearchOrchestrator.classifyWithFallback`),
+    /// elle n'arrive donc jamais ici avec `searchPerformed`.
+    var controlsReliableSearch: Bool {
+        guard searchPerformed else { return false }
+        let attachmentsOnly = webSourceKind == nil
+            && attachmentSourceCount > 0
+            && attachmentSourceCount == sources.count
+        return !attachmentsOnly
     }
 
     /// Vrai quand la réponse doit être contrôlée à la fin du flux, et RETENUE
@@ -54,7 +73,7 @@ nonisolated extension SearchArtifacts {
     /// widget. Hors de ce cas, rien ne change.
     var requiresCitedAnswer: Bool {
         guard case .reliable = mode else { return false }
-        return searchPerformed && widgets.isEmpty
+        return controlsReliableSearch && widgets.isEmpty
     }
 
     /// Vrai si le texte VISIBLE (TL;DR et corps, jamais le bloc `<think>`) cite

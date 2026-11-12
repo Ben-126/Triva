@@ -363,7 +363,7 @@ struct MediaResultsStatusView: View {
     }
 }
 
-/// Vignette chargée par `AsyncImage` : cases de la grille d'images et lignes
+/// Vignette chargée par `UncachedRemoteImage` (aucun cache, voir `UncachedImageLoader`) : cases de la grille d'images et lignes
 /// de vidéos. Cadre aux proportions fixes de la sorte de média, image remplie
 /// puis rognée (`scaledToFill`), un seul rayon de coin (20, DESIGN.md).
 ///
@@ -382,10 +382,10 @@ struct MediaResultsStatusView: View {
 /// elle une vignette en chargement ne serait qu'un spinner flottant sans cadre.
 ///
 /// ## Mémoire
-/// `AsyncImage` décode l'image à sa résolution d'origine, quelle que soit la
-/// taille du cadre : la taille de la vignette borne l'AFFICHAGE, pas la
-/// mémoire (une photo de 4 000 × 3 000 pixels pèse environ 48 Mo décodée).
-/// Ce qui borne réellement la mémoire aujourd'hui, par ordre d'importance :
+/// Le chargeur décode par ImageIO en réduisant le plus grand côté à
+/// `UncachedImageLoader.thumbnailPixelSize` : une photo de 4 000 × 3 000 pixels
+/// (≈ 48 Mo décodée par `AsyncImage`, que ce chargeur remplace) n'occupe plus que
+/// quelques Mo par case. Les bornes qui s'y ajoutent, par ordre d'importance :
 /// 1. le plafond des services : `maxResults = 10` par défaut dans
 ///    `ImageSearchService` et `VideoSearchService` (le `.slice(0, 10)` du
 ///    web) ;
@@ -396,10 +396,10 @@ struct MediaResultsStatusView: View {
 ///    dans le fil : `ChatView` empile ses messages dans un `VStack` ordinaire
 ///    (pas un `LazyVStack`), il faut donc compter qu'une grille dépliée crée
 ///    toutes ses cases.
-/// Une vraie miniature demanderait que `ImageSearchResult` porte le
-/// `thumbnail_src` de SearXNG (au service de le faire, pas à cette vue), ou
-/// un chargeur ImageIO qui sous-échantillonne : à prévoir AVANT de relever
-/// `maxResults`.
+/// Le téléchargement reste celui de l'image entière : une vraie miniature
+/// serveur demanderait que `ImageSearchResult` porte le `thumbnail_src` de
+/// SearXNG (au service de le faire, pas à cette vue) : à prévoir AVANT de
+/// relever `maxResults`.
 ///
 /// `contentShape` après `clipShape` : une image rognée garde sinon sa zone de
 /// toucher d'origine, qui déborde sur les cases voisines.
@@ -411,7 +411,7 @@ struct MediaThumbnail: View {
         Color.clear
             .aspectRatio(kind.thumbnailAspectRatio, contentMode: .fit)
             .overlay {
-                AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                UncachedRemoteImage(url: url, maxPixelSize: UncachedImageLoader.thumbnailPixelSize) { phase in
                     switch phase {
                     case .success(let image):
                         image
@@ -419,10 +419,7 @@ struct MediaThumbnail: View {
                             .scaledToFill()
                     case .failure:
                         MediaLoadFailureLabel(kind: kind)
-                    case .empty:
-                        ProgressView()
-                            .controlSize(.small)
-                    @unknown default:
+                    case .loading:
                         ProgressView()
                             .controlSize(.small)
                     }

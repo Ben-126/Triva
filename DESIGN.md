@@ -85,7 +85,7 @@ volontairement plus vers A. B, C et D ont été écartées — leurs maquettes r
 - Échelle utilisée (5 tailles, pas plus par écran) :
   | Rôle | Taille / style |
   |---|---|
-  | Titre d'accroche | 28pt, `.semibold` |
+  | Titre d'accroche | 28pt, `.semibold` à la taille par défaut, qui grandit avec Dynamic Type : toujours `.screenTitleFont()` (`DesignSystem/ScreenTitleFont.swift`), jamais `.font(.system(size: 28…))`, sinon il devient plus petit que son sous-titre aux grandes tailles |
   | Accroche secondaire ("Bonjour") | `.subheadline`, `.secondary` |
   | Badge moteur IA | `.footnote`, `.medium` |
   | Légende de confidentialité | `.caption`, `.tertiary` |
@@ -111,16 +111,31 @@ Grille stricte : `4, 8, 12, 16, 20, 24, 32, 40`. Aucune valeur arbitraire.
   (perf + morphing cohérent).
 - `.interactive()` uniquement sur ce qui répond réellement au toucher.
 - Ne pas mettre du verre partout — réservé aux barres, badges/cartes et boutons
-  interactifs, jamais en fond plein écran ni sur du texte statique.
+  interactifs, jamais en fond plein écran ni sur du texte statique posé hors d'une carte.
+  Les cartes de conversation (la question, la réponse, les widgets météo et calcul) ont,
+  elles, droit au verre : c'est un choix de Ben (2026-11-11, après démonstration), qui les
+  garde pour les détacher du fil. Le texte courant d'une liste, d'une fiche ou d'un réglage
+  reste hors verre.
 - **Rayon de coin** : deux formes seulement dans toute l'app — `.capsule` pour les
   badges/chips/petits boutons, `.rect(cornerRadius: 20)` pour tout conteneur plus grand
-  (barre de recherche, carte de sélection, panneau de résultat). Ne pas introduire
+  (barre de recherche, carte de sélection, carte de conversation : question, réponse, widget). Ne pas introduire
   d'autres rayons (8, 12, 16...) — c'est ce qui garde le vocabulaire de formes cohérent
   dans toute l'app.
 - Une carte sélectionnable (choix de moteur, choix de modèle) utilise
   `.glassEffect(.regular.tint(.accentColor.opacity(0.12)))` quand sélectionnée,
   `.glassEffect(.regular)` sinon — jamais de bordure `.stroke` en plus, la teinte suffit
   à indiquer la sélection.
+
+## Mac
+
+- **Boutons au style du système** (décision de Ben, 2026-11-11, finding Q3 n°45). Sur Mac,
+  les boutons et puces (« Changer de moteur », « À creuser », trombone, envoi) gardent la forme
+  native du Mac, un petit rectangle arrondi : c'est ce que fait la taille de contrôle standard
+  de macOS, et les utilisateurs Mac s'y attendent. La règle « capsule ou rayon 20 » ci-dessus vaut
+  pour iPhone et iPad ; ne pas forcer `.buttonBorderShape(.capsule)` sur Mac pour la rendre
+  uniforme.
+- Les cartes en verre (choix du moteur, du modèle, conversation) gardent `.rect(cornerRadius: 20)`
+  sur toutes les plateformes.
 
 ## Icônes
 

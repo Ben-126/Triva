@@ -339,7 +339,8 @@ final class ChatViewModel {
                 concludeWithoutReliableSources(exchange, searchQuery: artifacts.searchQuery)
                 return
             }
-            answer.sources = artifacts.sources
+            answer.sources = Self.displayedSources(of: artifacts)
+            updateMessage(id: exchange.answerID) { $0.generationStage = .writing }
             // Mission A1 : en Fiable sans widget, artefacts et texte attendent la
             // première citation d'une page lue (`CitedAnswerGate`, dans `consume`) :
             // une liste de sources sous le spinner, puis effacée par un refus, non.
@@ -452,10 +453,12 @@ final class ChatViewModel {
             text,
             mode: artifacts.mode,
             complexity: artifacts.promptComplexity,
-            citableSourceCount: artifacts.citableSourceCount
+            citableSourceCount: artifacts.citableSourceCount,
+            uncitableNumbers: artifacts.uncitableSourceNumbers
         )
         updateMessage(id: exchange.answerID) { $0.structureReport = report }
-        guard activeExchangeID == exchangeID else { return }
+        guard activeExchangeID == exchangeID,
+              Self.offersSuggestions(question: exchange.question, artifacts: artifacts) else { return }
 
         let history = orchestrator.suggestionsHistory(previousTurns: exchange.history, query: exchange.question, answer: text)
         let answerID = exchange.answerID

@@ -549,6 +549,29 @@ struct SearchOrchestratorTests {
         #expect(prompts.count == 2)
     }
 
+    @Test("Classification en échec : une salutation ne cherche pas sur le web, une question si (mission C1)")
+    func failedClassificationSkipsSearchOnlyForGreetings() async throws {
+        let greetingClient = MockSearXNGClient()
+        let greetingProvider = MockAIGenerating(finalAnswerResponse: "Bonjour !", shouldFailClassification: true)
+        let greetingOrchestrator = makeOrchestrator(
+            failoverManager: FailoverManager(client: greetingClient, instances: [Self.instance]),
+            aiProvider: greetingProvider,
+            responseMode: .reliable
+        )
+        let greeting = try await greetingOrchestrator.answer(query: "Bonjour !")
+        #expect(greeting.answer == "Bonjour !")
+        #expect(await greetingClient.callCount == 0)
+
+        let questionClient = MockSearXNGClient()
+        let questionProvider = MockAIGenerating(shouldFailClassification: true)
+        let questionOrchestrator = makeOrchestrator(
+            failoverManager: FailoverManager(client: questionClient, instances: [Self.instance]),
+            aiProvider: questionProvider
+        )
+        _ = try await questionOrchestrator.answer(query: "Quelle est la hauteur de la tour Eiffel ?")
+        #expect(await questionClient.callCount > 0)
+    }
+
     @Test("Classification academicSearch : AcademicSearchAction utilisée, moteurs arxiv/google scholar/pubmed forcés")
     func academicSearchRoutesToAcademicAction() async throws {
         let client = MockSearXNGClient()

@@ -55,6 +55,12 @@ extension TrivaUITests {
         responseMode: String? = "quick",
         extraArguments: [String] = []
     ) {
+        #if os(iOS)
+        // Portrait imposé : `TrivaUITestsLaunchTests` (une passe par configuration d'interface)
+        // laisse le simulateur en paysage, et les parcours suivants héritaient de cette
+        // orientation sans l'avoir choisie (constaté sur iPhone 18 Pro, mission C1).
+        XCUIDevice.shared.orientation = .portrait
+        #endif
         let application = XCUIApplication()
         var arguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
         if let engine {

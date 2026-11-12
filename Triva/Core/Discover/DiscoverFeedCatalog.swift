@@ -23,7 +23,18 @@ import Foundation
 /// ## Sport en français
 /// Aucun flux français de sport ne remplit la règle d'entrée. Le sujet Sport reprend donc
 /// ESPN (en anglais) pour un appareil en français, et la vue le dit (voir
-/// `DiscoverTopicDefinition.usesOtherLanguage(than:)`). Décision à valider par Ben.
+/// `DiscoverTopicDefinition.usesOtherLanguage(than:)`). Ben garde ESPN en repli (11/11).
+/// Seconde recherche (2026-11-11, une trentaine de flux sport français testés) : aucun
+/// n'autorise la reprise. Écartés pour clause : BFMTV/RMC Sport (« usage personnel, privé et
+/// non commercial »), Le Parisien (flux « dans le cadre d'un usage personnel, privé, non
+/// collectif et non commercial »), Le Figaro (« Il en est de même des flux RSS »), 20 Minutes,
+/// Rugbyrama, Sports.fr, Basket-Infos, Foot Mercato (reprise interdite sans autorisation).
+/// L'Équipe, Ouest-France, RFI et France 24 : conditions inaccessibles (403), non retenus.
+/// The Conversation France n'a pas de rubrique sport.
+///
+/// ## Usage par une IA
+/// Numerama interdit l'usage de ses articles par une IA pour générer du contenu :
+/// `FeedSource.allowsAIUse == false`, et l'interface ne propose aucune action IA dessus.
 nonisolated enum DiscoverFeedCatalog {
     private static func url(_ string: String) -> URL {
         // Adresses écrites dans ce fichier : un test (`DiscoverFeedCatalogTests`) vérifie
@@ -33,12 +44,15 @@ nonisolated enum DiscoverFeedCatalog {
 
     // MARK: Éditeurs
 
-    /// « Les flux RSS de Numerama peuvent être reproduits librement » (mentions légales).
+    /// « Les flux RSS de Numerama peuvent être reproduits librement » (mentions légales),
+    /// mais l'utilisation de ses articles par une IA pour générer du contenu est interdite
+    /// sans autorisation : `allowsAIUse: false`, donc aucune action IA sur ces articles.
     private static func numerama(_ id: String, path: String) -> FeedSource {
         FeedSource(
             id: "numerama-\(id)", name: "Numerama",
             url: url("https://www.numerama.com/\(path)feed/"),
-            termsURL: url("https://www.numerama.com/mentions-legales/")
+            termsURL: url("https://www.numerama.com/mentions-legales/"),
+            allowsAIUse: false
         )
     }
 

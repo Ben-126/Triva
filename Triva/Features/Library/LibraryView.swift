@@ -205,6 +205,11 @@ struct LibraryView: View {
                 onRetry: { retryCount += 1 }
             )
             .navigationTitle("Bibliothèque")
+            // Titre en ligne comme Découvrir et Favoris : sans réglage explicite, Bibliothèque
+            // s'ouvrait en titre en ligne et la page suivante en grand titre (finding Q3 n°30).
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .searchable(text: $query, prompt: Text("Rechercher dans l'historique"))
             .task(id: LibraryLoadKey(query: query, revision: store.revision, retry: retryCount)) {
                 await reload()

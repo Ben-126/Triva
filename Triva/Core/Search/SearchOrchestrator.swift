@@ -1164,8 +1164,9 @@ nonisolated struct SearchOrchestrator: Sendable {
         boundedHistory history: [ClassifierChatMessage]
     ) async throws -> QueryClassification {
         let classifier = queryClassifier
+        // Salutation et classification en échec : pas de recherche web (mission C1, décision de Ben).
         let safeFallback = QueryClassification(
-            skipSearch: false,
+            skipSearch: SmallTalk.isGreeting(query),
             personalSearch: false,
             academicSearch: false,
             discussionSearch: false,

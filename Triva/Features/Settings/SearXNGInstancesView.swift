@@ -78,7 +78,9 @@ struct SearXNGInstancesView: View {
                 .textInputAutocapitalization(.never)
                 #endif
                 .onSubmit(submit)
+            // Style de bouton même désactivé : sinon, même gris que l'adresse d'exemple (finding 37).
             Button("Ajouter", action: submit)
+                .buttonStyle(.glass)
                 .disabled(isAddressEmpty)
                 .confirmationDialog(
                     "Adresse locale",
@@ -335,8 +337,12 @@ private struct SearXNGInstanceRow: View {
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Une ligne, coupée au milieu : à AX3, le retour à la ligne inventait des tirets
+            // (« searx.tiekoetter.-com »), et l'adresse affichée n'était plus valide (finding 40).
             Text(verbatim: address)
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
             if isLocalOrPrivate {
                 Text("Réseau local uniquement")
                     .font(.caption)
@@ -424,7 +430,7 @@ private func previewInstanceStore(
 }
 
 private func previewDefaultInstances() -> [URL] {
-    ["https://search.mectov.my.id", "https://baresearch.org", "https://opnxng.com", "https://priv.au"]
+    ["https://baresearch.org", "https://opnxng.com", "https://priv.au", "https://searx.tiekoetter.com"]
         .compactMap { URL(string: $0) }
 }
 

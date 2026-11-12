@@ -138,7 +138,14 @@ struct SettingsView: View {
     private func engineSection(for engine: AIEngineOption) -> some View {
         let showsAppleModelChoice = engine == .appleIntelligence && appleModel.isPrivateCloudOffered
         return Section {
+            // Composant partagé avec la Recherche (`DesignSystem/EngineBadge.swift`, mission C1).
             EngineBadge(badge: badge(for: engine))
+                // Même rendu que sur la Recherche : écart symbole/texte fixe, et filet de ligne qui
+                // part du bord (finding Q3 n°39).
+                .labelStyle(.inline)
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                .padding(.vertical, 4)
+                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("settings.engineBadge")
             if showsAppleModelChoice {
                 AppleIntelligenceModelPicker(selection: $appleModel.effectivePreference)
@@ -224,7 +231,8 @@ struct SettingsView: View {
         case .cloudModelPicker:
             CloudModelPickerScreen(
                 customPresets: customProviderStore.customPresets,
-                selectionStore: cloudSelectionStore
+                selectionStore: cloudSelectionStore,
+                onOpenAPIKeys: { presentedSheet = .apiKeys }
             )
         case .mlxStorage:
             MLXStorageView(mlxSelectionStore: mlxSelectionStore, activeEngine: selectedEngine)
@@ -251,6 +259,12 @@ struct SettingsView: View {
                 pendingEngine = chosen
                 presentedSheet = nil
             }
+            // Un vrai titre de barre : sans lui, « Annuler » flottait sur le contenu, qui passait
+            // dessous quand on défilait (AX3, Duo plié ; findings Q3 n°19 et 20).
+            .navigationTitle("Changer de moteur")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     // Explicite : celui du système sortirait en anglais.
@@ -268,38 +282,16 @@ struct SettingsView: View {
         // Sélection cloud PARTAGÉE : supprimer ici la clé du fournisseur actif
         // doit effacer la sélection que lisent la Recherche et les autres
         // fenêtres (voir `BYOKProvidersView.selectionStore`).
-        BYOKProvidersView(customStore: customProviderStore, selectionStore: cloudSelectionStore)
-            #if os(iOS)
-            .presentationDragIndicator(.visible)
-            #elseif os(macOS)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                sheetCloseBar
-            }
-            #endif
-            .settingsSheetFrame()
+        BYOKProvidersView(
+            customStore: customProviderStore,
+            selectionStore: cloudSelectionStore,
+            onClose: { presentedSheet = nil }
+        )
+        #if os(iOS)
+        .presentationDragIndicator(.visible)
+        #endif
+        .settingsSheetFrame()
     }
-
-    #if os(macOS)
-    /// Fond opaque et séparateur : la liste défile derrière la barre, elle ne
-    /// doit pas transparaître (DESIGN.md : pas de calque semi-transparent).
-    /// Échap ferme la feuille ; pas Entrée, qui validerait sinon la saisie
-    /// d'une clé dans l'écran poussé à l'intérieur.
-    private var sheetCloseBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack {
-                Spacer()
-                Button("Fermer") {
-                    presentedSheet = nil
-                }
-                .keyboardShortcut(.cancelAction)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-        }
-        .background(.background)
-    }
-    #endif
 
     /// Appelée à la fermeture de toute feuille ; ne fait quelque chose que si
     /// un moteur a été confirmé, et s'il diffère du moteur actif — reconfirmer
@@ -334,32 +326,6 @@ private nonisolated enum SettingsSheet: String, Identifiable {
     case apiKeys
 
     var id: String { rawValue }
-}
-
-/// Badge moteur IA + légende de confidentialité, exactement comme
-/// `TrivaHomeReferenceView` et `EngineStatusView` : même contenu
-/// (`AIEngineOption.privacyBadge(appleRoute:)`, source unique de vérité — jamais « Sur
-/// l'appareil » pour `.cloudBYOK` ni pour le cloud privé d'Apple), mêmes tailles, même verre teinté.
-private struct EngineBadge: View {
-    let badge: (icon: String, text: String, caption: String)
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(badge.text, systemImage: badge.icon)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.tint)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
-
-            Text(badge.caption)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .padding(.leading, 4)
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-    }
 }
 
 /// Choix cloud privé d'Apple / appareil (mission A4), en sélecteur système intégré à la liste :
@@ -401,19 +367,22 @@ private struct AppleIntelligenceModelPicker: View {
 private struct CloudModelPickerScreen: View {
     let customPresets: [CloudProviderPreset]
     let selectionStore: CloudProviderSelectionStore
+    /// Ouvre la feuille « Clés API » : seule suite possible quand aucune clé n'est enregistrée.
+    let onOpenAPIKeys: () -> Void
 
     @State private var viewModel: CloudProviderModelPickerViewModel?
 
     var body: some View {
         Group {
             if let viewModel {
-                CloudProviderModelPickerView(viewModel: viewModel)
+                CloudProviderModelPickerView(viewModel: viewModel, onOpenAPIKeys: onOpenAPIKeys)
             } else {
                 Color.clear
             }
         }
-        // Pas de titre de barre : l'écran porte déjà son propre titre
-        // (« Fournisseur & modèle ») dans son contenu.
+        // Vrai titre de barre, comme les autres écrans des Réglages : le titre posé dans le contenu
+        // laissait la barre vide et ne s'alignait pas sur le bouton retour (finding Q3 n°21).
+        .navigationTitle("Fournisseur et modèle")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

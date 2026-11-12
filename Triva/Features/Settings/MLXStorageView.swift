@@ -310,7 +310,7 @@ struct MLXStorageView: View {
     /// Même format que la taille de téléchargement affichée au choix du
     /// modèle (`MLXModelSelectionView.formattedSize`).
     private static func formattedSize(_ bytes: UInt64) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .file)
+        ByteCountText.string(forByteCount: bytes)
     }
 
     private var isConfirmingDeletion: Binding<Bool> {

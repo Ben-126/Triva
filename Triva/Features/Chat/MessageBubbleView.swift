@@ -233,6 +233,8 @@ nonisolated enum MessageBubblePresentation {
         var answeredOffline = false
         /// Mission A2 : aucune source n'a passé le test lexical de la chaîne.
         var sourcesMayBeOffTopic = false
+        /// Mission C1 : SearXNG n'a pas répondu à cette recherche (non persisté).
+        var searXNGUnreachable = false
     }
 
     /// Une bulle sans rien dedans (échec ou arrêt avant le moindre texte, la
@@ -266,8 +268,12 @@ nonisolated enum MessageBubblePresentation {
     /// réponse tirée des seuls fichiers joints n'ont pas de sujet à illustrer,
     /// et deux boutons de plus sous chacune d'elles seraient du remplissage.
     /// Une recherche déjà lancée reste toujours visible.
+    ///
+    /// Masqués quand SearXNG n'a pas répondu à la recherche (décision de Ben, mission C1) :
+    /// images et vidéos ne passent que par lui, les boutons échoueraient à coup sûr.
     static func showsMediaSearch(_ answer: AnswerSnapshot) -> Bool {
         if answer.isMediaSearchStarted { return true }
+        guard !answer.searXNGUnreachable else { return false }
         let isSettled = answer.state == .completed || answer.state == .interrupted
         return isSettled && answer.hasBody && answer.webSourceCount > 0
     }
@@ -394,7 +400,8 @@ struct MessageBubbleView: View, Equatable {
             webSourceKind: message.webSourceKind,
             answeredWithoutSearch: message.answeredWithoutSearch,
             answeredOffline: message.answeredOffline,
-            sourcesMayBeOffTopic: message.sourcesMayBeOffTopic
+            sourcesMayBeOffTopic: message.sourcesMayBeOffTopic,
+            searXNGUnreachable: message.searXNGUnreachable
         )
     }
 
@@ -472,6 +479,11 @@ private struct QuestionBubble: View {
 
 // MARK: - Réponse
 
+extension MessageBubbleView {
+    /// Encre des légendes posées sur le verre de la réponse : voir `AnswerBubble.legendStyle`.
+    static let legendStyle = Color.primary.opacity(0.8)
+}
+
 /// La bulle d'une réponse. Quand il n'y a ni raisonnement, ni TL;DR, elle
 /// est exactement ce qu'elle était : le texte, puis les sources.
 private struct AnswerBubble: View {
@@ -480,6 +492,16 @@ private struct AnswerBubble: View {
     let isFavorite: Bool
     let canToggleFavorite: Bool
     let onToggleFavorite: @MainActor () -> Void
+
+    /// Légendes sous la réponse (« Réponse sans recherche », « Sources probablement hors
+    /// sujet », origine des résultats, étape de génération). En `.secondary`, elles mesuraient
+    /// 2,88:1 sur le verre en clair (QA Q3, finding 8) ; décision de Ben (2026-11-11) : plus
+    /// foncées, pour atteindre 4,5:1 sur le verre en clair ET en sombre. Le primaire du système à
+    /// 80 % garde une hiérarchie visible avec le corps tout en passant le seuil (mesuré sur
+    /// capture, mission C1). Couleur sémantique : elle suit le mode sombre et « Augmenter le
+    /// contraste ». Définie sur `MessageBubbleView` pour être partagée avec le domaine des
+    /// sources (`SourcesListView`), affiché sur le même verre.
+    private static let legendStyle = MessageBubbleView.legendStyle
 
     var body: some View {
         let segments = message.segments
@@ -496,6 +518,7 @@ private struct AnswerBubble: View {
                 AnswerText(
                     text: MessageBubblePresentation.protectingArithmetic(tldr),
                     sources: message.sources,
+                    unreadNumbers: message.uncitableSourceNumbers,
                     isStreaming: message.isStreaming
                 )
                 .equatable()
@@ -503,37 +526,54 @@ private struct AnswerBubble: View {
             }
 
             if answer.state == .noReliableSources {
+                // `.primary` (QA Q3, finding 8) : c'est tout le contenu de la réponse, pas un état
+                // désactivé ; en `.secondary`, il mesurait 2,88:1 sur le verre.
                 Text(ChatViewModel.noReliableSourcesMessage)
-                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("chat.noReliableSources")
             } else if MessageBubblePresentation.showsProgress(answer, displayedBodyIsEmpty: bodyText.isEmpty) {
-                ProgressView()
-                    .accessibilityLabel(MessageBubblePresentation.progressAccessibilityLabel)
-                    .accessibilityIdentifier("chat.answerProgress")
+                // Ligne d'état discrète (finding 31) : ce que l'app fait pendant l'attente.
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .accessibilityIdentifier("chat.answerProgress")
+                    Text(message.generationStage.statusText)
+                        .font(.footnote)
+                        .foregroundStyle(Self.legendStyle)
+                        .accessibilityIdentifier("chat.generationStage")
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(message.generationStage.statusText)
             }
 
             if !bodyText.isEmpty {
-                AnswerText(text: bodyText, sources: message.sources, isStreaming: message.isStreaming)
-                    .equatable()
+                AnswerText(
+                    text: bodyText,
+                    sources: message.sources,
+                    unreadNumbers: message.uncitableSourceNumbers,
+                    isStreaming: message.isStreaming
+                )
+                .equatable()
             }
 
-            // Mission A2 : précision factuelle, rôle de la légende (DESIGN.md),
-            // en `.secondary` plutôt que `.tertiary` : elle change la lecture
-            // de la réponse, elle doit se voir.
+            // Mission A2 : précision factuelle, rôle de la légende (DESIGN.md) ; elle change la
+            // lecture de la réponse, elle doit se voir (`legendStyle`).
             if let note = MessageBubblePresentation.answerNote(answer) {
                 Text(note)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Self.legendStyle)
                     .accessibilityIdentifier(answer.answeredOffline ? "chat.answerOffline" : "chat.answerWithoutSearch")
             }
 
             if !message.sources.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    SourcesListView(sources: message.sources)
+                    // Même label que le détail d'un favori (FavoritesView, finding 32) : même
+                    // contenu, même présentation des deux côtés.
+                    HistorySectionHeader(title: "Sources")
+                    SourcesListView(sources: message.sources, unreadNumbers: message.uncitableSourceNumbers)
 
                     if MessageBubblePresentation.showsOffTopicSources(answer) {
                         Text(MessageBubblePresentation.offTopicSourcesLabel)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Self.legendStyle)
                             .accessibilityIdentifier("chat.offTopicSources")
                     }
 
@@ -542,7 +582,7 @@ private struct AnswerBubble: View {
                     if let origin = MessageBubblePresentation.resultsOriginLabel(answer) {
                         Text(origin)
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Self.legendStyle)
                     }
                 }
             }
@@ -565,10 +605,11 @@ private struct AnswerBubble: View {
 private struct AnswerText: View, Equatable {
     let text: String
     let sources: [SearXNGSearchResult]
+    var unreadNumbers: Set<Int> = []
     let isStreaming: Bool
 
     var body: some View {
-        CitationView(text: text, sources: sources, isStreaming: isStreaming)
+        CitationView(text: text, sources: sources, isStreaming: isStreaming, unreadSourceNumbers: unreadNumbers)
     }
 }
 

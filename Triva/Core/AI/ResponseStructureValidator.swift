@@ -205,11 +205,16 @@ nonisolated struct ResponseStructureValidator: Sendable {
     ///     les deux). `0` signifie « contexte vide » et lève l'exigence de
     ///     citation ; `nil` signifie « inconnu » et garde toutes les règles
     ///     sauf la détection des numéros inventés.
+    ///   - uncitableNumbers: numéros SAUTÉS dans `1...citableSourceCount` (sources affichées mais
+    ///     jamais montrées au modèle, `SearchArtifacts.uncitableSourceNumbers`). Sans lui, une
+    ///     citation [2] quand seuls [1] et [3] étaient montrés passait la borne (rapport E2,
+    ///     mission C1) : elle est signalée comme un numéro inventé.
     nonisolated func validate(
         _ text: String,
         mode: ResponseMode,
         complexity: WriterPromptComplexity = .full,
-        citableSourceCount: Int? = nil
+        citableSourceCount: Int? = nil,
+        uncitableNumbers: Set<Int> = []
     ) -> ResponseStructureReport {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -227,7 +232,9 @@ nonisolated struct ResponseStructureValidator: Sendable {
 
         let segments = ReasoningSegmenter.segment(trimmed, isStreaming: false)
         var violations: [ResponseStructureViolation] = []
-        violations.append(contentsOf: citationViolations(in: trimmed, citableSourceCount: citableSourceCount))
+        violations.append(contentsOf: citationViolations(
+            in: trimmed, citableSourceCount: citableSourceCount, uncitableNumbers: uncitableNumbers
+        ))
         violations.append(contentsOf: bannedPhraseViolations(in: trimmed))
         violations.append(contentsOf: conclusionViolations(in: trimmed))
         violations.append(contentsOf: modeViolations(in: trimmed, segments: segments, mode: mode, complexity: complexity))
@@ -253,7 +260,11 @@ nonisolated struct ResponseStructureValidator: Sendable {
     /// Les citations mal formées et hors plage restent vérifiées dans le cas
     /// 2 : un modèle qui invente `[3]` alors que le contexte est vide est une
     /// vraie information, pas un faux positif.
-    private nonisolated func citationViolations(in text: String, citableSourceCount: Int?) -> [ResponseStructureViolation] {
+    private nonisolated func citationViolations(
+        in text: String,
+        citableSourceCount: Int?,
+        uncitableNumbers: Set<Int>
+    ) -> [ResponseStructureViolation] {
         guard !Self.isNoRelevantInformationAnswer(text) else { return [] }
 
         var violations: [ResponseStructureViolation] = []
@@ -288,6 +299,16 @@ nonisolated struct ResponseStructureValidator: Sendable {
                     )
                 )
             }
+        }
+
+        for number in scan.validNumbers where uncitableNumbers.contains(number) {
+            violations.append(
+                ResponseStructureViolation(
+                    kind: .citationOutOfRange,
+                    detail: "Le document \(number) n'a jamais été montré au modèle (page non lue) : ce numéro est inventé.",
+                    excerpt: "[\(number)]"
+                )
+            )
         }
 
         return violations

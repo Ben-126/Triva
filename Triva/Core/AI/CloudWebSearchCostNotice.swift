@@ -24,11 +24,15 @@ import Foundation
 /// personnelle » (`WebSearchChain.assemble`), et APRÈS les clés de recherche et les instances
 /// SearXNG mais AVANT les sources ouvertes (Wikipédia…) : l'ordre est
 /// `keyed + searxng + cloud + openSources` (`WebSearchChain.providers(for:)`). La phrase ne dit donc
-/// pas « quand aucune autre source ne répond », ce qui serait faux : les sources ouvertes passent après.
+/// pas « si aucune autre source ne répond », ce qui serait faux : les sources ouvertes passent après.
+///
+/// FORMULATION (décision de Ben du 2026-11-11, retouchée d'un mot) : deux phrases courtes, sans la
+/// liste des fournisseurs, le coût en « centime » et le reste de la phrase mot pour mot comme il l'a
+/// demandé. Seule l'incise a changé, « si aucune autre source ne répond » devenant « si ni tes clés
+/// de recherche ni les instances SearXNG ne répondent », pour la raison ci-dessus (À VALIDER PAR BEN).
 nonisolated enum CloudWebSearchCostNotice {
     static let sentence =
-        "Avec le moteur «\u{00A0}Clé API personnelle\u{00A0}», quand ni tes clés de recherche ni les "
-        + "instances SearXNG ne répondent, Triva peut lancer une recherche web chez ton fournisseur "
-        + "(OpenAI, Anthropic, Gemini ou Perplexity) : elle est facturée sur ton compte, environ 1 cent "
-        + "par recherche avec OpenAI, où l'outil ajoute environ 8\u{00A0}700 jetons d'entrée."
+        "Si ni tes clés de recherche ni les instances SearXNG ne répondent, Triva peut chercher sur le web "
+        + "via ton fournisseur IA. C'est facturé sur ton compte (environ 1\u{00A0}centime par recherche "
+        + "avec OpenAI)."
 }

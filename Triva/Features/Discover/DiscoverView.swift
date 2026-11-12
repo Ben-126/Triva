@@ -233,8 +233,7 @@ struct DiscoverView: View {
 
     /// Un seul `GlassEffectContainer` pour les puces, sœurs de verre, placé
     /// DANS le `ScrollView` horizontal comme les suggestions de
-    /// `TrivaHomeReferenceView`. `scrollClipDisabled` : les puces défilent
-    /// jusqu'au bord de l'écran au lieu d'être coupées net à la marge de 20.
+    /// `TrivaHomeReferenceView`. Le défilement est coupé à la marge (voir plus bas).
     private var topicChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             GlassEffectContainer(spacing: 8) {
@@ -253,7 +252,11 @@ struct DiscoverView: View {
                 }
             }
         }
-        .scrollClipDisabled()
+        // Pas de `scrollClipDisabled` : il laissait les puces défiler sous l'indicateur d'état et
+        // l'anneau de batterie de l'iPhone Duo plié (finding Q3 n°26, HIG designing-for-iphone-duo.md :
+        // « Use safe areas to make sure controls don't cover your content »). Les puces sont coupées
+        // à la marge, avec le fondu de bord de défilement du système.
+        .scrollEdgeEffectStyle(.soft, for: .horizontal)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sujets")
     }

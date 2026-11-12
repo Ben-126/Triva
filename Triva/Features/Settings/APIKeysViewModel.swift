@@ -55,6 +55,9 @@ final class APIKeysViewModel {
             try keyStore.save(apiKey: trimmed, account: account)
             hasStoredKey = true
             state = .saved
+        } catch APIKeyValidationError.unverifiable(let message) {
+            // Pas un refus : on ne dit pas « clé invalide » à quelqu'un dont le réseau est coupé.
+            state = .failed("Impossible de vérifier la clé pour l'instant. \(message)")
         } catch {
             state = .failed("Clé invalide ou refusée par le fournisseur.")
         }

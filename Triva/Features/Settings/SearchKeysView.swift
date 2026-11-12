@@ -103,12 +103,16 @@ private struct SearchKeySection: View {
         Button(action: submitDraft) {
             SearchKeyTestLabel(title: "Tester et enregistrer", isTesting: entry.isTesting)
         }
+        // Style de bouton même désactivé : en texte nu, il avait le gris du placeholder « Colle ta
+        // clé » juste au-dessus, on ne voyait pas qu'il y avait un bouton (QA Q3, finding 37).
+        .buttonStyle(.glass)
         .disabled(!entry.canSubmit(draft: draft))
         .accessibilityIdentifier("searchKeys.save.\(source.rawValue)")
 
         if let keyPageURL = source.keyPageURL {
             Link(destination: keyPageURL) {
-                Label("Obtenir une clé \(source.displayName)", systemImage: "arrow.up.forward.square")
+                // Retrait suspendu à AX3 (finding 36).
+                HangingLabel("Obtenir une clé \(source.displayName)", systemImage: "arrow.up.forward.square")
             }
             .accessibilityIdentifier("searchKeys.link.\(source.rawValue)")
         }

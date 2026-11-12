@@ -34,12 +34,21 @@ nonisolated struct FeedSource: Sendable, Equatable, Identifiable {
     let termsURL: URL
     /// Faux si l'éditeur ne garantit pas les droits de ses images : pas de vignette.
     let usesThumbnails: Bool
+    /// Faux si les conditions de l'éditeur interdisent qu'une IA utilise ses articles pour
+    /// produire du contenu (Numerama). Aucune action de l'app ne doit alors envoyer cet
+    /// article, ni son titre, à un moteur d'IA : l'article reste lisible et ouvrable dans
+    /// le navigateur. Les conditions sont lues dans `termsURL`.
+    let allowsAIUse: Bool
 
-    init(id: String, name: String, url: URL, termsURL: URL, usesThumbnails: Bool = true) {
+    init(
+        id: String, name: String, url: URL, termsURL: URL,
+        usesThumbnails: Bool = true, allowsAIUse: Bool = true
+    ) {
         self.id = id
         self.name = name
         self.url = url
         self.termsURL = termsURL
         self.usesThumbnails = usesThumbnails
+        self.allowsAIUse = allowsAIUse
     }
 }

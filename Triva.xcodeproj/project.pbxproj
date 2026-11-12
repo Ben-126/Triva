@@ -219,10 +219,10 @@
 				};
 			};
 			buildConfigurationList = E06FD8DB303FB7B400B887F2 /* Build configuration list for PBXProject "Triva" */;
-			developmentRegion = en;
+			developmentRegion = fr;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
+				fr,
 				Base,
 			);
 			mainGroup = E06FD8D7303FB7B400B887F2;

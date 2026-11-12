@@ -37,8 +37,8 @@ enum ResponseModeSelectorPresentation {
         horizontalSizeClass != .compact
     }
 
-    /// Infobulle macOS : le mode actif et ce qu'il fait. Elle porte
-    /// l'explication si le menu macOS n'affiche pas le sous-titre des options.
+    /// Infobulle macOS : le mode actif et ce qu'il fait, avant même d'ouvrir
+    /// le choix (le popover montre ensuite l'explication de chaque mode).
     static func helpText(for mode: ResponseMode) -> String {
         "\(controlTitle) : \(mode.title). \(mode.explanation)"
     }
@@ -56,66 +56,59 @@ enum ResponseModeSelectorPresentation {
 /// Libellés, explications et symboles viennent tous de `ResponseMode`, aucun
 /// n'est réécrit ici.
 ///
-/// ## Pourquoi un `Menu` plutôt que trois boutons
-/// Le plan évoque « 3 boutons/icônes ». Choix retenu : un `Menu` natif dont
-/// l'étiquette est l'icône du mode actif.
-/// - Largeur : trois boutons en verre (environ 44 pt chacun, plus deux
-///   espacements) occupent près d'un tiers de la barre de saisie d'un iPhone,
-///   au détriment du champ de texte.
-/// - Explication accessible : un bouton-icône n'a pas de survol au doigt. Ici,
-///   chaque option affiche son explication en sous-titre (second `Text` de
-///   l'étiquette). Si le menu macOS ne montre pas ce sous-titre, l'infobulle
-///   (`help`) et l'indice VoiceOver portent l'explication du mode actif.
-/// - VoiceOver : un seul contrôle, « Mode de réponse, Rapide », dont les
-///   options sont cochées nativement par le `Picker`. Trois boutons
-///   obligeraient à recomposer l'état sélectionné à la main.
-/// - C'est l'idiome Apple pour un choix exclusif peu fréquent (le tri dans
-///   Fichiers, par exemple).
+/// ## Pourquoi un popover à nous plutôt qu'un `Menu` (mission C1)
+/// Jusqu'à la mission C1, c'était un `Menu` natif. Deux défauts constatés :
+/// - le verre INTERACTIF du champ voisin (DESIGN.md, « Barre de recherche »)
+///   volait le toucher au menu, ouvert par-dessus ce champ : sur iPhone,
+///   toucher « Fiable » ne faisait rien (QA Q1). Le champ avait dû perdre
+///   `.interactive()` ;
+/// - sur iOS, le menu n'affichait PAS l'explication de chaque mode en
+///   sous-titre, contrairement à ce que cette doc affirmait (QA Q1, pt 13).
+/// Le popover (`presentationCompactAdaptation(.popover)`, donc une bulle et
+/// non une feuille même sur iPhone) se présente hors de la hiérarchie du
+/// champ : le champ retrouve son verre interactif (décision de Ben,
+/// 2026-11-11), et chaque option montre son titre ET son explication, sur
+/// iPhone, iPad et Mac. L'état d'ouverture est connu (`isPresented`), ce qui
+/// permettrait au besoin de couper l'interactivité du champ pendant le choix.
 ///
-/// ## Aucun état, aucune persistance ici
+/// Toujours un seul bouton plutôt que trois : trois boutons en verre
+/// (environ 44 pt chacun, plus deux espacements) occuperaient près d'un tiers
+/// de la barre de saisie d'un iPhone, au détriment du champ de texte.
+///
+/// ## Aucun état persistant ici
 /// La vue reçoit un `Binding`. Source de vérité UNIQUE :
 /// `ResponseModeSettingsStore` (clé `chat.responseMode.selected`), branché
 /// via `init(store:)`. Volontairement pas de `@AppStorage` sur cette clé :
-/// il n'écrit rien tant que l'utilisateur n'a pas touché au menu, et le store,
-/// qui ne lit la clé qu'à son initialisation, retomberait alors sur son propre
-/// défaut. Deux défauts, deux vérités : l'interface pourrait afficher
+/// il n'écrit rien tant que l'utilisateur n'a pas touché au choix, et le
+/// store, qui ne lit la clé qu'à son initialisation, retomberait alors sur son
+/// propre défaut. Deux défauts, deux vérités : l'interface pourrait afficher
 /// « Rapide » pendant que le pipeline lance une recherche « Approfondie ».
 ///
-/// Le défaut décidé par Ben (Rapide, qui remplace le défaut « deep » repris du
-/// web) et le repli d'une valeur inconnue relèvent donc du store :
-/// `ResponseModeSettingsStore.defaultMode` DOIT valoir `.quick`, et c'est la
-/// suite de tests du store qui le garantit. Ne jamais compenser ici un défaut
-/// erroné du store (`@AppStorage` avec `.quick`, valeur forcée au premier
-/// affichage) : ce serait recréer la double vérité décrite ci-dessus.
+/// Le défaut décidé par Ben (Rapide) et le repli d'une valeur inconnue
+/// relèvent donc du store : `ResponseModeSettingsStore.defaultMode` DOIT
+/// valoir `.quick`, et c'est la suite de tests du store qui le garantit.
 ///
 /// ## Verre
 /// `.buttonStyle(.glass)` : action secondaire (DESIGN.md), jamais
 /// `.glassProminent`, réservé au bouton d'envoi. Pas de `GlassEffectContainer`
-/// propre : la vue se pose dans celui de la barre de saisie, avec le champ et
-/// le bouton d'envoi, ses frères de verre.
+/// propre : la vue se pose dans celui de la barre de saisie. Le contenu du
+/// popover n'a pas de verre : le popover est déjà une surface système (« jamais
+/// de verre sur du texte statique »).
 struct ResponseModeSelector: View {
     @Binding var selection: ResponseMode
+
+    /// Ouverture du choix. `@State` local : rien hors de cette vue n'en a
+    /// besoin tant que le verre interactif du champ ne vole pas le toucher.
+    @State private var isPresented = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        Menu {
-            Picker(ResponseModeSelectorPresentation.controlTitle, selection: $selection) {
-                ForEach(ResponseMode.allCases, id: \.self) { mode in
-                    option(for: mode)
-                        .tag(mode)
-                }
-            }
-            .pickerStyle(.inline)
+        Button {
+            isPresented.toggle()
         } label: {
-            menuLabel
+            buttonLabel
         }
-        .menuStyle(.button)
-        // Ordre déclaré conservé (Rapide, Approfondie, Fiable) : par défaut,
-        // iOS inverse un menu qui s'ouvre vers le haut, ce qui est le cas
-        // depuis une barre de saisie en bas d'écran. Les trois modes forment
-        // une gradation, ils se lisent toujours dans le même ordre.
-        .menuOrder(.fixed)
         .buttonStyle(.glass)
         .accessibilityLabel(ResponseModeSelectorPresentation.controlTitle)
         .accessibilityValue(selection.title)
@@ -125,29 +118,109 @@ struct ResponseModeSelector: View {
         // Seulement sur macOS : sur iOS, l'infobulle doublerait l'indice VoiceOver.
         .help(ResponseModeSelectorPresentation.helpText(for: selection))
         #endif
-    }
-
-    /// Une option du menu : titre, explication en sous-titre, symbole du mode.
-    private func option(for mode: ResponseMode) -> some View {
-        Label {
-            Text(mode.title)
-            Text(mode.explanation)
-        } icon: {
-            Image(systemName: mode.systemImage)
+        // Le choix doit s'ouvrir VERS LE HAUT : la barre de saisie est au bas de l'écran. Les deux
+        // plateformes lisent `arrowEdge` à l'inverse l'une de l'autre :
+        // - macOS : bord du BOUTON où s'accroche le popover, donc `.top` ouvre vers le haut ;
+        // - iOS/iPadOS (depuis 18.1, `popoverCore(arrowEdges:)` dans le swiftinterface) : bord du
+        //   POPOVER qui porte la flèche, donc `.top` le plaçait SOUS le bouton. Sur iPad Pro 13 en
+        //   portrait, il ne restait que 18,5 pt sous la barre : le `ScrollView` de repli a accepté
+        //   cette hauteur et « Fiable » sortait de l'écran (test06 rouge, mission V, 2026-11-12).
+        //   `.bottom` met la flèche en bas du popover, donc le popover au-dessus du bouton.
+        .popover(isPresented: $isPresented, arrowEdge: Self.popoverArrowEdge) {
+            ResponseModeChoiceList(selection: selection) { mode in
+                selection = mode
+                isPresented = false
+            }
+            .presentationCompactAdaptation(.popover)
         }
     }
 
+    /// Bord de la flèche qui ouvre le choix au-dessus du bouton (voir le commentaire du `.popover`).
+    #if os(macOS)
+    static let popoverArrowEdge: Edge = .top
+    #else
+    static let popoverArrowEdge: Edge = .bottom
+    #endif
+
     /// Icône seule en largeur compacte, icône et titre ailleurs (voir
     /// `ResponseModeSelectorPresentation.showsTitle(for:)`). Le libellé
-    /// VoiceOver ne dépend pas de cette variante : il est posé sur le menu.
+    /// VoiceOver ne dépend pas de cette variante : il est posé sur le bouton.
     @ViewBuilder
-    private var menuLabel: some View {
+    private var buttonLabel: some View {
         if ResponseModeSelectorPresentation.showsTitle(for: horizontalSizeClass) {
             Label(selection.title, systemImage: selection.systemImage)
         } else {
             Label(selection.title, systemImage: selection.systemImage)
                 .labelStyle(.iconOnly)
         }
+    }
+}
+
+/// Contenu du popover : les trois modes dans l'ordre déclaré (une gradation,
+/// toujours lue dans le même sens), chacun avec son symbole, son titre et son
+/// explication ; une coche sur le mode actif.
+private struct ResponseModeChoiceList: View {
+    let selection: ResponseMode
+    let onChoose: (ResponseMode) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// 320 pt d'ordinaire ; aux tailles d'accessibilité, toute la largeur que le système accorde
+    /// au popover, sinon chaque explication s'étirait sur sept lignes d'un mot ou deux.
+    private var idealWidth: CGFloat { dynamicTypeSize.isAccessibilitySize ? 600 : 320 }
+
+    /// Défile seulement quand les trois modes ne tiennent pas : à AX3 sur iPhone, le popover
+    /// coupait le haut de « Rapide » (constaté sur capture, mission C1).
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            rows
+            ScrollView { rows }
+        }
+        .frame(idealWidth: idealWidth, maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 360)
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(ResponseMode.allCases, id: \.self) { mode in
+                row(for: mode)
+            }
+        }
+        .padding(8)
+    }
+
+    private func row(for mode: ResponseMode) -> some View {
+        Button {
+            onChoose(mode)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Image(systemName: mode.systemImage)
+                    .foregroundStyle(.tint)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(mode.title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text(mode.explanation)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if mode == selection {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(mode.title)
+        .accessibilityHint(mode.explanation)
+        .accessibilityAddTraits(mode == selection ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("chat.responseMode.\(mode.rawValue)")
     }
 }
 

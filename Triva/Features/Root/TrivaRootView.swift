@@ -107,6 +107,11 @@ struct TrivaRootView: View {
     /// toutes ensemble.
     @State private var isChoosingEngine = false
 
+    /// Moteur choisi à la première étape du premier lancement, pas encore enregistré (voir
+    /// `firstLaunch`). Local à la fenêtre : tant que l'étape de clé n'est pas passée, rien n'est
+    /// écrit dans le store partagé.
+    @State private var pendingEngine: AIEngineOption?
+
     /// Pas de valeur par défaut pour `stores` : seul `TrivaApp` crée les
     /// instances de l'app, les aperçus passent `TrivaSharedStores.preview()`.
     init(stores: TrivaSharedStores) {
@@ -121,6 +126,9 @@ struct TrivaRootView: View {
             .engineChangePresentation(isPresented: $isChoosingEngine) {
                 engineChangeScreen
             }
+            // Copie des clés de l'ancien trousseau Mac vers le trousseau protégé, hors du fil
+            // principal et une seule fois par lancement (`KeychainMigration`).
+            .task { await KeychainMigration.runOnce() }
     }
 
     @ViewBuilder
@@ -145,25 +153,64 @@ struct TrivaRootView: View {
             // moteur étant désormais commun à l'app.
             .id(selected)
         } else {
-            // Premier lancement : pas d'« Annuler », il n'y a rien vers quoi
-            // revenir.
-            AIEngineSelectionView(currentSelection: nil, onCancel: nil) { chosen in
-                stores.engineSettings.selectedOption = chosen
+            firstLaunch
+        }
+    }
+
+    /// Premier lancement, en deux étapes sans « Annuler » (il n'y a rien vers quoi revenir) :
+    /// choix du moteur, puis proposition facultative d'une clé de recherche. Le moteur choisi n'est
+    /// ÉCRIT dans le store qu'à la fin de la seconde étape : l'écrire à « Continuer » ferait
+    /// basculer tout de suite sur la coquille et couperait l'étape en deux.
+    @ViewBuilder
+    private var firstLaunch: some View {
+        if let engine = pendingEngine {
+            onboardingStack {
+                SearchKeyOnboardingView {
+                    stores.engineSettings.selectedOption = engine
+                }
+            }
+        } else {
+            onboardingStack {
+                AIEngineSelectionView(currentSelection: nil, onCancel: nil) { chosen in
+                    pendingEngine = chosen
+                }
             }
         }
+    }
+
+    /// Pile de navigation sans titre autour des écrans plein écran de l'onboarding, sur iPhone et
+    /// iPad : elle réserve la place des commandes de fenêtre de l'iPad en fenêtre, qui touchaient
+    /// sinon le logo (finding Q3 n°27, HIG windows.md : « Make sure window controls don't overlap
+    /// toolbar items »). Inutile sur Mac, dont la fenêtre a sa propre barre de titre.
+    @ViewBuilder
+    private func onboardingStack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        #if os(iOS)
+        NavigationStack {
+            content()
+                .navigationBarTitleDisplayMode(.inline)
+        }
+        #else
+        content()
+        #endif
     }
 
     /// Écran de choix d'un changement de moteur. Reconfirmer le moteur en
     /// vigueur ne touche pas au store : rien n'est reconstruit, la
     /// conversation continue (même règle que `SettingsView.applyPendingEngine`).
     private var engineChangeScreen: some View {
-        AIEngineSelectionView(
-            currentSelection: stores.engineSettings.selectedOption,
-            onCancel: { isChoosingEngine = false }
-        ) { chosen in
-            isChoosingEngine = false
-            guard chosen != stores.engineSettings.selectedOption else { return }
-            stores.engineSettings.selectedOption = chosen
+        NavigationStack {
+            AIEngineSelectionView(
+                currentSelection: stores.engineSettings.selectedOption,
+                onCancel: { isChoosingEngine = false }
+            ) { chosen in
+                isChoosingEngine = false
+                guard chosen != stores.engineSettings.selectedOption else { return }
+                stores.engineSettings.selectedOption = chosen
+            }
+            .navigationTitle("Changer de moteur")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
         }
     }
 }

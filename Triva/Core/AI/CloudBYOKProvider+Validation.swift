@@ -18,6 +18,10 @@ protocol APIKeyValidating: Sendable {
 
 enum APIKeyValidationError: Error, Sendable, Equatable {
     case invalidKey(description: String)
+    /// La clé n'a pas pu être vérifiée (réseau coupé, délai dépassé, limite de débit, fournisseur
+    /// en panne) : ce n'est PAS un refus de la clé. `message` est une phrase fixe, affichable telle
+    /// quelle ; elle ne contient jamais de texte venu du réseau.
+    case unverifiable(message: String)
 }
 
 /// Implémentation réelle : fait un tout petit appel à l'API Claude avec la

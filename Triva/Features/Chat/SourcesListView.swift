@@ -19,6 +19,25 @@ nonisolated enum SourcesListPresentation {
     static func attachmentAccessibilityLabel(title: String) -> String {
         "\(FileAttachmentPresentation.displayName(for: title)), fichier joint"
     }
+
+    /// Mention d'une source affichée mais jamais lue (mission C1, rapport E2).
+    static let unreadLabel = "non lue"
+
+    /// Ce qui s'affiche sous le titre d'une source web : le domaine seul, sans `www.`
+    /// (« lemonde.fr »), comme Découvrir. Avant la mission C1, l'URL brute et percent-encodée
+    /// (« …culmine-d%C3%A9sormais-%C3%A0-330-m… ») courait sur trois lignes, et sur douze à AX3
+    /// (QA Q3, finding 6). Même règle que la fiche d'une citation
+    /// (`CitationPresentation.displayHost`). `nil` pour une URL sans hôte lisible.
+    static func displayDomain(for source: SearXNGSearchResult) -> String? {
+        CitationPresentation.displayHost(for: source)
+    }
+
+    /// Libellé VoiceOver d'une source web : son numéro (celui des citations), son titre, son
+    /// domaine, et « non lue » le cas échéant.
+    static func webAccessibilityLabel(number: Int, title: String, domain: String, isUnread: Bool) -> String {
+        let base = "Source \(number), \(title), \(domain)"
+        return isUnread ? "\(base), \(unreadLabel)" : base
+    }
 }
 
 /// Liste simple des sources d'un message assistant : titre + lien
@@ -42,66 +61,99 @@ nonisolated enum SourcesListPresentation {
 /// l'utilisateur.
 struct SourcesListView: View {
     let sources: [SearXNGSearchResult]
+    /// Numéros (1-based) des sources jamais lues (`Message.uncitableSourceNumbers`) : marquées
+    /// sobrement « non lue », sans être retirées (elles gardent leur rang, donc leur numéro).
+    var unreadNumbers: Set<Int> = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(sources) { source in
-                sourceRow(source)
+        // 12 entre deux sources, 4 entre titre et domaine : avant, le même écart séparait
+        // titre/URL et URL/titre suivant, on ne voyait pas ce qui allait ensemble (finding 6).
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(sources.enumerated()), id: \.offset) { offset, source in
+                sourceRow(source, number: offset + 1)
             }
         }
     }
 
     @ViewBuilder
-    private func sourceRow(_ source: SearXNGSearchResult) -> some View {
+    private func sourceRow(_ source: SearXNGSearchResult, number: Int) -> some View {
         if SourcesListPresentation.isAttachment(source) {
-            attachmentRow(source)
+            attachmentRow(source, number: number)
         } else {
-            webRow(source)
+            webRow(source, number: number)
         }
     }
 
-    private func attachmentRow(_ source: SearXNGSearchResult) -> some View {
-        Label(FileAttachmentPresentation.displayName(for: source.title), systemImage: SourcesListPresentation.attachmentSymbolName)
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(.primary)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(SourcesListPresentation.attachmentAccessibilityLabel(title: source.title))
+    /// Numéro de la source, au style des pastilles de citation (`CitationPresentation.badgeFont`,
+    /// accent) : `[2]` dans le texte se relie d'un coup d'œil à la deuxième source (finding 9).
+    /// Largeur fixe pour aligner les titres ; masqué pour VoiceOver, qui le lit dans le libellé.
+    private func numberLabel(_ number: Int) -> some View {
+        Text(verbatim: "\(number)")
+            .font(CitationPresentation.badgeFont)
+            .monospacedDigit()
+            .foregroundStyle(.tint)
+            .frame(minWidth: 16, alignment: .leading)
+            .accessibilityHidden(true)
+    }
+
+    private func attachmentRow(_ source: SearXNGSearchResult, number: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            numberLabel(number)
+            Label(FileAttachmentPresentation.displayName(for: source.title), systemImage: SourcesListPresentation.attachmentSymbolName)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.primary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Source \(number), " + SourcesListPresentation.attachmentAccessibilityLabel(title: source.title))
     }
 
     @ViewBuilder
-    private func webRow(_ source: SearXNGSearchResult) -> some View {
-        let content = VStack(alignment: .leading, spacing: 6) {
-            Text(source.title)
-                .font(.footnote.weight(.medium))
-                // `Link` teinte son contenu avec l'accent par défaut quand
-                // rien ne l'en empêche — sans ce `.primary` explicite, le
-                // titre passerait en bleu accent au lieu de rester au style
-                // neutre qu'il avait avant l'ajout du `Link` (finding 5/6),
-                // un changement visuel non demandé.
-                .foregroundStyle(.primary)
-            Text(source.url)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func webRow(_ source: SearXNGSearchResult, number: Int) -> some View {
+        let domain = SourcesListPresentation.displayDomain(for: source)
+        let isUnread = unreadNumbers.contains(number)
+        let content = HStack(alignment: .firstTextBaseline, spacing: 8) {
+            numberLabel(number)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(source.title)
+                    .font(.footnote.weight(.medium))
+                    // `Link` teinte son contenu avec l'accent par défaut : `.primary` explicite
+                    // garde le titre neutre (finding 5/6).
+                    .foregroundStyle(.primary)
+                // Une seule ligne, coupée au milieu si besoin : un domaine reste reconnaissable
+                // par son début et sa fin, et n'est jamais césuré.
+                Text(domainLine(domain: domain ?? source.url, isUnread: isUnread))
+                    .font(.caption)
+                    // Même encre que les légendes de la réponse : en `.secondary`, le domaine
+                    // mesurait 2,86:1 sur le verre en clair (décision de Ben, 4,5:1 visés).
+                    .foregroundStyle(MessageBubbleView.legendStyle)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
         }
 
-        if let url = URL(string: source.url), let host = url.host, !host.isEmpty {
+        if let url = URL(string: source.url), let domain {
             // `.plain` et `.leading`, constatés indispensables à l'écran (QA Q1, iOS 27) : le style
             // automatique d'un `Link` pose l'accent comme couleur de premier plan, et `.primary` /
-            // `.secondary`, hiérarchiques, en héritent (titres et URL en bleu) ; il centre aussi
-            // tout texte sur plusieurs lignes.
+            // `.secondary`, hiérarchiques, en héritent ; il centre aussi tout texte sur plusieurs lignes.
             Link(destination: url) { content }
                 .buttonStyle(.plain)
                 .multilineTextAlignment(.leading)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(source.title), \(host)")
+                .accessibilityLabel(SourcesListPresentation.webAccessibilityLabel(
+                    number: number, title: source.title, domain: domain, isUnread: isUnread
+                ))
                 .accessibilityAddTraits(.isLink)
                 .accessibilityIdentifier("source.link")
         } else {
-            // URL non résoluble en `URL` (rare, mais pas impossible pour un
-            // résultat de recherche mal formé) : pas de `Link` tapable dans ce
-            // cas, mais un texte brut plutôt qu'un lien mort.
+            // URL sans hôte lisible (rare, résultat mal formé) : du texte plutôt qu'un lien mort.
             content
         }
+    }
+
+    /// « lemonde.fr » ou « lemonde.fr · non lue » : la mention reste sur la ligne du domaine,
+    /// discrète, sans couleur ni icône.
+    private func domainLine(domain: String, isUnread: Bool) -> String {
+        isUnread ? "\(domain) · \(SourcesListPresentation.unreadLabel)" : domain
     }
 }
 
@@ -135,6 +187,18 @@ private extension SearXNGSearchResult {
     ])
     .padding(20)
     .preferredColorScheme(.dark)
+}
+
+#Preview("Sources — une non lue, AX3") {
+    SourcesListView(
+        sources: [
+            SearXNGSearchResult(previewTitle: "La tour Eiffel culmine désormais à 330 mètres", previewURL: "https://www.lemonde.fr/culture/article/2026/03/15/la-tour-eiffel-culmine-d%C3%A9sormais-%C3%A0-330-m%C3%A8tres"),
+            SearXNGSearchResult(previewTitle: "SearXNG — moteur de recherche", previewURL: "https://docs.searxng.org"),
+        ],
+        unreadNumbers: [2]
+    )
+    .padding(20)
+    .dynamicTypeSize(.accessibility3)
 }
 
 #Preview("Sources — fichier joint puis web") {

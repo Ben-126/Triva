@@ -481,6 +481,8 @@ struct CitationView: View {
     let text: String
     let sources: [SearXNGSearchResult]
     let isStreaming: Bool
+    /// Sources jamais lues : citation en texte simple (`CitationParser.parse(_:sourceCount:unread:)`).
+    var unreadSourceNumbers: Set<Int> = []
 
     /// Largeur de la bulle : une colonne de lecture confortable, quelle que
     /// soit la taille de la fenêtre. Multiple de la grille.
@@ -499,7 +501,7 @@ struct CitationView: View {
     /// Une seule analyse Markdown par rendu : le texte lu par VoiceOver est
     /// dérivé de `rendered`, pas reconstruit.
     var body: some View {
-        let parsed = CitationParser.parse(text, sources: sources)
+        let parsed = CitationParser.parse(text, sourceCount: sources.count, unread: unreadSourceNumbers)
         let rendered = CitationPresentation.attributedText(for: parsed, isStreaming: isStreaming)
         Text(rendered)
             // Closure littérale : `handler` est une fonction NON isolée dans le

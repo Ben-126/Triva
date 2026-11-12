@@ -29,8 +29,16 @@ struct CloudProviderModelPickerView: View {
         horizontalSizeClass == .compact ? nil : 640
     }
 
-    init(viewModel: CloudProviderModelPickerViewModel = CloudProviderModelPickerViewModel()) {
+    /// Ouvre les clés API depuis l'état « aucune clé » ; `nil` dans les aperçus, où le bouton
+    /// n'apparaît pas.
+    private let onOpenAPIKeys: (() -> Void)?
+
+    init(
+        viewModel: CloudProviderModelPickerViewModel = CloudProviderModelPickerViewModel(),
+        onOpenAPIKeys: (() -> Void)? = nil
+    ) {
         _viewModel = State(initialValue: viewModel)
+        self.onOpenAPIKeys = onOpenAPIKeys
     }
 
     var body: some View {
@@ -72,20 +80,28 @@ struct CloudProviderModelPickerView: View {
         .task { await viewModel.loadConfiguredProviders() }
     }
 
+    /// Le titre est celui de la barre de navigation (`CloudModelPickerScreen`) : ici, seulement la
+    /// phrase qui explique la liste.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Fournisseur & modèle")
-                .font(.system(size: 28, weight: .semibold))
-            Text("Seuls les fournisseurs dont la clé est enregistrée apparaissent ici.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var emptyState: some View {
-        Text("Configure au moins une clé API pour choisir un fournisseur.")
+        Text("Seuls les fournisseurs dont la clé est enregistrée apparaissent ici.")
             .font(.subheadline)
             .foregroundStyle(.secondary)
+    }
+
+    /// Impasse évitée : sans clé, la seule suite est l'écran des clés API, donc un bouton y mène
+    /// (finding Q3 n°21, HIG writing.md : « provide a direct link or button, rather than trying to
+    /// describe its location »).
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Configure au moins une clé API pour choisir un fournisseur.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if let onOpenAPIKeys {
+                Button("Ajouter une clé API", action: onOpenAPIKeys)
+                    .buttonStyle(.glassProminent)
+                    .accessibilityIdentifier("cloudPicker.addKey")
+            }
+        }
     }
 
     @ViewBuilder

@@ -83,7 +83,7 @@
     },
     {
       "id": "qwen3-30b-a3b-4bit",
-      "displayName": "Qwen3 30B-A3B (MoE)",
+      "displayName": "Qwen3 30B-A3B",
       "huggingFaceRepo": "mlx-community/Qwen3-30B-A3B-4bit",
       "registryKey": null,
       "license": "Apache 2.0",
@@ -93,9 +93,9 @@
       "supportsThinkingMode": true,
       "isMixtureOfExperts": true,
       "isAdvancedOnly": false,
-      "summary": "Meilleur rapport qualité/vitesse du catalogue : seuls ~3,3 Md de paramètres actifs par token malgré 30 Md au total.",
-      "strengths": ["Qualité proche d'un 14B+ dense", "Vitesse proche d'un modèle 4B grâce au mélange d'experts (MoE)"],
-      "tradeoffs": ["Téléchargement volumineux (~17 Go)", "Charge tous les experts en mémoire même si peu actifs par token"]
+      "summary": "Meilleur rapport qualité/vitesse du catalogue : aussi rapide qu'un petit modèle, pour une qualité de modèle bien plus gros.",
+      "strengths": ["Qualité proche d'un gros modèle de 14 milliards de paramètres ou plus", "Vitesse proche d'un petit modèle de 4 milliards de paramètres"],
+      "tradeoffs": ["Téléchargement volumineux (~17 Go)", "Occupe beaucoup de mémoire, même s'il répond vite"]
     },
     {
       "id": "qwen3-32b-4bit",

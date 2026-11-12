@@ -35,19 +35,56 @@ enum KeychainAPIKeyStoreError: Error, Sendable, Equatable {
     case unexpectedStatus(OSStatus)
 }
 
+/// Trousseau visé par une opération. Sur iOS/iPadOS il n'y en a qu'un (le trousseau protégé, seul
+/// existant) ; sur Mac `.legacy` est l'ancien trousseau « fichier » que l'app utilisait jusqu'ici.
+nonisolated private enum KeychainScope: Sendable {
+    case primary
+    case legacy
+}
+
 /// Stocke les clés API BYOK (Claude, puis d'autres fournisseurs cloud le cas
 /// échéant) exclusivement en Keychain local — jamais en UserDefaults ni en
 /// clair sur disque, conformément à la règle BYOK du projet (zéro serveur
 /// intermédiaire, la clé ne doit jamais quitter l'appareil).
+///
+/// TROUSSEAU PROTÉGÉ SUR MAC (mission C2, décision de Ben du 2026-11-11) : sans
+/// `kSecUseDataProtectionKeychain`, macOS range ces clés dans l'ancien trousseau « fichier »
+/// (`login.keychain`), lié à la signature du binaire : chaque nouvelle version signée autrement fait
+/// apparaître une invite d'autorisation qui, lue sur le fil principal, gèle l'écran. Le trousseau
+/// protégé (le même que sur iOS) est rattaché à l'identifiant d'app et à l'équipe, sans invite.
+///
+/// MIGRATION, sans jamais rien supprimer de l'ancien trousseau : au premier accès à un compte, si le
+/// trousseau protégé ne l'a pas, la clé est COPIÉE depuis l'ancien. L'ancienne entrée reste en place
+/// (règle de Ben : on ne supprime jamais une clé), donc un retour à une version antérieure retrouve
+/// la sienne. Un drapeau par compte (`UserDefaults`) retient que le compte est traité : sans lui, une
+/// clé supprimée dans Triva renaîtrait au prochain accès depuis l'ancien trousseau. Le drapeau est
+/// posé par une copie réussie, par une recherche qui ne trouve rien, par `save` et par `deleteAPIKey`.
+/// `migrateLegacyKeys()` copie toutes les clés d'un coup au lancement, hors du fil principal.
+///
+/// DISPONIBILITÉ : le trousseau protégé exige un identifiant d'équipe dans les droits du binaire
+/// (`application-identifier` ou `keychain-access-groups`), que seul un profil de provisionnement
+/// apporte sur Mac. Sans lui, `SecItemAdd` répond `errSecMissingEntitlement` (-34018) — mais
+/// `SecItemCopyMatching` répond « introuvable », ce qui ressemble à une clé absente. On sonde donc UNE
+/// fois par processus (`isProtectedKeychainAvailable`) en écrivant puis retirant un élément de test,
+/// et on choisit le trousseau en conséquence. Indisponible : tout reste dans l'ancien trousseau,
+/// exactement comme avant ce changement, sans migration ni perte.
 struct KeychainAPIKeyStore: APIKeyStoring {
     private let service: String
+    /// Nom de la suite `UserDefaults` qui porte les drapeaux de migration, `nil` pour la suite
+    /// standard. Un nom plutôt que l'objet : `UserDefaults` n'est pas `Sendable`, alors que ce
+    /// magasin doit l'être et lire depuis n'importe quel contexte (`@concurrent`).
+    private let migrationFlagsSuite: String?
 
-    init(service: String = "com.benpodrojsky.Triva.cloudBYOK") {
+    init(
+        service: String = "com.benpodrojsky.Triva.cloudBYOK",
+        migrationFlagsSuite: String? = nil
+    ) {
         self.service = service
+        self.migrationFlagsSuite = migrationFlagsSuite
     }
 
     func apiKey(account: String) throws -> String? {
-        try Self.copyAPIKey(service: service, account: account)
+        try Self.read(service: service, account: account, flags: migrationFlagsSuite)
     }
 
     /// Lecture réelle hors du main actor : `@concurrent` est indispensable, une
@@ -55,12 +92,85 @@ struct KeychainAPIKeyStore: APIKeyStoring {
     /// (voir CLAUDE.md, section concurrence). Sert à `CloudProviderModelPickerViewModel`.
     @concurrent
     func readAPIKey(account: String) async throws -> String? {
-        try Self.copyAPIKey(service: service, account: account)
+        try Self.read(service: service, account: account, flags: migrationFlagsSuite)
+    }
+
+    /// Copie, hors du fil principal, toutes les clés de l'ancien trousseau Mac vers le trousseau
+    /// protégé, au lancement. Sans effet sur iOS/iPadOS. Ne supprime rien. Renvoie les comptes dont
+    /// la copie a échoué (vide si tout va bien) : une erreur sur un compte ne bloque pas les autres.
+    @concurrent
+    func migrateLegacyKeys() async -> [String] {
+        #if os(macOS)
+        guard Self.isProtectedKeychainAvailable else { return [] }
+        var failed: [String] = []
+        for account in Self.legacyAccounts(service: service) {
+            do {
+                _ = try Self.read(service: service, account: account, flags: migrationFlagsSuite)
+            } catch {
+                failed.append(account)
+            }
+        }
+        return failed
+        #else
+        return []
+        #endif
+    }
+
+    func save(apiKey: String, account: String) throws {
+        let data = Data(apiKey.utf8)
+        try Self.write(data, service: service, account: account, scope: Self.activeScope)
+        Self.markHandled(service: service, account: account, flags: migrationFlagsSuite)
+    }
+
+    func deleteAPIKey(account: String) throws {
+        try Self.remove(service: service, account: account, scope: Self.activeScope)
+        // L'ancienne entrée, elle, reste (jamais de suppression) : le drapeau l'empêche de renaître.
+        Self.markHandled(service: service, account: account, flags: migrationFlagsSuite)
+    }
+
+    // MARK: - Lecture et migration
+
+    /// Lit dans le trousseau protégé ; sinon, tant que le compte n'est pas traité, copie depuis
+    /// l'ancien trousseau (Mac).
+    nonisolated private static func read(service: String, account: String, flags: String?) throws -> String? {
+        guard isProtectedKeychainAvailable else {
+            return try copyAPIKey(service: service, account: account, scope: .legacy)
+        }
+        if let key = try copyAPIKey(service: service, account: account, scope: .primary) {
+            return key
+        }
+        return try migrateFromLegacy(service: service, account: account, flags: flags)
+    }
+
+    nonisolated private static func migrateFromLegacy(
+        service: String,
+        account: String,
+        flags: String?
+    ) throws -> String? {
+        #if os(macOS)
+        guard !isHandled(service: service, account: account, flags: flags) else { return nil }
+        let legacyKey = try copyAPIKey(service: service, account: account, scope: .legacy)
+        if let legacyKey {
+            // Copie au mieux : si elle échoue, la clé reste lisible dans l'ancien trousseau et la
+            // prochaine lecture réessaiera (le drapeau n'est posé qu'après une copie réussie).
+            guard (try? write(Data(legacyKey.utf8), service: service, account: account, scope: .primary)) != nil else {
+                return legacyKey
+            }
+        }
+        markHandled(service: service, account: account, flags: flags)
+        return legacyKey
+        #else
+        return nil
+        #endif
     }
 
     /// `SecItemCopyMatching` seul, sans état : appelable de n'importe quel contexte.
-    nonisolated private static func copyAPIKey(service: String, account: String) throws -> String? {
-        var query = query(service: service, account: account)
+    nonisolated private static func copyAPIKey(
+        service: String,
+        account: String,
+        scope: KeychainScope
+    ) throws -> String? {
+        var query = query(service: service, account: account, scope: scope)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -80,9 +190,27 @@ struct KeychainAPIKeyStore: APIKeyStoring {
         }
     }
 
-    func save(apiKey: String, account: String) throws {
-        let data = Data(apiKey.utf8)
-        let query = baseQuery(account: account)
+    /// Comptes présents dans l'ancien trousseau pour ce service (attributs seulement : aucune
+    /// invite, les secrets ne sont pas lus ici).
+    nonisolated private static func legacyAccounts(service: String) -> [String] {
+        var query = query(service: service, account: nil, scope: .legacy)
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+    }
+
+    // MARK: - Écriture
+
+    nonisolated private static func write(
+        _ data: Data,
+        service: String,
+        account: String,
+        scope: KeychainScope
+    ) throws {
+        let query = query(service: service, account: account, scope: scope)
 
         let addStatus = SecItemAdd(query.merging([kSecValueData as String: data]) { _, new in new } as CFDictionary, nil)
         if addStatus == errSecSuccess {
@@ -98,23 +226,67 @@ struct KeychainAPIKeyStore: APIKeyStoring {
         }
     }
 
-    func deleteAPIKey(account: String) throws {
-        let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
+    nonisolated private static func remove(service: String, account: String, scope: KeychainScope) throws {
+        let status = SecItemDelete(query(service: service, account: account, scope: scope) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainAPIKeyStoreError.unexpectedStatus(status)
         }
     }
 
-    private func baseQuery(account: String) -> [String: Any] {
-        Self.query(service: service, account: account)
-    }
+    // MARK: - Requête et drapeaux
 
-    nonisolated private static func query(service: String, account: String) -> [String: Any] {
-        [
+    nonisolated private static func query(
+        service: String,
+        account: String?,
+        scope: KeychainScope
+    ) -> [String: Any] {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
+        if let account {
+            query[kSecAttrAccount as String] = account
+        }
+        // Sur Mac, l'absence de cette clé désigne l'ancien trousseau ; sur iOS elle est le défaut.
+        if scope == .primary {
+            query[kSecUseDataProtectionKeychain as String] = true
+        }
+        return query
+    }
+
+    /// Trousseau où se font lectures et écritures : le protégé s'il est disponible, sinon l'ancien.
+    nonisolated private static var activeScope: KeychainScope {
+        isProtectedKeychainAvailable ? .primary : .legacy
+    }
+
+    /// Vrai si le binaire peut utiliser le trousseau protégé (toujours vrai sur iOS/iPadOS). Sondé
+    /// une seule fois par processus : voir « DISPONIBILITÉ » en tête de type.
+    nonisolated static let isProtectedKeychainAvailable: Bool = {
+        #if os(macOS)
+        let probe = query(service: "com.benpodrojsky.Triva.keychainProbe", account: "probe", scope: .primary)
+        let status = SecItemAdd(probe.merging([kSecValueData as String: Data("probe".utf8)]) { _, new in new } as CFDictionary, nil)
+        guard status == errSecSuccess || status == errSecDuplicateItem else { return false }
+        SecItemDelete(probe as CFDictionary)
+        return true
+        #else
+        return true
+        #endif
+    }()
+
+    nonisolated private static func flagKey(service: String, account: String) -> String {
+        "triva.keychainMigrated.\(service).\(account)"
+    }
+
+    nonisolated private static func defaults(_ suite: String?) -> UserDefaults {
+        suite.flatMap { UserDefaults(suiteName: $0) } ?? .standard
+    }
+
+    nonisolated private static func isHandled(service: String, account: String, flags: String?) -> Bool {
+        defaults(flags).bool(forKey: flagKey(service: service, account: account))
+    }
+
+    nonisolated private static func markHandled(service: String, account: String, flags: String?) {
+        defaults(flags).set(true, forKey: flagKey(service: service, account: account))
     }
 }

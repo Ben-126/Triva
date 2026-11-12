@@ -43,6 +43,12 @@ nonisolated enum DiscoverArticlePresentation {
         return url
     }
 
+    /// « Chercher dans Triva » est proposé seulement si la source autorise l'usage de ses
+    /// articles par une IA (`FeedSource.allowsAIUse`) ET que l'intégration fournit l'action.
+    static func offersAISearch(allowsAIUse: Bool, hasHandler: Bool) -> Bool {
+        allowsAIUse && hasHandler
+    }
+
     /// Vignette à charger, ou `nil` pour une ligne sans image.
     ///
     /// - `https` avec un hôte : chargée.
@@ -212,7 +218,17 @@ struct DiscoverArticleRow: View {
             .accessibilityRemoveTraits(.isButton)
             .accessibilityAddTraits(.isLink)
             .accessibilityActions { searchAccessibilityAction }
-            .contextMenu { contextMenuItems(url: url) }
+            .contextMenu {
+                contextMenuItems(url: url)
+            } preview: {
+                // Aperçu avec son propre fond : la ligne n'en a pas, et soulevée par le menu elle
+                // laissait son texte se mêler à celui de la liste dessous, illisible à AX3
+                // (finding Q3 n°12, HIG context-menus.md : « Ensure that your preview looks good »).
+                rowContent(title: title, meta: meta)
+                    .padding(16)
+                    .frame(maxWidth: 420, alignment: .leading)
+                    .background(.background, in: .rect(cornerRadius: 20))
+            }
             .help(title)
         } else {
             // Garde-fou : `DiscoverViewModel.sanitized(_:)` écarte déjà les
@@ -221,6 +237,14 @@ struct DiscoverArticleRow: View {
             rowContent(title: title, meta: meta)
                 .accessibilityElement(children: .combine)
         }
+    }
+
+    /// L'action « Chercher dans Triva » n'existe que si la source autorise l'usage de ses
+    /// articles par une IA (`DiscoverArticle.allowsAIUse`) : la recherche part du titre de
+    /// l'article vers le moteur choisi, éventuellement un modèle en ligne.
+    private var aiAction: ((DiscoverArticle) -> Void)? {
+        DiscoverArticlePresentation.offersAISearch(allowsAIUse: article.allowsAIUse, hasHandler: onSearch != nil)
+            ? onSearch : nil
     }
 
     private var isAccessibilityLayout: Bool {
@@ -284,7 +308,7 @@ struct DiscoverArticleRow: View {
     /// le clic principal.
     @ViewBuilder
     private func contextMenuItems(url: URL) -> some View {
-        if let onSearch {
+        if let onSearch = aiAction {
             Button("Chercher dans Triva", systemImage: "magnifyingglass") {
                 onSearch(article)
             }
@@ -301,7 +325,7 @@ struct DiscoverArticleRow: View {
     /// contextuel demande un appui long, peu pratique au lecteur d'écran.
     @ViewBuilder
     private var searchAccessibilityAction: some View {
-        if let onSearch {
+        if let onSearch = aiAction {
             Button("Chercher dans Triva") {
                 onSearch(article)
             }
