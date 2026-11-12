@@ -9,8 +9,8 @@ import SwiftUI
 
 /// Écran Réglages (1.15) : le moteur IA actif et son changement, les clés API
 /// BYOK et le choix fournisseur/modèle, les clés de recherche personnelles et
-/// — repliée par défaut, groupe « Avancé » — la liste d'instances SearXNG,
-/// l'espace occupé par les modèles MLX.
+/// — page à part, ligne « Avancé » (`AdvancedSettingsView`) — la liste
+/// d'instances SearXNG, l'espace occupé par les modèles MLX.
 ///
 /// Composants système (`Form`, lignes de navigation) plutôt que du verre :
 /// c'est l'écran où l'app doit ressembler au reste du système. Seule
@@ -75,7 +75,6 @@ struct SettingsView: View {
     /// l'appliquer pendant que la feuille est encore à l'écran reconstruirait
     /// la coquille sous elle, en pleine animation.
     @State private var pendingEngine: AIEngineOption?
-    @State private var isAdvancedExpanded = false
     /// Pile injectée, `nil` : `localNavigationPath`. Voir le commentaire de tête.
     private let injectedNavigationPath: Binding<NavigationPath>?
     @State private var localNavigationPath = NavigationPath()
@@ -192,10 +191,11 @@ struct SettingsView: View {
     /// Tout ce qui décide où partent les recherches, quel que soit le moteur IA.
     ///
     /// Les clés de recherche en premier : c'est le réglage qui change quelque
-    /// chose pour la plupart des gens, et l'invitation du chat y mène. La liste
-    /// d'instances reste repliée par défaut : elle ne concerne que ceux qui
-    /// hébergent leur propre instance. La valeur affichée dit d'un coup d'œil
-    /// si elle a été modifiée.
+    /// chose pour la plupart des gens, et l'invitation du chat y mène. « Avancé »
+    /// ouvre une page à part (décision de Ben, 2026-11-12), comme Général >
+    /// Informations dans les Réglages d'Apple : la liste d'instances ne concerne
+    /// que ceux qui hébergent leur propre instance, elle n'a pas à alourdir
+    /// cet écran.
     ///
     /// Pas d'état des clés sur la ligne : il faudrait lire le trousseau à
     /// chaque rendu (le piège décrit dans `BYOKProvidersView`). L'écran poussé
@@ -204,15 +204,8 @@ struct SettingsView: View {
         Section("Recherche") {
             NavigationLink("Clés de recherche", value: SettingsRoute.searchKeys)
                 .accessibilityIdentifier("settings.searchKeys")
-            DisclosureGroup("Avancé", isExpanded: $isAdvancedExpanded) {
-                NavigationLink(value: SettingsRoute.searxngInstances) {
-                    LabeledContent(
-                        "Instances SearXNG",
-                        value: instanceStore.isCustomized ? "Personnalisées" : "Par défaut"
-                    )
-                }
-                .accessibilityIdentifier("settings.searxngInstances")
-            }
+            NavigationLink("Avancé", value: SettingsRoute.advanced)
+                .accessibilityIdentifier("settings.advanced")
         }
     }
 
@@ -236,6 +229,8 @@ struct SettingsView: View {
             )
         case .mlxStorage:
             MLXStorageView(mlxSelectionStore: mlxSelectionStore, activeEngine: selectedEngine)
+        case .advanced:
+            AdvancedSettingsView(instanceStore: instanceStore)
         case .searxngInstances:
             SearXNGInstancesView(store: instanceStore)
         case .searchKeys:
@@ -314,6 +309,7 @@ struct SettingsView: View {
 nonisolated enum SettingsRoute: Hashable {
     case cloudModelPicker
     case mlxStorage
+    case advanced
     case searxngInstances
     case searchKeys
 }

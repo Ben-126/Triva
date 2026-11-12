@@ -23,9 +23,11 @@ import SwiftUI
 /// - `.fixedSize(horizontal: false, vertical: true)` sur le badge ET la légende : sans lui, un
 ///   parent à court de hauteur (en-tête, clavier ouvert) compressait le texte en « … » au lieu
 ///   de le laisser passer à la ligne.
-/// - Légende en `.secondary` (décision de Ben, 2026-11-11, finding 29) : en `.tertiary`, elle
-///   mesurait 1,72:1 en clair, alors qu'elle porte la promesse de confidentialité. Les dates et
-///   libellés de groupe restent en `.tertiary` ailleurs.
+/// - Légende en `MessageBubbleView.legendStyle` (`Color.primary.opacity(0.8)`, 12,5:1 en clair ;
+///   décision de Ben, 2026-11-12) : en `.tertiary` elle mesurait 1,72:1 (finding 29), et en
+///   `.secondary` 3,48:1, sous le seuil HIG de 4,5:1, alors qu'elle porte la promesse de
+///   confidentialité. Même encre que les autres légendes de l'app. Les dates et libellés de
+///   groupe restent en `.tertiary` ailleurs.
 struct EngineBadge: View {
     let badge: (icon: String, text: String, caption: String)
     /// Masque la légende (en-tête replié de la Recherche) : le badge, lui, reste toujours visible.
@@ -49,7 +51,7 @@ struct EngineBadge: View {
             if showsCaption {
                 Text(badge.caption)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(MessageBubbleView.legendStyle)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 4)
                     .accessibilityIdentifier(captionIdentifier ?? "")

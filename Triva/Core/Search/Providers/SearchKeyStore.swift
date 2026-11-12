@@ -153,6 +153,11 @@ enum SearchKeyStoreError: Error, Sendable, Equatable {
 struct SearchKeyStore {
     static let keychainService = "com.benpodrojsky.Triva.searchBYOK"
 
+    /// Postée après chaque enregistrement ou suppression réussi d'une clé : les écrans qui
+    /// dépendent de la présence d'une clé (exemples de l'écran vide, `SearchKeyAvailability`)
+    /// se mettent à jour sans relire le trousseau à chaque rendu.
+    static let didChangeNotification = Notification.Name("com.benpodrojsky.Triva.searchKeysDidChange")
+
     private let keyStore: any APIKeyStoring
     private let requester: any HTTPDataRequesting
 
@@ -175,6 +180,7 @@ struct SearchKeyStore {
         } catch {
             throw SearchKeyStoreError.keychainFailure
         }
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     /// Supprime la clé d'une source. Supprimer une clé absente n'est pas une erreur.
@@ -184,6 +190,7 @@ struct SearchKeyStore {
         } catch {
             throw SearchKeyStoreError.keychainFailure
         }
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     // MARK: Lecture
@@ -202,6 +209,12 @@ struct SearchKeyStore {
 
     func isConfigured(_ source: BYOKSearchSource) throws -> Bool {
         try credentials(for: source) != nil
+    }
+
+    /// Au moins une clé est-elle configurée ? Une panne du trousseau compte comme « non » : c'est
+    /// le cas prudent pour l'appelant (`SearchKeyAvailability` : exemples qui marchent sans clé).
+    var hasConfiguredKey: Bool {
+        ((try? configuredSources()) ?? []).isEmpty == false
     }
 
     /// Sources configurées, dans l'ordre de préférence (`BYOKSearchSource.preferenceOrder`).

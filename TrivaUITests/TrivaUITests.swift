@@ -549,10 +549,12 @@ final class TrivaUITests: XCTestCase {
             capture("08-5 Clés de recherche")
             goBack(to: Space.settings.rawValue)
         }
-        step("Avancé : instances SearXNG, repliée par défaut") {
+        step("Avancé : page à part, puis instances SearXNG") {
             openSearXNGInstances()
             XCTAssertTrue(element(labelPrefix: "Ajoutées automatiquement").exists || scrollAndFind("Ajoutées automatiquement"), "Section « Ajoutées automatiquement » absente.")
             capture("08-6 Instances SearXNG")
+            goBack(to: "Avancé")
+            capture("08-6b Avancé")
             goBack(to: Space.settings.rawValue)
         }
         step("Stockage : modèles MLX") {
@@ -576,14 +578,11 @@ final class TrivaUITests: XCTestCase {
         return target.exists
     }
 
+    /// Réglages > Avancé (page à part, 2026-11-12) > Instances SearXNG.
     private func openSearXNGInstances() {
-        let disclosure = app.buttons["Avancé"].firstMatch
-        scrollTo(disclosure)
-        let row = element("settings.searxngInstances")
-        if !row.exists {
-            disclosure.tap()
-        }
-        require(row, "« Instances SearXNG » n'apparaît pas une fois « Avancé » déplié.").tap()
+        openSettingsRow("settings.advanced", title: "Avancé")
+        let row = require(element("settings.searxngInstances"), "« Instances SearXNG » absent de la page « Avancé ».")
+        row.tap()
         require(app.navigationBars.staticTexts["Instances SearXNG"].firstMatch, "Écran des instances absent.")
     }
 

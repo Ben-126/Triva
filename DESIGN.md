@@ -88,7 +88,7 @@ volontairement plus vers A. B, C et D ont été écartées — leurs maquettes r
   | Titre d'accroche | 28pt, `.semibold` à la taille par défaut, qui grandit avec Dynamic Type : toujours `.screenTitleFont()` (`DesignSystem/ScreenTitleFont.swift`), jamais `.font(.system(size: 28…))`, sinon il devient plus petit que son sous-titre aux grandes tailles |
   | Accroche secondaire ("Bonjour") | `.subheadline`, `.secondary` |
   | Badge moteur IA | `.footnote`, `.medium` |
-  | Légende de confidentialité | `.caption`, `.tertiary` |
+  | Légende de confidentialité | `.caption`, `MessageBubbleView.legendStyle` (`Color.primary.opacity(0.8)`, 12,5:1 ; ni `.secondary` ni `.tertiary`, sous 4,5:1) |
   | Label de section (ex. "ESSAIE") | 11pt `.medium`, `tracking(1.5)`, majuscules, `.tertiary` |
 - Tracking limité à ces mêmes 1-2 valeurs, jamais 3+.
 
