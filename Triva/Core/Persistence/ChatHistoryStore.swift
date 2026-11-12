@@ -212,14 +212,20 @@ final class ChatHistoryStore {
     /// Ajoute la réponse de l'assistant. À appeler **au plus une fois, à la fin
     /// du streaming**, que celui-ci se soit terminé normalement, en erreur ou
     /// par annulation — et jamais avec un texte vide (point 3 de la politique).
+    /// `notes` : les mentions sur les sources (`StoredAnswerNotes`), écrites avec le message
+    /// pour qu'une conversation relue les redise.
     @discardableResult
     func appendAssistantMessage(
         to conversation: StoredConversation,
         text: String,
         sources: [SearXNGSearchResult] = [],
+        notes: StoredAnswerNotes = StoredAnswerNotes(),
         now: Date = .now
     ) throws -> StoredMessage {
-        try append(role: .assistant, text: text, sources: sources, to: conversation, now: now)
+        let message = try append(role: .assistant, text: text, sources: sources, to: conversation, now: now, save: false)
+        message.answerNotes = notes
+        try save(operation: "ajout d'un message")
+        return message
     }
 
     /// Décision (c) : réponse « Aucune source fiable » (mode Fiable), écrite à

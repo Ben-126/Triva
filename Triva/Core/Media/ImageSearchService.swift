@@ -56,7 +56,7 @@ struct ImageSearchService: Sendable {
     /// `maxResults` par défaut à 10 : reprend exactement `.slice(0, 10)` de
     /// `image.ts` — aucune raison de diverger, une grille d'images n'a pas la
     /// contrainte de contexte-tokens qui a motivé les autres bornes du projet
-    /// (`SearchOrchestrator.maxScrapedContextCharacters`).
+    /// (`SearchPipelineConfiguration.maxScrapedContextCharacters`).
     /// `maxHistoryMessages` par défaut à 8, cohérent avec `QueryClassifier`.
     init(
         failoverManager: FailoverManager,
@@ -72,7 +72,7 @@ struct ImageSearchService: Sendable {
 
     /// Ne throw QUE si `failoverManager.search` échoue (toutes les instances
     /// SearXNG indisponibles, ou aucune instance configurée) — l'appelant
-    /// (futur `SearchOrchestrator` ou UI) doit pouvoir distinguer "aucune
+    /// (recherche à la demande, hors pipeline : voir `MediaSearchAction`) doit pouvoir distinguer "aucune
     /// image trouvée" (tableau vide, cas normal) de "la recherche n'a pas pu
     /// être exécutée du tout" (throw), exactement comme `FailoverManager`
     /// distingue déjà les deux pour la recherche texte.

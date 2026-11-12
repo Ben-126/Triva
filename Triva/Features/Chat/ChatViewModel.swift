@@ -196,6 +196,8 @@ final class ChatViewModel {
     private struct AnswerDraft {
         var text = ""
         var sources: [SearXNGSearchResult] = []
+        /// Mentions sur les sources, persistées avec la réponse (mission E1a).
+        var notes = StoredAnswerNotes()
         var isComplete = false
     }
 
@@ -340,6 +342,7 @@ final class ChatViewModel {
                 return
             }
             answer.sources = Self.displayedSources(of: artifacts)
+            answer.notes = artifacts.storedNotes
             updateMessage(id: exchange.answerID) { $0.generationStage = .writing }
             // Mission A1 : en Fiable sans widget, artefacts et texte attendent la
             // première citation d'une page lue (`CitedAnswerGate`, dans `consume`) :
@@ -573,6 +576,7 @@ final class ChatViewModel {
         if message.role == .assistant {
             message.storedMessageID = stored.id
             message.storedConversationID = conversationID
+            message.restore(stored.answerNotes)
         }
         return message
     }
@@ -612,7 +616,9 @@ final class ChatViewModel {
         do {
             // Supprimée pendant la génération : rien à compléter.
             guard let conversation = try historyStore.conversation(with: conversationID) else { return }
-            let stored = try historyStore.appendAssistantMessage(to: conversation, text: answer.text, sources: answer.sources, now: now())
+            let stored = try historyStore.appendAssistantMessage(
+                to: conversation, text: answer.text, sources: answer.sources, notes: answer.notes, now: now()
+            )
             let storedID = stored.id
             updateMessage(id: exchange.answerID) { message in
                 message.storedMessageID = storedID

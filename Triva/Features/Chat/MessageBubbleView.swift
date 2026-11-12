@@ -231,6 +231,8 @@ nonisolated enum MessageBubblePresentation {
         var answeredWithoutSearch = false
         /// Tâche 1.16 : rédigée hors connexion, sans source ; remplace la mention précédente.
         var answeredOffline = false
+        /// Mission E1a : une recherche a eu lieu, aucune source n'était lisible.
+        var answeredWithoutReadableSource = false
         /// Mission A2 : aucune source n'a passé le test lexical de la chaîne.
         var sourcesMayBeOffTopic = false
         /// Mission C1 : SearXNG n'a pas répondu à cette recherche (non persisté).
@@ -300,10 +302,21 @@ nonisolated enum MessageBubblePresentation {
     /// connexion. Une seule mention à la fois : celle-ci l'emporte, elle dit aussi POURQUOI.
     static let answerOfflineLabel = "Hors connexion, sans source"
 
+    /// Mission E1a : une recherche a eu lieu mais aucune source n'était lisible, la réponse vient de
+    /// la mémoire du modèle. Même style que « Réponse sans recherche » : un constat, pas un avertissement.
+    static let answerWithoutReadableSourceLabel = "Réponse sans source lisible"
+
     /// La mention à poser sous la réponse, `nil` si aucune.
     static func answerNote(_ answer: AnswerSnapshot) -> String? {
         guard showsAnswerWithoutSearch(answer) else { return nil }
-        return answer.answeredOffline ? answerOfflineLabel : answerWithoutSearchLabel
+        if answer.answeredOffline { return answerOfflineLabel }
+        return answer.answeredWithoutReadableSource ? answerWithoutReadableSourceLabel : answerWithoutSearchLabel
+    }
+
+    /// Identifiant d'accessibilité de la mention (tests d'interface).
+    static func answerNoteIdentifier(_ answer: AnswerSnapshot) -> String {
+        if answer.answeredOffline { return "chat.answerOffline" }
+        return answer.answeredWithoutReadableSource ? "chat.answerWithoutReadableSource" : "chat.answerWithoutSearch"
     }
 
     /// Décision 6 de Ben (mission A2) : aucune source n'a passé le test
@@ -315,7 +328,7 @@ nonisolated enum MessageBubblePresentation {
     /// fiable » : la mention qualifie une réponse, il en faut une. Ni widget
     /// ni salutation : décidé en amont (`SearchArtifacts.answersWithoutSearch`).
     static func showsAnswerWithoutSearch(_ answer: AnswerSnapshot) -> Bool {
-        (answer.answeredWithoutSearch || answer.answeredOffline)
+        (answer.answeredWithoutSearch || answer.answeredOffline || answer.answeredWithoutReadableSource)
             && answer.state != .noReliableSources
             && (answer.hasBody || answer.hasTLDR)
     }
@@ -400,6 +413,7 @@ struct MessageBubbleView: View, Equatable {
             webSourceKind: message.webSourceKind,
             answeredWithoutSearch: message.answeredWithoutSearch,
             answeredOffline: message.answeredOffline,
+            answeredWithoutReadableSource: message.answeredWithoutReadableSource,
             sourcesMayBeOffTopic: message.sourcesMayBeOffTopic,
             searXNGUnreachable: message.searXNGUnreachable
         )
@@ -560,7 +574,7 @@ private struct AnswerBubble: View {
                 Text(note)
                     .font(.caption)
                     .foregroundStyle(Self.legendStyle)
-                    .accessibilityIdentifier(answer.answeredOffline ? "chat.answerOffline" : "chat.answerWithoutSearch")
+                    .accessibilityIdentifier(MessageBubblePresentation.answerNoteIdentifier(answer))
             }
 
             if !message.sources.isEmpty {

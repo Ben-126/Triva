@@ -150,6 +150,7 @@ final class FavoritesStore {
             answer: message.text,
             savedAt: now
         )
+        favorite.uncitableSourceNumbers = message.answerNotes.uncitableSourceNumbers
         let copies = message.orderedSources.enumerated().map { index, source in
             StoredFavoriteSource(copying: source, order: index)
         }
@@ -181,6 +182,7 @@ final class FavoritesStore {
         question: String,
         answer: String,
         sources: [SearXNGSearchResult] = [],
+        uncitableSourceNumbers: Set<Int> = [],
         now: Date = .now
     ) throws -> StoredFavorite {
         if let existing = try favorite(forMessageID: messageID) {
@@ -194,6 +196,7 @@ final class FavoritesStore {
             answer: answer,
             savedAt: now
         )
+        favorite.uncitableSourceNumbers = uncitableSourceNumbers
         let copies = sources.enumerated().map { index, result in
             StoredFavoriteSource(result: result, order: index)
         }

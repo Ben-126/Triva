@@ -44,6 +44,18 @@ extension TrivaUITests {
         case library = "Bibliothèque"
         case favorites = "Favoris"
         case settings = "Réglages"
+
+        /// Identifiant d'accessibilité de l'onglet (`TrivaRootView.tabs`) : les libellés disparaissent
+        /// sur iPhone Duo plié, l'identifiant reste.
+        var tabIdentifier: String {
+            switch self {
+            case .search: "tab.search"
+            case .discover: "tab.discover"
+            case .library: "tab.library"
+            case .favorites: "tab.favorites"
+            case .settings: "tab.settings"
+            }
+        }
     }
 
     /// `engine` : valeur de lancement du moteur. `nil` : aucune épingle, le moteur enregistré vaut.
@@ -112,6 +124,10 @@ extension TrivaUITests {
     func arrangeWindowOnPad() {
         guard isPad else { return }
         let option = ProcessInfo.processInfo.environment["TRIVA_WINDOW"] ?? "Remplir"
+        // Déjà plein écran et « Remplir » demandé : rien à faire, et surtout aucune requête sur
+        // SpringBoard. Son arbre est énorme, et chercher des commandes qui n'existent pas en plein
+        // écran a coûté 922 s de « Collecting debug information » (iPad Pro 13, mission V).
+        if option == "Remplir", appFillsScreen { return }
         let springBoard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let anyElement = springBoard.descendants(matching: .any)
         let controls = anyElement.matching(identifier: "window-controls:com.benpodrojsky.Triva").firstMatch
@@ -122,6 +138,19 @@ extension TrivaUITests {
         }
         require(controls, "Commandes de fenêtre absentes.").press(forDuration: 1.2)
         require(springBoard.buttons[option].firstMatch, "Menu de fenêtre : « \(option) » absent.").tap()
+    }
+
+    /// La fenêtre de l'app couvre l'écran (orientation indifférente : on compare les côtés triés).
+    var appFillsScreen: Bool {
+        #if os(iOS)
+        let window = app.windows.firstMatch.frame
+        let screen = UIScreen.main.bounds
+        let (windowShort, windowLong) = (min(window.width, window.height), max(window.width, window.height))
+        let (screenShort, screenLong) = (min(screen.width, screen.height), max(screen.width, screen.height))
+        return abs(windowShort - screenShort) < 1 && abs(windowLong - screenLong) < 1
+        #else
+        true
+        #endif
     }
 
     // MARK: - Éléments
@@ -225,7 +254,7 @@ extension TrivaUITests {
 
     /// Le geste seul : un espace peut se rouvrir sur un écran poussé, sans la marque de `open`.
     func tapSpace(_ space: Space, file: StaticString = #filePath, line: UInt = #line) {
-        let tab = app.tabBars.buttons[space.rawValue]
+        let tab = tabItem(of: space)
         if isPad, !tab.exists {
             openFromSidebar(space, file: file, line: line)
         } else {
@@ -233,6 +262,17 @@ extension TrivaUITests {
             dismissKeyboard()
             tab.tap()
         }
+    }
+
+    /// L'onglet d'un espace, par identifiant puis par titre : sur iPhone Duo plié la barre d'onglets
+    /// passe sur le côté sans libellé (HIG « Designing for iPhone Duo », contrôles verticaux), et
+    /// la recherche par titre ne trouve plus rien.
+    func tabItem(of space: Space) -> XCUIElement {
+        // Hors « BackButton » : sur un écran poussé, le retour porte le titre de l'écran précédent
+        // (« Réglages », « Favoris »), et serait pris pour l'onglet.
+        app.buttons.matching(NSPredicate(
+            format: "identifier != 'BackButton' AND (identifier == %@ OR label == %@)", space.tabIdentifier, space.rawValue
+        )).firstMatch
     }
 
     /// Si le `NavigationSplitView` a masqué sa sidebar, on la révèle comme le ferait l'utilisateur.
@@ -261,7 +301,11 @@ extension TrivaUITests {
     /// Le retour de la pile de navigation, par son identifiant système : son libellé varie, et sur
     /// iPad le premier bouton des barres de navigation est celui de la sidebar.
     func goBack(to title: String) {
-        app.navigationBars.buttons["BackButton"].firstMatch.tap()
+        // iPhone Duo plié : les contrôles de navigation passent sur le côté, le retour n'est plus
+        // DANS la barre de navigation mais dans la barre d'outils (constaté dans l'arbre, mission E1dH).
+        let inBar = app.navigationBars.buttons["BackButton"].firstMatch
+        let back = inBar.exists ? inBar : app.buttons.matching(identifier: "BackButton").firstMatch
+        require(back, "Bouton de retour absent.").tap()
         require(app.navigationBars.staticTexts[title].firstMatch, "Le retour n'a pas ramené sur \(title).")
     }
 

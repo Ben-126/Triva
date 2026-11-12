@@ -159,8 +159,9 @@ struct EngineStatusView: View {
     }
 
     #if os(macOS)
-    /// Même barre que les feuilles des Réglages (`SettingsView.sheetCloseBar`) : fond opaque et
-    /// séparateur, car la liste défile derrière ; Échap ferme aussi.
+    /// Barre « Fermer » propre à cette feuille Mac : fond opaque et séparateur, car la liste défile
+    /// derrière ; Échap ferme aussi. (Les feuilles des Réglages, elles, utilisent un vrai titre de
+    /// barre avec un bouton « Annuler » ou « Fermer » en `ToolbarItem(placement: .cancellationAction)`.)
     private var mlxSelectionCloseBar: some View {
         VStack(spacing: 0) {
             Divider()
@@ -309,9 +310,18 @@ nonisolated enum EngineHeaderLayout {
     /// pour la barre de saisie et les exemples (Duo plié, clavier ouvert).
     static let emptyScreenMinimumHeight: CGFloat = 360
 
+    /// En dessous, la hauteur n'est pas une vraie mesure : c'est un état transitoire de la
+    /// première mise en page (constaté à la console, iPhone 18 Pro : 24 pt puis 12 pt, avant les
+    /// 623 pt réels). La traiter comme réelle repliait l'en-tête une image, puis le redéployait
+    /// aussitôt, et SwiftUI signalait « glassEffect() tried to update multiple times per frame »
+    /// (QA Q2 point 12). Seuil volontairement bas (40 pt) : il ne doit écarter que ces
+    /// valeurs de départ, jamais une vraie hauteur réduite (clavier ouvert en paysage).
+    static let minimumMeasuredHeight: CGFloat = 40
+
     /// - Parameters:
     ///   - availableHeight: hauteur offerte à l'écran de Recherche ; `0` tant qu'elle n'est pas
-    ///     mesurée (premier rendu) : l'en-tête reste alors déplié.
+    ///     mesurée (premier rendu), et moins de `minimumMeasuredHeight` tant que la mise en page
+    ///     n'est pas posée : l'en-tête reste alors déplié.
     ///   - hasMessages: une conversation est affichée.
     ///   - needsSetup: le moteur attend une action (choisir un modèle MLX, configurer une clé) :
     ///     jamais replié, c'est l'action sans laquelle rien ne répond.
@@ -322,7 +332,7 @@ nonisolated enum EngineHeaderLayout {
         needsSetup: Bool,
         isAccessibilitySize: Bool
     ) -> Bool {
-        guard !needsSetup, availableHeight > 0 else { return false }
+        guard !needsSetup, availableHeight >= minimumMeasuredHeight else { return false }
         if hasMessages {
             return isAccessibilitySize || availableHeight < conversationMinimumHeight
         }

@@ -312,6 +312,9 @@ private struct TrivaRootShell: View {
                 } label: {
                     Label(destination.title, systemImage: destination.systemImage)
                 }
+                // Identifiant stable : sur iPhone Duo plié, les onglets passent sur le côté SANS
+                // libellé, et les tests UI ne peuvent plus les retrouver par leur titre.
+                .accessibilityIdentifier("tab.\(destination.rawValue)")
             }
         }
     }

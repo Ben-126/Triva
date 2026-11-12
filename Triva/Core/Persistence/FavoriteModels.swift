@@ -115,6 +115,16 @@ nonisolated final class StoredFavorite {
     @Relationship(deleteRule: .cascade, inverse: \StoredFavoriteSource.favorite)
     var sources: [StoredFavoriteSource]
 
+    /// Numéros `[n]` des sources jamais lues (`StoredMessage.uncitableSourceNumbersRaw`, mission
+    /// E1a), recopiés au marquage : le détail d'un favori les montre en texte simple et « non lue »,
+    /// comme la bulle. Scalaire à valeur par défaut (migration légère) ; lire par `uncitableSourceNumbers`.
+    var uncitableSourceNumbersRaw: String = ""
+
+    var uncitableSourceNumbers: Set<Int> {
+        get { SourceNumberCodec.decode(uncitableSourceNumbersRaw) }
+        set { uncitableSourceNumbersRaw = SourceNumberCodec.encode(newValue) }
+    }
+
     init(
         id: UUID = UUID(),
         messageID: UUID,

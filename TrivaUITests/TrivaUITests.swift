@@ -95,7 +95,7 @@ final class TrivaUITests: XCTestCase {
                 XCTAssertTrue(element("engine.card.\(option)").exists, "Carte \(option) absente.")
             }
             XCTAssertFalse(element("engine.cancel").exists, "« Annuler » n'a pas de sens au premier lancement.")
-            XCTAssertFalse(app.tabBars.buttons[Space.settings.rawValue].exists, "La coquille ne doit pas précéder le choix.")
+            XCTAssertFalse(tabItem(of: .settings).exists, "La coquille ne doit pas précéder le choix.")
             capture("01-1 Écran de choix du moteur")
         }
     }
@@ -255,9 +255,28 @@ final class TrivaUITests: XCTestCase {
 
     /// Le clavier, resté ouvert depuis l'envoi, cache la moitié de la réponse : on fait défiler le
     /// fil, sans toucher (un toucher pourrait ouvrir un lien de source).
+    ///
+    /// `scrollDismissesKeyboard` ne se déclenche qu'en DÉFILANT : un fil qui tient tout entier dans la
+    /// zone visible (iPad Pro 13 pouces, réponse courte) ne bouge pas sous le doigt, et le clavier
+    /// reste, sans que l'app y soit pour rien (test10 rouge 1 fois sur 3, mission E1dH). Le test
+    /// regarde donc si le fil a bougé. Bougé et clavier resté : échec réel. Immobile : sur iPad,
+    /// constat joint au rapport et clavier fermé par Retour (jamais par un toucher, qui pourrait
+    /// ouvrir un lien de source) ; sur iPhone, le clavier réduit tant la zone visible que le fil doit
+    /// défiler, donc l'immobilité est elle-même un échec.
     private func scrollKeyboardAway() {
+        let anchor = require(element("chat.question"), "Question absente du fil avant de le défiler.")
+        let before = anchor.frame
         threadPoint.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: Timeout.screen), "Défiler dans le fil ne ferme pas le clavier.")
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.waitForNonExistence(timeout: Timeout.stop / 6) { return }
+        let hasScrolled = anchor.frame != before
+        guard !hasScrolled, isPad else {
+            XCTFail(hasScrolled ? "Défiler dans le fil ne ferme pas le clavier." : "Le fil ne défile pas, clavier ouvert : zone visible réduite et rien à défiler.")
+            return
+        }
+        attachText("Fil non défilable", "Le fil tient dans la zone visible (iPad) : le défilement ne peut pas fermer le clavier. Fermé par Retour.")
+        dismissKeyboard()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: Timeout.screen), "Le clavier ne se ferme pas, même par Retour.")
     }
 
     /// Attend l'étoile ou le bandeau d'erreur, sans pause fixe.
@@ -398,6 +417,10 @@ final class TrivaUITests: XCTestCase {
     private func sendQuestion(_ text: String) -> XCUIElement {
         let input = require(element("chat.input"), "Barre de saisie absente.")
         input.tap()
+        // Le 1er clavier d'un simulateur peut se faire attendre (34 s sur iPhone Duo, mission E1dH) et
+        // l'appui se perdre : sans clavier ouvert, `typeText` échoue (« no keyboard focus »). On
+        // rappuie une fois, comme l'utilisateur.
+        if !app.keyboards.firstMatch.waitForExistence(timeout: Timeout.stop / 3) { input.tap() }
         input.typeText(text)
         let send = element("chat.send")
         XCTAssertTrue(waitUntil(send, "enabled == true"), "Bouton d'envoi inactif malgré le texte saisi.")

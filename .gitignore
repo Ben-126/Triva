@@ -34,7 +34,7 @@ graphify-out/
 # essais de direction artistique (jetables, pas destinés au repo)
 Triva/DesignExploration/
 
-# raccourci local vers le plan iOS (symlink vers Perplexica_ameliorer, propre à la machine)
+# plan iOS : fichier local (contient des infos privées, le dépôt est public). Copie de secours : ~/.claude/triva-v1-backup/
 /plan_a_suivre_ios.md
 
 # Brouillon de prompt personnel, hors dépôt
@@ -49,3 +49,6 @@ CLAUDE.md
 
 # État local d'outils d'agents
 .claude-flow/
+
+# réglages locaux de VS Code
+/.vscode/

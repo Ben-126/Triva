@@ -82,20 +82,23 @@ extension ChatViewModel {
         var webSourceKind: WebSearchSourceKind?
         /// Réponse rédigée sans aucune recherche ni widget, hors salutation :
         /// « Réponse sans recherche » sous la bulle (mission A2, décision 3,
-        /// `SearchArtifacts.answeredWithoutSearch`). Non persisté, comme
-        /// `webSourceKind` : un message relu n'affiche pas la mention.
+        /// `SearchArtifacts.answeredWithoutSearch`). Persisté (mission E1a, `StoredAnswerNotes`) ;
+        /// seul `webSourceKind` ne l'est pas : un message relu ne connaît plus le service.
         var answeredWithoutSearch = false
         /// Rédigée hors connexion, sans recherche ni source (tâche 1.16,
         /// `SearchArtifacts.answeredOffline`) : la mention « Hors connexion, sans source » remplace
-        /// « Réponse sans recherche ». Non persistée non plus.
+        /// « Réponse sans recherche ». Persistée avec la précédente (mission E1a).
         var answeredOffline = false
+        /// Une recherche a eu lieu mais aucune source n'était lisible (mission E1a,
+        /// `SearchArtifacts.answeredWithoutReadableSource`) : « Réponse sans source lisible ».
+        var answeredWithoutReadableSource = false
         /// Aucune source n'a passé le test lexical de la chaîne : sources
         /// affichées « probablement hors sujet » (mission A2, décision 6,
         /// `WebSearchChainReport.matchesQuestion`). Non persisté non plus.
         var sourcesMayBeOffTopic = false
         /// Numéros `[n]` des sources affichées mais jamais LUES (`SearchArtifacts.uncitableSourceNumbers`,
         /// mission A1) : leur citation s'affiche en texte simple, pas en pastille, et la liste les
-        /// marque « non lue » (mission C1). Non persisté : un message relu ne le sait plus.
+        /// marque « non lue » (mission C1). Persisté (mission E1a, `StoredAnswerNotes`).
         var uncitableSourceNumbers: Set<Int> = []
         /// SearXNG n'a pas répondu à cette recherche (`ChatViewModel.searXNGUnreachable`) : les
         /// boutons « Rechercher des images / vidéos », qui ne passent que par SearXNG, sont masqués
@@ -145,6 +148,14 @@ extension ChatViewModel {
             reasoningTiming = reasoningTiming.updated(for: segments.reasoningPhase, at: date)
         }
 
+        /// Mentions d'un message relu (conversation de la Bibliothèque, mission E1a).
+        mutating func restore(_ notes: StoredAnswerNotes) {
+            uncitableSourceNumbers = notes.uncitableSourceNumbers
+            answeredWithoutSearch = notes.answeredWithoutSearch
+            answeredOffline = notes.answeredOffline
+            answeredWithoutReadableSource = notes.answeredWithoutReadableSource
+        }
+
         mutating func attach(_ artifacts: SearchArtifacts) {
             sources = ChatViewModel.displayedSources(of: artifacts)
             attachmentSourceCount = artifacts.attachmentSourceCount
@@ -155,6 +166,7 @@ extension ChatViewModel {
             webSourceKind = artifacts.webSourceKind
             answeredWithoutSearch = artifacts.answeredWithoutSearch
             answeredOffline = artifacts.answeredOffline
+            answeredWithoutReadableSource = artifacts.answeredWithoutReadableSource
             sourcesMayBeOffTopic = !artifacts.webSearchReport.matchesQuestion
         }
 
@@ -175,6 +187,7 @@ extension ChatViewModel {
             webSourceKind = nil
             answeredWithoutSearch = false
             answeredOffline = false
+            answeredWithoutReadableSource = false
             sourcesMayBeOffTopic = false
             structureReport = nil
             suggestions = []

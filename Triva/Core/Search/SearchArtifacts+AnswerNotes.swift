@@ -25,6 +25,26 @@ extension SearchArtifacts {
     nonisolated static func answersWithoutSearch(question: String, searchPerformed: Bool, widgetCount: Int) -> Bool {
         !searchPerformed && widgetCount == 0 && !SmallTalk.isGreeting(question)
     }
+
+    /// Mention « Réponse sans source lisible » (mission E1a) : une recherche a eu lieu, mais aucune
+    /// source n'était lisible (aucun résultat, ou seulement des pages sans extrait ni contenu :
+    /// `citableSourceCount == 0`). Le rédacteur répond alors de mémoire, comme sans recherche, et
+    /// `answersWithoutSearch` (qui exige `!searchPerformed`) ne le disait pas. Un widget qui a
+    /// répondu (calcul, météo) l'écarte, comme pour l'autre mention. Dérivée de champs existants :
+    /// rien à décider dans l'orchestrateur. Le mode Fiable n'y arrive jamais (`lacksReliableSources`).
+    nonisolated var answeredWithoutReadableSource: Bool {
+        searchPerformed && citableSourceCount == 0 && widgets.isEmpty
+    }
+
+    /// Les mentions à persister avec la réponse (`ChatHistoryStore.appendAssistantMessage`).
+    nonisolated var storedNotes: StoredAnswerNotes {
+        StoredAnswerNotes(
+            uncitableSourceNumbers: uncitableSourceNumbers,
+            answeredWithoutSearch: answeredWithoutSearch,
+            answeredOffline: answeredOffline,
+            answeredWithoutReadableSource: answeredWithoutReadableSource
+        )
+    }
 }
 
 /// Reconnaissance d'un message de pure politesse : salutation, remerciement, au revoir, « ça va ? ».

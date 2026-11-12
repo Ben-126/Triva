@@ -222,6 +222,14 @@ nonisolated final class StoredMessage {
     /// défaut : migration légère automatique des bases existantes (2026-11-01).
     var reportsNoReliableSources: Bool = false
 
+    /// Mentions de réponse sur ses sources (mission E1a, voir `StoredAnswerNotes`). Scalaires à
+    /// valeur par défaut, comme `reportsNoReliableSources` : migration légère, un message écrit
+    /// avant leur ajout se relit sans mention. Lire et écrire par `answerNotes`.
+    var uncitableSourceNumbersRaw: String = ""
+    var answeredWithoutSearch: Bool = false
+    var answeredOffline: Bool = false
+    var answeredWithoutReadableSource: Bool = false
+
     init(
         id: UUID = UUID(),
         role: StoredMessageRole,
@@ -247,6 +255,24 @@ nonisolated final class StoredMessage {
     var role: StoredMessageRole {
         get { StoredMessageRole(rawValue: roleRawValue) ?? .assistant }
         set { roleRawValue = newValue.rawValue }
+    }
+
+    /// Les mentions, en valeur.
+    var answerNotes: StoredAnswerNotes {
+        get {
+            StoredAnswerNotes(
+                uncitableSourceNumbers: SourceNumberCodec.decode(uncitableSourceNumbersRaw),
+                answeredWithoutSearch: answeredWithoutSearch,
+                answeredOffline: answeredOffline,
+                answeredWithoutReadableSource: answeredWithoutReadableSource
+            )
+        }
+        set {
+            uncitableSourceNumbersRaw = SourceNumberCodec.encode(newValue.uncitableSourceNumbers)
+            answeredWithoutSearch = newValue.answeredWithoutSearch
+            answeredOffline = newValue.answeredOffline
+            answeredWithoutReadableSource = newValue.answeredWithoutReadableSource
+        }
     }
 
     /// Sources triées par `order` : l'ordre de citation `[1]`, `[2]`… tel
