@@ -663,16 +663,16 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/anthropics/ClaudeForFoundationModels";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = revision;
+				revision = fd965bfb9f2d871e4345ecd65557d01f51588ccf;
 			};
 		};
 		E0E86AE23040E08B001915D6 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = revision;
+				revision = 37688d2cf7d3906e08c74479c9d9949ce6b81136;
 			};
 		};
 		E0E86AE73040E1A2001915D6 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
