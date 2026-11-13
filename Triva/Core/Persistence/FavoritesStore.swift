@@ -21,8 +21,8 @@ nonisolated enum FavoritesStoreError: Error, Sendable, Equatable {
     /// Une lecture a échoué.
     case fetchFailed(reason: String)
 
-    /// Tentative de marquer un message utilisateur. Le web ne propose l'étoile
-    /// que sur les réponses (`MessageActions/Favorite.tsx`), et un favori sans
+    /// Tentative de marquer un message utilisateur. La version web d'origine ne propose l'étoile
+    /// que sur les réponses, et un favori sans
     /// réponse n'aurait rien à afficher : c'est une erreur d'appel, signalée
     /// plutôt que convertie en silence en un favori incohérent.
     case notAnAssistantMessage
@@ -55,9 +55,9 @@ nonisolated enum FavoritesStoreError: Error, Sendable, Equatable {
 
 /// Accès unique aux favoris (1.10).
 ///
-/// Portage de `useFavorites.ts` (web) : `save` → `mark`, `remove` → `unmark`,
+/// Portage du hook de favoris de la version web d'origine : `save` → `mark`, `remove` → `unmark`,
 /// `isFavorited` → `isFavorite(messageID:)`, la liste `favorites` →
-/// `favorites()`. Le stockage passe de `localStorage` (JSON réécrit en entier à
+/// `favorites()`. Le stockage passe du stockage local du navigateur (JSON réécrit en entier à
 /// chaque changement) à SwiftData, dans le **même** `ModelContainer` que
 /// l'historique (`TrivaModelContainer.shared`).
 ///
@@ -150,7 +150,7 @@ final class FavoritesStore {
             answer: message.text,
             savedAt: now
         )
-        favorite.uncitableSourceNumbers = message.answerNotes.uncitableSourceNumbers
+        favorite.answerNotes = message.answerNotes
         let copies = message.orderedSources.enumerated().map { index, source in
             StoredFavoriteSource(copying: source, order: index)
         }
@@ -171,10 +171,13 @@ final class FavoritesStore {
     ///
     /// **Pas de doublon** : si un favori existe déjà pour ce `messageID`, il est
     /// renvoyé inchangé, sans écriture ni changement de `revision`. Écart
-    /// volontaire avec le web, qui remplace l'entrée et la remonte en tête :
+    /// volontaire avec la version web d'origine, qui remplace l'entrée et la remonte en tête :
     /// taper deux fois sur une étoile déjà pleine ne doit ni réécrire la date ni
     /// réordonner la liste. Retirer puis remarquer, en revanche, crée un favori
     /// neuf daté du nouveau marquage.
+    ///
+    /// `notes` : les mentions de la bulle (sources non lues, « Réponse sans recherche »…), recopiées
+    /// pour que le détail les redise (mission E2b).
     @discardableResult
     func mark(
         messageID: UUID,
@@ -182,7 +185,7 @@ final class FavoritesStore {
         question: String,
         answer: String,
         sources: [SearXNGSearchResult] = [],
-        uncitableSourceNumbers: Set<Int> = [],
+        notes: StoredAnswerNotes = StoredAnswerNotes(),
         now: Date = .now
     ) throws -> StoredFavorite {
         if let existing = try favorite(forMessageID: messageID) {
@@ -196,7 +199,7 @@ final class FavoritesStore {
             answer: answer,
             savedAt: now
         )
-        favorite.uncitableSourceNumbers = uncitableSourceNumbers
+        favorite.answerNotes = notes
         let copies = sources.enumerated().map { index, result in
             StoredFavoriteSource(result: result, order: index)
         }
@@ -324,7 +327,7 @@ final class FavoritesStore {
 
     // MARK: - Liste
 
-    /// Favoris du plus récemment marqué au plus ancien (ordre du web, qui
+    /// Favoris du plus récemment marqué au plus ancien (ordre de la version web d'origine, qui
     /// insère en tête : `[entry, ...filtered]`).
     ///
     /// Départage sur `question` puis `answer` : sans critère secondaire, deux

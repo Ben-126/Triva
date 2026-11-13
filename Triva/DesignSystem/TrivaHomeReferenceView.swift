@@ -42,7 +42,7 @@ struct TrivaHomeReferenceView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Text("Que veux-tu explorer ?")
-                .font(.system(size: 28, weight: .semibold))
+                .screenTitleFont()
         }
     }
 

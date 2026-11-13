@@ -10,8 +10,9 @@ import Foundation
 /// Tour seedé de la recherche web, avec la chaîne de repli (RI1b). Logique sortie de
 /// `SearchOrchestrator.swift`, qui dépasse déjà largement 800 lignes : n'y restent que la
 /// plomberie (propriété, paramètre d'init, champ `webSourceKind` des artefacts) et l'appel.
-/// Fonction STATIQUE à paramètres explicites : les propriétés de l'orchestrateur sont `private`,
-/// donc invisibles depuis ce fichier.
+/// Fonction STATIQUE à paramètres explicites, par choix : elle se teste sans construire d'orchestrateur,
+/// et `nonisolated` la garde hors du main actor. (Plusieurs propriétés de l'orchestrateur sont
+/// internes depuis le découpage E1 : ce n'est plus la visibilité qui l'impose.)
 extension SearchOrchestrator {
     /// Sortie du tour seedé, source web qui l'a fournie (`SearchArtifacts.webSourceKind`) et constat
     /// de la chaîne (`SearchArtifacts.webSearchReport`, mission A2).

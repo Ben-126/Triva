@@ -336,7 +336,7 @@ struct CalculationWidgetResultTests {
         let data = CalculationWidgetData(expression: "2 + 2", result: 4, formattedResult: "4")
         let context = CalculationWidgetService.llmContext(for: data)
         #expect(context == "Résultat du calcul « 2 + 2 » : 4.")
-        #expect(!context.contains("{"))  // pas de JSON brut, contrairement au web
+        #expect(!context.contains("{"))  // pas de JSON brut, contrairement à la version web d'origine
     }
 }
 

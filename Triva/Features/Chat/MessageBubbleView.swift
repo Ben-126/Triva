@@ -233,9 +233,9 @@ nonisolated enum MessageBubblePresentation {
         var answeredOffline = false
         /// Mission E1a : une recherche a eu lieu, aucune source n'était lisible.
         var answeredWithoutReadableSource = false
-        /// Mission A2 : aucune source n'a passé le test lexical de la chaîne.
+        /// Mission A2 : aucune source n'a passé le test lexical de la chaîne (persisté, mission E2b).
         var sourcesMayBeOffTopic = false
-        /// Mission C1 : SearXNG n'a pas répondu à cette recherche (non persisté).
+        /// Mission C1 : SearXNG n'a pas répondu à cette recherche (persisté, mission E2b).
         var searXNGUnreachable = false
     }
 
@@ -264,8 +264,8 @@ nonisolated enum MessageBubblePresentation {
     }
 
     /// Boutons « Rechercher des images / vidéos » (décision (a) : à la
-    /// demande, comme le web) : sous une réponse terminée, ou arrêtée avec un
-    /// texte, qui s'appuie sur des sources WEB. Écart assumé avec le web, qui
+    /// demande, comme la version web d'origine) : sous une réponse terminée, ou arrêtée avec un
+    /// texte, qui s'appuie sur des sources WEB. Écart assumé avec la version web d'origine, qui
     /// les montre sous chaque réponse : une salutation, un calcul ou une
     /// réponse tirée des seuls fichiers joints n'ont pas de sujet à illustrer,
     /// et deux boutons de plus sous chacune d'elles seraient du remplissage.
@@ -568,14 +568,8 @@ private struct AnswerBubble: View {
                 .equatable()
             }
 
-            // Mission A2 : précision factuelle, rôle de la légende (DESIGN.md) ; elle change la
-            // lecture de la réponse, elle doit se voir (`legendStyle`).
-            if let note = MessageBubblePresentation.answerNote(answer) {
-                Text(note)
-                    .font(.caption)
-                    .foregroundStyle(Self.legendStyle)
-                    .accessibilityIdentifier(MessageBubblePresentation.answerNoteIdentifier(answer))
-            }
+            // Mission A2 : précision factuelle ; même composant que le détail d'un favori (E2b).
+            AnswerNoteLine(answer: answer)
 
             if !message.sources.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -584,12 +578,7 @@ private struct AnswerBubble: View {
                     HistorySectionHeader(title: "Sources")
                     SourcesListView(sources: message.sources, unreadNumbers: message.uncitableSourceNumbers)
 
-                    if MessageBubblePresentation.showsOffTopicSources(answer) {
-                        Text(MessageBubblePresentation.offTopicSourcesLabel)
-                            .font(.caption)
-                            .foregroundStyle(Self.legendStyle)
-                            .accessibilityIdentifier("chat.offTopicSources")
-                    }
+                    OffTopicSourcesNote(answer: answer)
 
                     // Rôle de la légende de confidentialité (DESIGN.md) : une
                     // précision factuelle, sans verre ni icône.

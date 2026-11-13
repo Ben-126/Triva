@@ -37,8 +37,8 @@ extension SearchOrchestrator {
     /// pour arriver, puis valent `.failed` et sont annulés. Une erreur de la
     /// recherche texte (ou une annulation) remonte et annule les médias ; un
     /// échec des médias ne lève jamais (`MediaSearchResults.search`).
-    /// `Task.sleep` (temps réel) plutôt que `clock` : l'horloge injectée ne
-    /// mesure que les tours de scrape.
+    /// Le délai de grâce se mesure sur `clock`, l'horloge injectée (comme les
+    /// tours de scrape) : un test le pilote sans durée réelle.
     nonisolated func webResearchAlongsideMedia(
         flavor: WebSearchFlavor,
         uploads: UploadsSearchAction?,
@@ -50,6 +50,7 @@ extension SearchOrchestrator {
         }
         let searcher = mediaSearcher
         let grace = mediaGracePeriod
+        let graceClock = clock
         return try await withThrowingTaskGroup(of: ParallelSearchEvent.self) { group in
             group.addTask { .research(try await self.webResearch(flavor: flavor, uploads: uploads, searchQuery: searchQuery)) }
             group.addTask { .media(await MediaSearchResults.search(mediaKinds, query: searchQuery, using: searcher)) }
@@ -61,7 +62,7 @@ extension SearchOrchestrator {
                     research = outcome
                     if media == nil {
                         group.addTask {
-                            try? await Task.sleep(for: grace)
+                            try? await graceClock.sleep(for: grace)
                             return .mediaGraceExpired
                         }
                     }

@@ -163,6 +163,7 @@ struct FavoriteDetailContentView: View {
 
     var body: some View {
         let segments = ReasoningSegmenter.segment(content.answer, isStreaming: false)
+        let answer = FavoritePresentation.answerSnapshot(of: content)
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
@@ -179,11 +180,14 @@ struct FavoriteDetailContentView: View {
                         text: segments.body, sources: content.sources, isStreaming: false,
                         unreadSourceNumbers: content.uncitableSourceNumbers
                     )
+                    // Mêmes mentions, même composant que sous la réponse du chat (mission E2b).
+                    AnswerNoteLine(answer: answer)
                 }
                 if !content.sources.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         HistorySectionHeader(title: "Sources")
                         SourcesListView(sources: content.sources, unreadNumbers: content.uncitableSourceNumbers)
+                        OffTopicSourcesNote(answer: answer)
                     }
                 }
                 // Seul élément de verre de l'écran, donc sans conteneur ;

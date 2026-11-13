@@ -12,8 +12,8 @@ import SwiftUI
 
 /// État de la section images d'un message, piloté par l'intégrateur
 /// (`ChatViewModel`, à l'étape suivante). Port des états implicites de
-/// `SearchImages.tsx` (`images === null` avec son bouton, `loading`,
-/// `images`), plus un état d'échec que le web n'a pas : un `fetch` qui y
+/// la version web d'origine (`images === null` avec son bouton, `loading`,
+/// `images`), plus un état d'échec que la version web d'origine n'a pas : un `fetch` qui y
 /// échoue laisse le squelette de chargement affiché indéfiniment.
 ///
 /// `.failed` ne porte AUCUN détail d'erreur, volontairement : la vue n'a rien
@@ -37,10 +37,10 @@ enum ImageResultsPhase: Sendable, Equatable {
 
 /// Résultats de recherche d'images d'un message (tâche 1.6) : grille
 /// `LazyVGrid` de vignettes, chacune avec le domaine de sa source. Port de
-/// `src/components/SearchImages.tsx` (web), refait selon DESIGN.md.
+/// la grille d'images de la version web d'origine, refait selon DESIGN.md.
 ///
 /// ## Parcours
-/// - `.idle` : bouton « Rechercher des images », comme le bouton du web. La
+/// - `.idle` : bouton « Rechercher des images », comme le bouton de la version web d'origine. La
 ///   recherche coûte un appel au modèle (reformulation) plus une requête
 ///   SearXNG : l'intégrateur choisit de la lancer à la demande, ou d'office en
 ///   démarrant directement en `.loading`.
@@ -55,12 +55,12 @@ enum ImageResultsPhase: Sendable, Equatable {
 ///   seulement sur CHANGEMENT de phase : un message rouvert depuis
 ///   l'historique, déjà en `.loaded`, ne s'annonce pas.
 ///
-/// ## Écarts assumés vis-à-vis du web
+/// ## Écarts assumés vis-à-vis de la version web d'origine
 /// - Cases 4:3 au lieu de 16:9 (voir `imageTileAspectRatio`), et domaine
-///   visible sous chaque case : le web n'en montre aucun.
+///   visible sous chaque case : la version web d'origine n'en montre aucun.
 /// - Pas d'agrandissement au survol ni de rétrécissement au clic : le style de
 ///   bouton système donne déjà le retour au toucher.
-/// - Un état d'échec avec « Réessayer », absent du web.
+/// - Un état d'échec avec « Réessayer », absent de la version web d'origine.
 ///
 /// ## Intégration (faite à l'étape suivante, pas ici)
 /// À poser comme FRÈRE de la bulle assistant, jamais à l'intérieur, et dans le
@@ -277,10 +277,10 @@ private struct MoreImagesTile: View {
 
 /// Visionneuse plein écran (iOS) ou en feuille (macOS) : une image par page,
 /// balayage horizontal entre les résultats. L'équivalent natif de la
-/// `Lightbox` du web.
+/// `Lightbox` de la version web d'origine.
 ///
 /// ## Démarrer sur la bonne page plutôt que réordonner
-/// Le web réordonne les diapositives (`[slides[i], ...avant, ...après]`) pour
+/// La version web d'origine réordonne les diapositives (`[slides[i], ...avant, ...après]`) pour
 /// que l'image touchée passe en premier. Ici l'ordre d'origine est gardé et la
 /// visionneuse démarre sur la page touchée (`scrollPosition(id:)` initialisé
 /// dans `init`) : balayer vers la droite montre bien l'image précédente de la

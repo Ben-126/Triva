@@ -134,8 +134,8 @@ private struct LibraryLoadKey: Equatable {
 
 /// Bibliothèque : l'historique local des conversations (1.9).
 ///
-/// Portage de `src/app/library/page.tsx` (web) : titre, date relative, puis
-/// suppression. Écarts assumés : aperçu de la dernière réponse (le web n'en a
+/// Portage de la page Bibliothèque de la version web d'origine : titre, date relative, puis
+/// suppression. Écarts assumés : aperçu de la dernière réponse (la version web d'origine n'en a
 /// pas, mais une liste de titres seuls est difficile à parcourir), recherche
 /// dans les titres ET le contenu (`ChatHistoryStore.conversations(matching:)`),
 /// regroupement par période, et pas de compteur « 12 chats » (DESIGN.md : pas

@@ -342,7 +342,7 @@ final class ChatViewModel {
                 return
             }
             answer.sources = Self.displayedSources(of: artifacts)
-            answer.notes = artifacts.storedNotes
+            answer.notes = Message.storedNotes(of: artifacts)
             updateMessage(id: exchange.answerID) { $0.generationStage = .writing }
             // Mission A1 : en Fiable sans widget, artefacts et texte attendent la
             // première citation d'une page lue (`CitedAnswerGate`, dans `consume`) :

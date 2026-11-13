@@ -140,7 +140,7 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///   - configuration: complexité des prompts (classification ET
     ///     rédaction), bornes d'historique (prompt final ET classifieur, qui
     ///     n'en bornait que le nombre), budget scrapé, pages par tour. Les
-    ///     constantes TS (3 000 tokens/chunk × 4 chunks × 3 URLs ≈ 36k tokens)
+    ///     constantes de la version web d'origine (3 000 tokens/chunk × 4 chunks × 3 URLs ≈ 36k tokens)
     ///     supposent une compression LLM par chunk absente ici : elles
     ///     feraient échouer tout modèle sur l'appareil.
     ///   - queryClassifier: injecté tel quel (ses réglages priment) ; sinon
@@ -436,12 +436,12 @@ nonisolated struct SearchOrchestrator: Sendable {
 
     /// Coeur de l'orchestration, partagé par `answer` et `streamAnswer` (seule
     /// la génération finale diffère entre les deux) :
-    /// 1. Classification (1 seul appel, comme côté web où le classifieur
+    /// 1. Classification (1 seul appel, comme dans la version web d'origine où le classifieur
     ///    tourne une fois en amont du chercheur), puis `effectiveQuery` : la
     ///    reformulation devient le SUJET de toute la recherche (action seedée,
     ///    classement, planner, médias) — bug 1 —, et `SearchRoute.resolve`.
     /// 2. Widgets lancés tout de suite, EN PARALLÈLE de la recherche (comme
-    ///    le `Promise.all` de `search/index.ts`), puis attendus avant le
+    ///    le `Promise.all` de la version web d'origine), puis attendus avant le
     ///    prompt qu'ils enrichissent. Seule exception, la météo sans recherche
     ///    demandée : son widget est attendu D'ABORD, la recherche web n'étant
     ///    qu'un repli s'il ne produit rien (`SearchRoute.webUnlessWeatherAnswered`).
@@ -454,7 +454,12 @@ nonisolated struct SearchOrchestrator: Sendable {
         let searchQuery = Self.effectiveQuery(for: request.query, standaloneFollowUp: classification.standaloneFollowUp)
         let route = Self.routeConsultingAttachments(
             Self.routeAvailable(
-                SearchRoute.resolve(for: classification, hasAttachments: request.hasAttachments),
+                SearchRoute.resolve(
+                    for: classification,
+                    hasAttachments: request.hasAttachments,
+                    mode: responseMode,
+                    query: request.query
+                ),
                 isOffline: isOffline,
                 hasAttachments: request.hasAttachments
             ),

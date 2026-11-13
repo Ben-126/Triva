@@ -15,7 +15,7 @@ import Foundation
 /// d'un writer `.concise`, le prompt de rédaction étant dix fois plus long).
 /// Les coupler dès maintenant interdirait ce réglage sans rien simplifier.
 ///
-/// - `.full` : port complet de `writer.ts` (web), pour un modèle cloud BYOK
+/// - `.full` : port complet du prompt de rédaction de la version web d'origine, pour un modèle cloud BYOK
 ///   ou Apple Intelligence.
 /// - `.concise` : version courte, pour un MLX local ultra-léger (Qwen3 0.6B /
 ///   1.7B du catalogue). Ce n'est pas une préférence esthétique : un modèle de
@@ -28,27 +28,27 @@ nonisolated enum WriterPromptComplexity: Sendable, Equatable {
     case concise
 }
 
-/// Port natif de `src/lib/prompts/search/writer.ts` (web) : construit le
+/// Port natif du prompt de rédaction de la version web d'origine : construit le
 /// prompt de RÉDACTION, celui qui transforme un contexte de recherche en
 /// réponse rédigée avec citations. C'est le prompt qui détermine la qualité
 /// perçue de toute l'app — d'où le niveau de détail assumé ici.
 ///
-/// Écarts volontaires par rapport à la référence web, et pourquoi :
+/// Écarts volontaires par rapport à la version web d'origine, et pourquoi :
 ///
-/// 1. **Consignes en français.** Le web écrit ses consignes en anglais et
+/// 1. **Consignes en français.** La version web d'origine écrit ses consignes en anglais et
 ///    demande au modèle de répondre dans la langue de la question. Ici tout
 ///    est en français (cohérence projet) ; la règle de langue, elle, ne
 ///    change pas.
-/// 2. **L'axe `mode: 'speed' | 'balanced' | 'quality'` du web n'existe pas.**
+/// 2. **L'axe `mode: 'speed' | 'balanced' | 'quality'` de la version web d'origine n'existe pas.**
 ///    Triva n'a qu'un seul axe, `ResponseMode` (1.13 : `quick` / `deep` /
-///    `reliable`). Côté web, `reliableModePrompt` interpole
+///    `reliable`). Dans la version web d'origine, `reliableModePrompt` interpole
 ///    `modeInstructions[mode]` pour récupérer sa structure : en supprimant
 ///    cet axe, `reliable` se retrouverait SANS aucune consigne de forme. La
 ///    section de forme du mode `reliable` est donc écrite ici — c'est la
 ///    seule partie du prompt qui n'est pas un portage.
 /// 3. **Le mode `debate` n'est pas porté** : hors périmètre V1, décision de
 ///    Ben (voir `ResponseMode`).
-/// 4. **Aucun emoji dans les consignes.** Le web fait produire au modèle des
+/// 4. **Aucun emoji dans les consignes.** La version web d'origine fait produire au modèle des
 ///    marqueurs `⚠️` (« Sources disagree », « No verified sources »). Ce
 ///    texte finit tel quel dans la bulle de réponse : demander un emoji au
 ///    modèle viole DESIGN.md aussi sûrement qu'en coder un dans un `Text`.
@@ -58,7 +58,7 @@ nonisolated enum WriterPromptComplexity: Sendable, Equatable {
 ///    le prompt plutôt qu'écrites en dur dedans. C'est ce qui garantit que
 ///    `ResponseStructureValidator` contrôle EXACTEMENT ce que le prompt a
 ///    interdit : deux listes recopiées auraient divergé au premier ajout.
-/// 6. **Pas de section « User instructions ».** Le web laisse l'utilisateur
+/// 6. **Pas de section « User instructions ».** La version web d'origine laisse l'utilisateur
 ///    injecter ses propres consignes système ; cette fonctionnalité n'existe
 ///    pas dans Triva, et un bloc vide ne ferait qu'occuper du contexte.
 ///
@@ -76,7 +76,7 @@ enum PromptTemplates {
 
     /// Formulations de SPÉCULATION : elles habillent une affirmation non
     /// sourcée en information. Port de la liste `Banned speculation phrases`
-    /// de `writer.ts`, complétée de ses équivalents français — le web ne
+    /// de la version web d'origine, complétée de ses équivalents français — qui ne
     /// listait que l'anglais parce qu'il ne rédige pas en français par
     /// défaut, ce qui n'est pas le cas ici.
     ///
@@ -113,11 +113,11 @@ enum PromptTemplates {
     ]
 
     /// Formulations de REMPLISSAGE : elles occupent de la place sans apporter
-    /// d'information. Port de la liste `Banned phrases` de `writer.ts`, qui
+    /// d'information. Port de la liste `Banned phrases` de la version web d'origine, qui
     /// donnait déjà ses deux moitiés française et anglaise.
     ///
     /// Choix volontaire : « en conclusion » et « pour conclure » sont listés
-    /// SANS virgule finale, là où le web écrivait `"in conclusion,"`. Une
+    /// SANS virgule finale, là où la version web d'origine écrivait `"in conclusion,"`. Une
     /// virgule en dur laisserait passer « En conclusion. » et « En
     /// conclusion : ». Aucun risque de faux positif sur un titre
     /// `## Conclusion`, qui ne contient pas la préposition.
@@ -169,17 +169,17 @@ enum PromptTemplates {
 
     /// Marqueur à coller après une affirmation que les sources ne soutiennent
     /// pas (mode `reliable`). Équivalent de `(not confirmed in available
-    /// sources)` du web.
+    /// sources)` de la version web d'origine.
     nonisolated static let unsupportedClaimMarker = "(non confirmé par les sources disponibles)"
 
     /// Avertissement d'ouverture imposé en mode `reliable` quand le contexte
-    /// ne contient AUCUNE source. Équivalent du `⚠️ No verified sources…` du
-    /// web, sans emoji (écart 4 en tête de fichier).
+    /// ne contient AUCUNE source. Équivalent du `⚠️ No verified sources…` de la
+    /// version web d'origine, sans emoji (écart 4 en tête de fichier).
     nonisolated static let unverifiedSourcesWarning =
         "Attention : aucune source vérifiée n'a été trouvée pour cette question. La réponse ci-dessous s'appuie sur des connaissances générales et n'a pas été vérifiée :"
 
     /// Phrase exacte à produire quand le contexte ne permet pas de répondre.
-    /// Équivalent de `I could not find reliable information…` du web.
+    /// Équivalent de `I could not find reliable information…` de la version web d'origine.
     /// `ResponseStructureValidator` la connaît et l'exempte de l'exigence de
     /// citation : c'est une réponse CONFORME, qui par construction ne cite
     /// rien.
@@ -190,7 +190,7 @@ enum PromptTemplates {
     nonisolated static let noSourcesContext = "Aucune source disponible."
 
     /// Préfixe imposé pour signaler deux sources qui se contredisent.
-    /// Équivalent de `⚠️ **Sources disagree**` du web, sans emoji.
+    /// Équivalent de `⚠️ **Sources disagree**` de la version web d'origine, sans emoji.
     nonisolated static let contradictorySourcesMarker = "**Les sources divergent**"
 
     // MARK: - Valeurs par défaut
@@ -207,7 +207,7 @@ enum PromptTemplates {
 
     /// Aligné sur `SearchOrchestrator.init(maxScrapedContextCharacters:)`
     /// (8000 ≈ 2000 tokens avec le proxy caractères/4). Porter les constantes
-    /// du web telles quelles ferait dépasser la fenêtre de contexte d'Apple
+    /// de la version web d'origine telles quelles ferait dépasser la fenêtre de contexte d'Apple
     /// Intelligence (~4k tokens) ou d'un MLX 0.6B, ce qui est un échec dur
     /// (refus ou troncature), pas une dégradation de qualité.
     nonisolated static let defaultMaxScrapedContextCharacters = 8000
@@ -228,7 +228,7 @@ enum PromptTemplates {
     /// `currentDate` est injectable (et non un `Date()` capturé à
     /// l'intérieur) pour une seule raison, mais décisive : sans lui, aucun
     /// test ne peut vérifier que la date est bien injectée, puisque la valeur
-    /// changerait à chaque exécution. Le web fait `new Date().toISOString()`
+    /// changerait à chaque exécution. La version web d'origine fait `new Date().toISOString()`
     /// directement dans le template, ce qui est intestable.
     ///
     /// Appelé par `SearchOrchestrator.buildPrompt`. Un appelant qui valide
@@ -248,7 +248,10 @@ enum PromptTemplates {
     /// `sourcesMatchQuestion` (mission A2) : faux quand aucune source de la
     /// chaîne n'a passé le test lexical (`WebSearchChainReport.matchesQuestion`).
     /// Il ajoute un seul rappel après le contexte (`offTopicReminder`) ; vrai
-    /// (défaut), les gabarits restent identiques au caractère près.
+    /// (défaut), les gabarits restent identiques au caractère près. En mode
+    /// Fiable, ce cas est refusé AVANT la génération (`lacksReliableSources`,
+    /// mission E2a) sauf si un fichier joint ou un widget répond : le rappel n'y
+    /// sert donc qu'avec eux ; en Rapide et Approfondie, il sert toujours.
     nonisolated static func writerPrompt(
         query: String,
         standaloneQuery: String? = nil,
@@ -515,7 +518,7 @@ enum PromptTemplates {
         return "Question reformulée d'après la conversation : \(standalone)\n"
     }
 
-    /// Format ISO 8601 UTC, comme le web, malgré un prompt en français : une
+    /// Format ISO 8601 UTC, comme la version web d'origine, malgré un prompt en français : une
     /// date localisée dépendrait de la locale de l'appareil et rendrait le
     /// prompt non déterministe d'un utilisateur à l'autre, pour zéro gain de
     /// compréhension côté modèle.

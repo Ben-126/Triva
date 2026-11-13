@@ -71,9 +71,11 @@ nonisolated enum WebSearchFlavor: Sendable, Equatable {
 /// dire à la fois « widget » ET « recherche ou pas ». La route lit donc les
 /// drapeaux eux-mêmes, et `primaryAction` reste inchangé.
 nonisolated enum SearchRoute: Sendable, Equatable {
-    /// Aucune recherche : salutation, écriture, culture générale, calcul pur
-    /// (bug 15, le widget calcul répond hors ligne), ou demande sur la
-    /// conversation elle-même. Prompt sans recherche (`conversationPrompt`).
+    /// Aucune recherche : salutation, écriture, calcul pur (bug 15, le widget
+    /// calcul répond hors ligne), ou demande sur la conversation elle-même.
+    /// PAS la culture générale : le classifieur ne saute la recherche que pour sa
+    /// liste fermée (`QueryClassifier`), une question de fait ou d'explication
+    /// cherche toujours, même si le modèle en connaît la réponse. Prompt sans recherche (`conversationPrompt`).
     case none
     /// Fichiers joints SEULEMENT (`personalSearch` avec au moins un fichier) :
     /// la question porte sur les documents de l'utilisateur, une recherche
@@ -103,14 +105,42 @@ nonisolated enum SearchRoute: Sendable, Equatable {
     /// 4. `academicSearch`, puis `discussionSearch`, sinon recherche générale
     ///    (widgets avec `skipSearch` faux compris : le classifieur a jugé
     ///    qu'une recherche s'ajoutait au widget).
-    static func resolve(for classification: QueryClassification, hasAttachments: Bool) -> SearchRoute {
+    ///
+    /// ## Mode Fiable (mission E2a, décision de Ben du 2026-11-12)
+    /// « En Fiable, TOUJOURS chercher, sauf salutation et calcul. » Le classifieur
+    /// juge `skipSearch` d'après sa liste fermée (salutation, écriture, calcul,
+    /// météo) ; il peut aussi se tromper sur une vraie question, que le modèle
+    /// traiterait alors de mémoire, sans source, alors que le mode promet des
+    /// réponses sourcées. En Fiable, `skipSearch` ne tient donc que pour :
+    /// - un calcul (`showCalculationWidget`) : le widget est la source ;
+    /// - une salutation ou politesse (`SmallTalk.isGreeting(query)` : le classifieur
+    ///   n'a pas de champ « salutation », c'est la même détection que la mention
+    ///   « Réponse sans recherche » et que le repli de `classifyWithFallback`) ;
+    /// Toute autre question classée « sans recherche » cherche (écriture, traduction,
+    /// résumé de la conversation et météo compris, au sens littéral de la décision) :
+    /// route décidée par la suite des règles (3 est sautée). La météo y cherche donc
+    /// sur le web EN PLUS de son widget, qui tourne en parallèle de toute route et,
+    /// abouti, suspend les contrôles Fiable (`SearchArtifacts+ReliableMode`). Rapide et Approfondie : inchangés.
+    /// Hors connexion, `SearchOrchestrator.routeAvailable` réduit ensuite toute
+    /// route web à `.none` : le comportement hors ligne reste prioritaire.
+    ///
+    /// - Parameters:
+    ///   - mode: mode de réponse du tour (`.quick` par défaut : comportement historique).
+    ///   - query: question BRUTE de l'utilisateur, pour reconnaître une salutation
+    ///     (jamais la reformulation autonome, qui n'en est plus une).
+    static func resolve(
+        for classification: QueryClassification,
+        hasAttachments: Bool,
+        mode: ResponseMode = .quick,
+        query: String = ""
+    ) -> SearchRoute {
         if classification.personalSearch, hasAttachments {
             return .attachments
         }
         if classification.showStockWidget {
             return .web(.general)
         }
-        if classification.skipSearch {
+        if classification.skipSearch, honorsSkipSearch(classification, mode: mode, query: query) {
             return classification.showWeatherWidget ? .webUnlessWeatherAnswered : .none
         }
         if classification.academicSearch {
@@ -120,5 +150,13 @@ nonisolated enum SearchRoute: Sendable, Equatable {
             return .web(.discussion)
         }
         return .web(.general)
+    }
+
+    /// `skipSearch` est-il respecté ? Toujours hors Fiable ; en Fiable, seulement pour les cas
+    /// que la décision de Ben exempte (voir `resolve`). `case .reliable = mode` plutôt qu'une
+    /// propriété de `ResponseMode` : même raison que `SearchArtifacts+ReliableMode.swift`.
+    private static func honorsSkipSearch(_ classification: QueryClassification, mode: ResponseMode, query: String) -> Bool {
+        guard case .reliable = mode else { return true }
+        return classification.showCalculationWidget || SmallTalk.isGreeting(query)
     }
 }

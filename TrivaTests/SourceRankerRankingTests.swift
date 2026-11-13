@@ -40,7 +40,7 @@ struct SourceRankerRankingTests {
         // À similarité égale, les 3 sources boostées passent devant malgré
         // des positions moins bonnes, et Pinterest tombe en dernier malgré
         // sa 2e place chez le moteur : c'est précisément ce que le scoring
-        // du web apporte au classement brut.
+        // de la version web d'origine apporte au classement brut.
         #expect(ranked.map(\.result.url) == [
             "https://developer.mozilla.org/fr/docs/Web/JavaScript",
             "https://stackoverflow.com/questions/1",

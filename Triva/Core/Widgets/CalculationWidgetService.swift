@@ -84,7 +84,7 @@ nonisolated enum CalculationResultFormatter {
 // MARK: - Donnée du widget
 
 /// Donnée affichable du widget. Équivalent typé du `data: { expression,
-/// result }` de `calculationWidget.ts`, avec en plus le résultat DÉJÀ
+/// result }` de la version web d'origine, avec en plus le résultat DÉJÀ
 /// formaté : une vue n'a pas à connaître la locale ni le seuil de notation
 /// scientifique pour afficher un nombre.
 struct CalculationWidgetData: Sendable, Equatable {
@@ -113,9 +113,9 @@ nonisolated protocol CalculationWidgetServing: Sendable {
     func computeCalculation(forQuery query: String, chatHistory: [ClassifierChatMessage]) async -> CalculationWidgetResult?
 }
 
-/// Port de `src/lib/agents/search/widgets/calculationWidget.ts` (web).
+/// Port du widget calculatrice de la version web d'origine.
 ///
-/// Le web extrait l'expression par LLM puis l'évalue avec `mathjs`. Ici
+/// La version web d'origine extrait l'expression par LLM puis l'évalue avec `mathjs`. Ici
 /// l'extraction est identique (prompt texte + parsing JSON tolérant) mais
 /// l'évaluation est native : zéro dépendance (règle absolue du projet) et
 /// zéro réseau — après l'extraction, ce widget ne sort jamais de l'appareil.
@@ -123,7 +123,7 @@ nonisolated protocol CalculationWidgetServing: Sendable {
 /// DIVERGENCE assumée : le prompt décrit la grammaire EXACTE de notre
 /// évaluateur au lieu de renvoyer à « la bibliothèque Math JS ». `mathjs`
 /// accepte unités, matrices et variables que notre liste blanche refuse ;
-/// demander du mathjs générique produirait des expressions valides côté web
+/// demander du mathjs générique produirait des expressions valides dans la version web d'origine
 /// et systématiquement rejetées ici, donc un widget qui disparaît sans raison
 /// visible.
 struct CalculationWidgetService: CalculationWidgetServing {
@@ -171,7 +171,7 @@ struct CalculationWidgetService: CalculationWidgetServing {
 
     /// Phrase française autoportante : `AIGenerating` n'a qu'un canal texte,
     /// autant donner au modèle une phrase reprenable telle quelle plutôt qu'un
-    /// objet à interpréter (le web, lui, sérialise du JSON).
+    /// objet à interpréter (la version web d'origine, lui, sérialise du JSON).
     static func llmContext(for data: CalculationWidgetData) -> String {
         "Résultat du calcul « \(data.expression) » : \(data.formattedResult)."
     }
@@ -205,7 +205,7 @@ struct CalculationWidgetService: CalculationWidgetServing {
         """
     }
 
-    /// La section `<grammar>` n'existe pas dans le prompt du web : elle est la
+    /// La section `<grammar>` n'existe pas dans le prompt de la version web d'origine : elle est la
     /// contrepartie directe du choix d'un évaluateur maison. Chaque règle
     /// correspond à une limite réelle de `CalculationExpressionEvaluator`, et
     /// l'exemple du pourcentage est celui du plan (« 15% de 240 »).

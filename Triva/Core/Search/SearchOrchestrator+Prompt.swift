@@ -91,7 +91,7 @@ extension SearchOrchestrator {
     }
 
     /// Consigne qui ouvre le bloc des widgets dans le prompt final : sur le
-    /// modèle du `noteForAssistant` du web (« already showed to the user […]
+    /// modèle du `noteForAssistant` de la version web d'origine (« already showed to the user […]
     /// do not CITE this as a source »).
     nonisolated static let widgetContextInstruction = "Données des widgets de Triva, DÉJÀ affichées à l'utilisateur au-dessus de ta réponse : appuie-toi dessus pour répondre, sans les recopier en entier, et ne les cite jamais avec un numéro [n] (ce ne sont pas des sources numérotées)."
 

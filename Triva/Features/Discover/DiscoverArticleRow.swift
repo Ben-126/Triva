@@ -60,7 +60,7 @@ nonisolated enum DiscoverArticlePresentation {
     ///   seul qu'un cadre de vignette condamné à afficher « Image
     ///   indisponible ».
     ///
-    /// ÉCART assumé vis-à-vis du web : `page.tsx` jette tout article sans
+    /// ÉCART assumé vis-à-vis de la version web d'origine : la page jette tout article sans
     /// vignette (`blogs.filter(blog => blog.thumbnail)`). Ici l'article reste,
     /// sans image : son titre vaut plus que sa photo, et ce filtre viderait
     /// des sujets entiers sur une instance qui renvoie peu d'images.
@@ -142,13 +142,13 @@ nonisolated enum DiscoverArticlePresentation {
 // MARK: - Ligne d'article
 
 /// Une ligne du fil Découvrir : éditeur et date de publication, titre, extrait court,
-/// vignette à droite si l'article en a une. Port de `SmallNewsCard.tsx` /
-/// `MajorNewsCard.tsx` (web), refait selon DESIGN.md.
+/// vignette à droite si l'article en a une. Port des cartes d'actualité de
+/// la version web d'origine, refait selon DESIGN.md.
 ///
 /// ## Ce que fait un toucher
 /// Ouvre l'article dans le navigateur par défaut (`openURL`), comme le
-/// demande la mission 1.8. ÉCART assumé vis-à-vis du web, où un clic lance
-/// une recherche Vane `/?q=Summary: <url>` : cette recherche existe ici aussi,
+/// demande la mission 1.8. ÉCART assumé vis-à-vis de la version web d'origine, où un clic lance
+/// une recherche `/?q=Summary: <url>` : cette recherche existe ici aussi,
 /// mais en action secondaire (`onSearch`), dans le menu contextuel (appui long
 /// sur iOS, clic droit sur Mac) et en action VoiceOver. `onSearch` vaut `nil`
 /// tant que l'intégration ne l'a pas câblée : l'entrée disparaît alors du
@@ -181,7 +181,7 @@ nonisolated enum DiscoverArticlePresentation {
 struct DiscoverArticleRow: View {
     let article: DiscoverArticle
     /// « Chercher dans Triva » : reçoit l'article entier, l'intégration
-    /// décide de la requête (le web envoie `Summary: <url>`).
+    /// décide de la requête (la version web d'origine envoie `Summary: <url>`).
     let onSearch: ((DiscoverArticle) -> Void)?
 
     @Environment(\.openURL) private var openURL
@@ -304,7 +304,7 @@ struct DiscoverArticleRow: View {
     }
 
     /// « Chercher dans Triva » en premier : c'est l'action qui fait de
-    /// Découvrir autre chose qu'un lecteur de flux, celle que le web met sur
+    /// Découvrir autre chose qu'un lecteur de flux, celle que la version web d'origine met sur
     /// le clic principal.
     @ViewBuilder
     private func contextMenuItems(url: URL) -> some View {

@@ -12,14 +12,14 @@ import Foundation
 /// Extrait court et lisible d'une réponse de l'assistant, pour une ligne de
 /// liste : aperçu de la Bibliothèque (1.9) et extrait des Favoris (1.10).
 ///
-/// Portage du `preview` de `src/app/favorites/page.tsx` (web), qui enchaîne une
+/// Portage du `preview` de la page Favoris de la version web d'origine, qui enchaîne une
 /// dizaine de `replace` par expressions régulières puis coupe à 250
 /// caractères. Même but, mais en s'appuyant sur les briques déjà testées du
 /// projet plutôt qu'en réécrivant leur logique :
-/// 1. `ReasoningSegmenter` retire le bloc `<think>` et isole le TL;DR. Le web
+/// 1. `ReasoningSegmenter` retire le bloc `<think>` et isole le TL;DR. La version web d'origine
 ///    n'efface que les balises (`/<[^>]+>/g`) : le raisonnement d'un modèle
 ///    Qwen3 se retrouvait donc dans l'aperçu, en tête et souvent en anglais.
-/// 2. `CitationParser` retire les marqueurs `[n]` (côté web : `/\[[\d,]+\]/g`).
+/// 2. `CitationParser` retire les marqueurs `[n]` (dans la version web d'origine : `/\[[\d,]+\]/g`).
 /// 3. Les marqueurs de bloc Markdown sont retirés ligne par ligne, puis le
 ///    Markdown en ligne (gras, liens, code) est résolu par
 ///    `AttributedString(markdown:)`.
@@ -30,7 +30,7 @@ import Foundation
 /// non isolé. Ne lève jamais : l'entrée vient d'un modèle de langue, le pire
 /// cas est un aperçu imparfait, jamais une erreur.
 nonisolated enum AnswerExcerpt {
-    /// 250 caractères, comme le web. La ligne de liste en montre de toute façon
+    /// 250 caractères, comme la version web d'origine. La ligne de liste en montre de toute façon
     /// moins (`lineLimit`) : la borne sert surtout à ne jamais confier un texte
     /// de plusieurs kilo-octets à la mise en page de chacune des 500 lignes.
     static let defaultMaxLength = 250

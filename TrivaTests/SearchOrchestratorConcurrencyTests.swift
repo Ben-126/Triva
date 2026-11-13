@@ -14,24 +14,33 @@ import Foundation
 extension SearchOrchestratorStreamingTests {
     // MARK: - Borne d'un tour de scrape, @concurrent, budgets par moteur
 
-    @Test("Borne d'un tour de scrape : à l'échéance, la page finie est gardée ; la lente est annulée, annoncée en échec au planner et jamais injectée")
+    @Test(
+        "Borne d'un tour de scrape : à l'échéance, la page finie est gardée ; la lente est annulée, annoncée en échec au planner et jamais injectée",
+        .timeLimit(.minutes(1))
+    )
     func scrapeRoundDeadlineKeepsFinishedPages() async throws {
         let cancellations = ScrapeLog()
+        let fastPages = ScrapeCounter()
         let client = StreamingMockSearXNGClient(response: SearXNGSearchResponse(results: Self.sevenResults(), suggestions: []))
         let planner = #"{"action":"scrapeURL","urls":["https://1.example","https://2.example"]}"#
         let aiProvider = StreamingMockAIGenerating(plannerResponse: planner)
+        // L'échéance est une porte, pas une durée : elle s'ouvre quand la page rapide est rendue (événement),
+        // quelle que soit la charge de la machine. Sans échéance, la page lente (30 s) serait attendue.
+        let deadline = GateClock()
         let orchestrator = makeStreamingOrchestrator(
             failoverManager: FailoverManager(client: client, instances: [Self.instance]),
             aiProvider: aiProvider,
-            scrapeService: SlowScrapeService(slowURLs: ["https://2.example"], cancellations: cancellations),
-            scrapeRoundTimeout: .milliseconds(200)
+            scrapeService: SlowScrapeService(slowURLs: ["https://2.example"], cancellations: cancellations, fastPages: fastPages),
+            clock: deadline
         )
+        let driver = Task {
+            while fastPages.value < 1 { try? await Task.sleep(for: .milliseconds(1)) }
+            deadline.open()
+        }
+        defer { driver.cancel() }
 
-        let start = ContinuousClock.now
         _ = try await orchestrator.streamAnswer(query: "requête")
 
-        // Sans échéance : 30 s d'attente sur la page lente, puis son contenu injecté.
-        #expect(ContinuousClock.now - start < .seconds(10))
         #expect(await cancellations.urls == ["https://2.example"])
         let lastPlannerPrompt = try #require(aiProvider.receivedGeneratePrompts.last { $0.contains("<planner_context>") })
         #expect(lastPlannerPrompt.contains("https://1.example (page déjà récupérée)"))

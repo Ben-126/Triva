@@ -79,7 +79,7 @@ nonisolated extension URLFetching {
 }
 
 /// Implémentation `URLSession` réelle. User-Agent desktop custom, même
-/// intention que le spoofing de `scraper.ts` (web) — sans le masquage de
+/// intention que le spoofing de la version web d'origine — sans le masquage de
 /// `navigator.webdriver`, sans objet hors d'un vrai navigateur. Session
 /// sans cache par défaut (widget météo : la ville et les coordonnées sont des
 /// données personnelles qui n'ont pas à rester dans `Cache.db`) ; le scraping
@@ -115,10 +115,10 @@ nonisolated struct URLSessionFetcher: URLFetching {
     }
 }
 
-/// Port de `scrapeURL.ts` (web) en Foundation pur — zéro dépendance, pas de
+/// Port de la lecture de pages de la version web d'origine en Foundation pur — zéro dépendance, pas de
 /// `NSAttributedString(html:)` (dépréciée, contrainte au thread principal).
 ///
-/// DIVERGENCE MAJEURE assumée : `scraper.ts` pilote un vrai Chromium headless
+/// DIVERGENCE MAJEURE assumée : la version web d'origine pilote un vrai Chromium headless
 /// (Playwright) qui exécute le JS ; `URLSession` ne récupère que le HTML
 /// initial — une SPA (rendu React/Vue côté client) donne un contenu vide,
 /// signalé en échec (`minimumContentCharacters`). Un rendu `WKWebView` hors
@@ -135,7 +135,7 @@ nonisolated struct ScrapeService: ScrapeServing {
     // MARK: - Réglages
 
     /// Délai d'INACTIVITÉ par requête, pas une durée totale (bornée par
-    /// `maxPageLoadDuration`). Raccourci vs les 20 s de `scraper.ts`, qui
+    /// `maxPageLoadDuration`). Raccourci vs les 20 s de la version web d'origine, qui
     /// attend aussi le rendu JS d'un vrai navigateur.
     static let defaultIdleTimeout: TimeInterval = 8
 
@@ -204,7 +204,7 @@ nonisolated struct ScrapeService: ScrapeServing {
 
     // MARK: - Scrape
 
-    /// Ne throw JAMAIS, fidèle à `scrapeURL.ts` : un scrape raté sur UNE URL
+    /// Ne throw JAMAIS, fidèle à la version web d'origine : un scrape raté sur UNE URL
     /// ne doit pas faire échouer tout un tour d'orchestration
     /// (`SearchOrchestrator` n'a pas besoin de `try`). Refus du moins cher au
     /// plus cher : URL (aucune requête), en-têtes (aucun octet de corps lu),
@@ -259,7 +259,7 @@ nonisolated struct ScrapeService: ScrapeServing {
         "heic", "avif", "bmp", "tif", "tiff", "ico", "mp3", "mp4", "m4a", "m4v", "mov", "avi", "mkv", "webm", "wav", "flac", "ogg",
     ]
 
-    /// AJOUT vs `scrapeURL.ts` (masqué côté web par le navigateur, qui tente de
+    /// AJOUT vs la version web d'origine (masqué là-bas par le navigateur, qui tente de
     /// tout rendre) : une réponse PDF/JSON/image donnerait un texte absurde
     /// après le stripping regex. Décidé sur les en-têtes, sans lire le corps.
     static func isHTML(_ response: HTTPURLResponse) -> Bool {
@@ -657,8 +657,8 @@ nonisolated struct ScrapeService: ScrapeServing {
     }
 
     /// Segmentation par phrases avec fenêtre glissante à chevauchement —
-    /// proxy direct de `splitText.ts` (web), sans tokenizer BPE réel :
-    /// `maxCharacters`/`overlapCharacters` jouent le rôle des tokens (le TS
+    /// proxy direct du découpage de la version web d'origine, sans tokenizer BPE réel :
+    /// `maxCharacters`/`overlapCharacters` jouent le rôle des tokens (la version web d'origine
     /// retombe lui-même sur caractères/4 en cas d'échec d'encodage cl100k).
     ///
     /// GARDE-FOU ANTI-BLOCAGE : sans AUCUNE frontière dans la fenêtre, une

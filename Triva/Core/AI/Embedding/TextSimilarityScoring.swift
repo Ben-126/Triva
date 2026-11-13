@@ -8,12 +8,11 @@
 import Foundation
 
 /// Socle de similarité sémantique (fondation F1), remplaçant natif de
-/// `computeSimilarity(queryEmbedding, chunkEmbedding)` du web
-/// (`src/lib/utils/computeSimilarity.ts`), utilisé là-bas par
-/// `baseSearch.ts` (scoring des sources, futur 1.3) et `uploadsSearch.ts`
-/// (recherche dans les fichiers joints, futur 1.11).
+/// `computeSimilarity(queryEmbedding, chunkEmbedding)` de la version web d'origine,
+/// utilisé là-bas par le scoring des sources (futur 1.3) et la recherche
+/// dans les fichiers joints (futur 1.11).
 ///
-/// DIVERGENCE STRUCTURELLE assumée vis-à-vis du web : côté Vane, un modèle
+/// DIVERGENCE STRUCTURELLE assumée vis-à-vis de la version web d'origine : là-bas, un modèle
 /// d'embedding distant (`BaseEmbedding.embedText`) transforme le texte en
 /// vecteur, puis le cosinus est calculé à part. Triva n'a pas de backend et
 /// ne doit jamais payer un appel réseau pour mesurer une similarité (voir
@@ -111,8 +110,8 @@ struct ScoredTextMatch: Sendable, Equatable {
 /// Boîte à outils vectorielle partagée par les implémentations. Isolée ici
 /// pour être testable seule, sans modèle d'embedding ni tokenizer.
 enum TextVectorMath {
-    /// Cosinus de deux vecteurs denses — port fidèle de `computeSimilarity.ts`
-    /// (web), à une différence près : le TypeScript `throw` quand les
+    /// Cosinus de deux vecteurs denses — port fidèle de `computeSimilarity`
+    /// de la version web d'origine, à une différence près : elle `throw` quand les
     /// longueurs diffèrent, ici on renvoie `nil`.
     ///
     /// Ce `nil` est PORTEUR, pas défensif : les modèles de phrase d'Apple
@@ -122,7 +121,7 @@ enum TextVectorMath {
     /// score arbitraire ; `nil` la transforme en score `0` explicite et
     /// documenté côté appelant, sans jamais faire planter une recherche.
     ///
-    /// Vecteur nul (norme 0) -> `0`, exactement comme le web (`if (normA === 0
+    /// Vecteur nul (norme 0) -> `0`, exactement comme la version web d'origine (`if (normA === 0
     /// || normB === 0) return 0`) : un vecteur nul n'a pas de direction, donc
     /// aucun angle à mesurer.
     ///

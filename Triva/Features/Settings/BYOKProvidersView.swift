@@ -35,6 +35,8 @@ struct BYOKProvidersView: View {
     /// chaque évaluation de `body` reconstruit tous les view models (lecture
     /// Keychain + UserDefaults synchrones sur le main actor à chaque ligne).
     @State private var viewModels: [String: APIKeysViewModel] = [:]
+    /// Fournisseur « Personnalisé » dont la suppression attend confirmation (nil = aucune).
+    @State private var pendingDeletion: CloudProviderPreset?
 
     /// Plus de valeurs par défaut : chacune créait un store de plus, invisible
     /// du reste de l'app (le bug ci-dessus en est la forme exacte). Les deux
@@ -74,7 +76,7 @@ struct BYOKProvidersView: View {
 
                     ForEach(customStore.customPresets) { preset in
                         if let viewModel = viewModels[preset.id] {
-                            row(displayName: preset.displayName, viewModel: viewModel)
+                            customRow(preset, viewModel: viewModel)
                         }
                     }
                 } footer: {
@@ -87,6 +89,7 @@ struct BYOKProvidersView: View {
             }
             .formStyle(.grouped)
             .navigationTitle("Clés API")
+            .macSheetTitleBar("Clés API")
             .toolbar {
                 if let onClose {
                     ToolbarItem(placement: .cancellationAction) {
@@ -99,6 +102,18 @@ struct BYOKProvidersView: View {
             }
             .sheet(isPresented: $isAddingCustomProvider) {
                 AddCustomProviderView(customStore: customStore)
+            }
+            .confirmationDialog(
+                Self.deletionTitle(for: pendingDeletion),
+                isPresented: isConfirmingDeletion,
+                titleVisibility: .visible,
+                presenting: pendingDeletion
+            ) { preset in
+                Button("Supprimer", role: .destructive) { confirmDeletion(of: preset) }
+                // Explicite : celui que le système ajouterait sortirait en anglais.
+                Button("Annuler", role: .cancel) {}
+            } message: { preset in
+                Text(Self.deletionMessage(isActive: Self.isActive(preset, selection: selectionStore.selection)))
             }
             .onAppear(perform: ensureViewModels)
             .onChange(of: customStore.customPresets) { _, _ in ensureViewModels() }
@@ -176,6 +191,76 @@ struct BYOKProvidersView: View {
             Label("Fournisseur personnalisé", systemImage: "plus")
         }
         .accessibilityIdentifier("apiKeys.addCustomProvider")
+    }
+
+    /// Ligne d'un fournisseur « Personnalisé » : seule à pouvoir être retirée, les autres
+    /// viennent du catalogue. Glisser (iPhone, iPad), menu contextuel (tous, dont le clic droit
+    /// sur Mac) et touche Supprimer (Mac) mènent à la même confirmation. Pas de `.onDelete` : il
+    /// retire la ligne AVANT qu'on puisse confirmer, alors que la clé API part avec elle.
+    private func customRow(_ preset: CloudProviderPreset, viewModel: APIKeysViewModel) -> some View {
+        let base = row(displayName: preset.displayName, viewModel: viewModel)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                deleteButton(for: preset)
+            }
+            .contextMenu {
+                deleteButton(for: preset)
+            }
+            .accessibilityIdentifier("apiKeys.customRow")
+        #if os(macOS)
+        // `onDeleteCommand` n'existe que sur Mac (indisponible sur iOS et iPadOS).
+        return base.onDeleteCommand { pendingDeletion = preset }
+        #else
+        return base
+        #endif
+    }
+
+    private func deleteButton(for preset: CloudProviderPreset) -> some View {
+        Button(role: .destructive) {
+            pendingDeletion = preset
+        } label: {
+            Label("Supprimer", systemImage: "trash")
+        }
+        .accessibilityIdentifier("apiKeys.customDelete")
+    }
+
+    private var isConfirmingDeletion: Binding<Bool> {
+        Binding(
+            get: { pendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented { pendingDeletion = nil }
+            }
+        )
+    }
+
+    private func confirmDeletion(of preset: CloudProviderPreset) {
+        Self.removeCustomProvider(preset, from: customStore, viewModels: &viewModels)
+    }
+
+    /// Retire le fournisseur (clé Keychain et sélection active comprises, voir
+    /// `CustomProviderStore.remove(id:)`) et oublie son `APIKeysViewModel`. Statique pour que les
+    /// tests vérifient le branchement sans interface.
+    static func removeCustomProvider(
+        _ preset: CloudProviderPreset,
+        from store: CustomProviderStore,
+        viewModels: inout [String: APIKeysViewModel]
+    ) {
+        store.remove(id: preset.id)
+        viewModels[preset.id] = nil
+    }
+
+    /// Le fournisseur est-il celui dont la clé sert en ce moment (sélection cloud partagée) ?
+    static func isActive(_ preset: CloudProviderPreset, selection: CloudProviderSelection?) -> Bool {
+        selection?.providerID == preset.id
+    }
+
+    static func deletionTitle(for preset: CloudProviderPreset?) -> String {
+        "Supprimer \(preset?.displayName ?? "ce fournisseur")\u{00A0}?"
+    }
+
+    static func deletionMessage(isActive: Bool) -> String {
+        let base = "Le fournisseur et sa clé API seront effacés de cet appareil."
+        guard isActive else { return base }
+        return base + " Il est utilisé en ce moment : tu devras en choisir un autre."
     }
 
     private func row(displayName: String, viewModel: APIKeysViewModel) -> some View {

@@ -168,7 +168,7 @@ struct CitationParserFalsePositiveTests {
 
     /// Chaque entrée doit rester du texte, intégralement. Les six premières
     /// sont exigées par le plan ; les trois dernières pinnent des écarts
-    /// DOCUMENTÉS vis-à-vis du web (`[1,2]`, `[ 1 ]`) ou de l'ASCII strict
+    /// DOCUMENTÉS vis-à-vis de la version web d'origine (`[1,2]`, `[ 1 ]`) ou de l'ASCII strict
     /// (chiffres arabes-indiens).
     @Test(
         "Ces formes ne deviennent jamais des citations",

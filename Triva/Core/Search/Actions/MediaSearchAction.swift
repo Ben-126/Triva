@@ -11,7 +11,7 @@ import Foundation
 /// recherche média coûte deux requêtes SearXNG de plus par question, sur des
 /// instances publiques souvent limitées en débit. C'est l'appelant qui
 /// choisit (recherche systématique, ou à la demande via `ImageSearchService`
-/// et `VideoSearchService` comme le bouton du web).
+/// et `VideoSearchService` comme le bouton de la version web d'origine).
 nonisolated struct MediaSearchKinds: OptionSet, Sendable {
     let rawValue: Int
 
@@ -127,7 +127,7 @@ nonisolated protocol MediaSearching: Sendable {
 nonisolated struct SearXNGMediaSearcher: MediaSearching {
     static let imageSearchOptions = SearXNGSearchOptions(categories: ["images"], engines: ["bing images", "google images"])
     static let videoSearchOptions = SearXNGSearchOptions(categories: ["videos"], engines: ["youtube"])
-    /// `.slice(0, 10)` du web, comme les services de 1.6.
+    /// `.slice(0, 10)` de la version web d'origine, comme les services de 1.6.
     static let defaultMaxResults = 10
 
     private let failoverManager: FailoverManager

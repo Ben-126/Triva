@@ -257,6 +257,7 @@ struct SettingsView: View {
             // Un vrai titre de barre : sans lui, « Annuler » flottait sur le contenu, qui passait
             // dessous quand on défilait (AX3, Duo plié ; findings Q3 n°19 et 20).
             .navigationTitle("Changer de moteur")
+            .macSheetTitleBar("Changer de moteur")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

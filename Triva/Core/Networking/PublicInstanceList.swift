@@ -34,6 +34,34 @@ nonisolated enum PublicInstanceList {
         return urls
     }
 
+    /// Clé `UserDefaults` (passée en `-triva.uiTestNeutralInstances YES` au lancement) qui remplace la
+    /// liste embarquée par `uiTestNeutralInstances`. Réservée aux tests UI, dont les captures, les
+    /// vidéos d'échec et les arbres d'accessibilité finissent dans des `.xcresult` que l'on partage :
+    /// le `searxng-instances.json` d'une machine de développement peut porter une instance
+    /// personnelle, qui ne doit jamais s'y retrouver. Sans effet hors DEBUG.
+    static let uiTestNeutralArgumentKey = "triva.uiTestNeutralInstances"
+
+    /// Hôtes fictifs de la liste neutre : `.invalid` est réservé (RFC 2606), jamais résolu.
+    static let uiTestNeutralInstances: [URL] = [
+        "https://defaut-un.invalid",
+        "https://defaut-deux.invalid",
+    ].compactMap { URL(string: $0) }
+
+    /// La liste embarquée telle que l'app la lit : `load`, sauf sous l'argument de lancement des tests
+    /// UI (DEBUG seulement), qui la remplace par `uiTestNeutralInstances`.
+    static func loadForApp(
+        defaults: UserDefaults = .standard,
+        bundle: Bundle = .main,
+        resourceName: String = "searxng-instances"
+    ) throws -> [URL] {
+        #if DEBUG
+        if defaults.bool(forKey: uiTestNeutralArgumentKey) {
+            return uiTestNeutralInstances
+        }
+        #endif
+        return try load(bundle: bundle, resourceName: resourceName)
+    }
+
     /// Liste embarquée PUIS instances rafraîchies depuis l'annuaire searx.space
     /// (`SearXNGDirectoryRefresher`). `FailoverManager` classe ensuite le tout par fiabilité mesurée.
     ///

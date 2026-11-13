@@ -7,9 +7,9 @@
 
 import Foundation
 
-/// Port de `academicSearch.ts` (web) : mêmes 3 moteurs forcés
-/// (`arxiv`, `google scholar`, `pubmed`), sans restriction de catégorie — côté
-/// web, `searchConfig: { engines: [...] }` est la SEULE surcharge passée à
+/// Port de la recherche académique de la version web d'origine : mêmes 3 moteurs forcés
+/// (`arxiv`, `google scholar`, `pubmed`), sans restriction de catégorie — dans la
+/// version web d'origine, `searchConfig: { engines: [...] }` est la SEULE surcharge passée à
 /// `executeSearch`, `categories` reste vide comme pour `WebSearchAction`.
 /// Action du tour seedé de la route `.web(.academic)` (`SearchRoute.resolve`,
 /// `WebSearchFlavor.action(webSearchChain:)`).

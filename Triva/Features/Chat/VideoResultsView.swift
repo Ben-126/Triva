@@ -21,7 +21,7 @@ enum VideoResultsPhase: Sendable, Equatable {
 
 /// Résultats de recherche vidéo d'un message (tâche 1.6) : une liste dont
 /// chaque ligne montre la vignette, le titre et le domaine de la source. Port
-/// de `src/components/SearchVideos.tsx` (web), refait selon DESIGN.md. Les
+/// de la version web d'origine, refait selon DESIGN.md. Les
 /// briques communes avec les images (`MediaThumbnail`,
 /// `MediaResultsStatusView`, `MediaResultsPresentation`…) vivent dans
 /// `MediaResultsComponents.swift`.
@@ -32,13 +32,13 @@ enum VideoResultsPhase: Sendable, Equatable {
 /// universels). Jamais `embedURL` : c'est l'adresse d'un `<iframe>` (voir
 /// `VideoSearchResult`), pas une page faite pour être ouverte telle quelle.
 ///
-/// ## Écarts assumés vis-à-vis du web
-/// - Une LISTE plutôt que la grille du web, comme le demande le plan : le
+/// ## Écarts assumés vis-à-vis de la version web d'origine
+/// - Une LISTE plutôt que la grille de la version web d'origine, comme le demande le plan : le
 ///   titre d'une vidéo en dit souvent plus que sa vignette.
-/// - Pas de lecteur intégré (la `Lightbox` du web lit l'`iframe` sur place) :
+/// - Pas de lecteur intégré (la `Lightbox` de la version web d'origine lit l'`iframe` sur place) :
 ///   la lecture intégrée est une piste V2, `embedURL` est conservé pour ça.
 /// - Pas de pastille « Video » sur chaque vignette : l'intitulé « VIDÉOS » le
-///   dit une fois pour toutes, et la pastille du web est un calque
+///   dit une fois pour toutes, et la pastille de la version web d'origine est un calque
 ///   semi-transparent, interdit par la DA.
 /// - 3 vidéos d'emblée, puis « Afficher les N autres vidéos » (voir
 ///   `MediaResultsPresentation.listLayout`).

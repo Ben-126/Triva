@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import OSLog
 
 // MARK: - Sources à clé personnelle
 
@@ -261,6 +262,8 @@ nonisolated enum BYOKSearchHTTP {
     /// Délai d'inactivité d'une requête, aligné sur `SearXNGClient` (10 s).
     static let timeout: TimeInterval = 10
 
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "SearchHTTP")
+
     // MARK: Requête / réponse
 
     /// Exécute la requête et renvoie le corps d'une réponse 2xx.
@@ -286,6 +289,9 @@ nonisolated enum BYOKSearchHTTP {
         } catch is CancellationError {
             throw CancellationError()
         } catch let urlError as URLError {
+            // Le CODE seul (jamais `failingURL`, qui porte la requête) : sans lui, DNS, connexion
+            // perdue et TLS se confondent en `.unavailable` et un échec passager reste inexplicable.
+            logger.info("Requête de recherche en échec : URLError \(urlError.code.rawValue, privacy: .public)")
             switch urlError.code {
             case .cancelled: throw CancellationError()
             case .timedOut: throw WebSearchError.timeout
@@ -297,6 +303,7 @@ nonisolated enum BYOKSearchHTTP {
 
         guard let http = response as? HTTPURLResponse else { throw WebSearchError.unavailable }
         guard (200..<300).contains(http.statusCode) else {
+            logger.info("Requête de recherche refusée : statut HTTP \(http.statusCode, privacy: .public)")
             throw classify(http.statusCode, data)
         }
         return data

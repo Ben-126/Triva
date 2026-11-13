@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// Port de `socialSearch.ts` (web) : moteur `reddit` forcé, sans restriction
+/// Port de la recherche sociale de la version web d'origine : moteur `reddit` forcé, sans restriction
 /// de catégorie — même principe que `AcademicSearchAction`, une seule
 /// surcharge `engines` passée à la recherche. Action du tour seedé de la
 /// route `.web(.discussion)` (`SearchRoute.resolve`,

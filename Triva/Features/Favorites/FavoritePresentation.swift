@@ -44,9 +44,12 @@ nonisolated struct FavoriteDetailContent: Sendable, Equatable {
     /// Dans l'ORDRE DE CITATION : `sources[0]` est la source de `[1]`.
     let sources: [SearXNGSearchResult]
     let savedAt: Date
-    /// Numéros `[n]` des sources jamais lues (mission E1a) : citation en texte simple et « non lue »
-    /// dans la liste, comme dans la bulle d'où vient le favori.
-    var uncitableSourceNumbers: Set<Int> = []
+    /// Les mentions de la bulle d'où vient le favori (missions E1a et E2b) : sources non lues
+    /// (citation en texte simple, « non lue » dans la liste), « Réponse sans recherche » et ses
+    /// pendants, « Sources probablement hors sujet ».
+    var notes = StoredAnswerNotes()
+
+    var uncitableSourceNumbers: Set<Int> { notes.uncitableSourceNumbers }
 }
 
 /// Conversions et textes fixes des Favoris. `nonisolated` : logique
@@ -62,7 +65,7 @@ nonisolated enum FavoritePresentation {
 
     /// Vrai que la conversation d'origine existe encore ou non. Supprimée, le
     /// favori est la dernière trace de la réponse : d'où une confirmation que
-    /// le web n'a pas.
+    /// la version web d'origine n'a pas.
     static let removalMessage =
         "La copie enregistrée sera effacée de cet appareil. La conversation d'origine n'est pas modifiée."
 
@@ -110,7 +113,31 @@ nonisolated enum FavoritePresentation {
             answer: favorite.answer,
             sources: citationSources(from: favorite.sources),
             savedAt: favorite.savedAt,
-            uncitableSourceNumbers: favorite.uncitableSourceNumbers
+            notes: favorite.answerNotes
+        )
+    }
+
+    /// Le résumé que la bulle du chat lit pour poser ses mentions (`MessageBubblePresentation`),
+    /// reconstruit pour le détail : mêmes règles d'affichage, donc mêmes mentions, aux mêmes
+    /// conditions. Un favori est toujours une réponse terminée et non vide.
+    ///
+    /// `webSourceCount` : les premières sources d'un message peuvent être des fichiers joints (URL
+    /// synthétique, sans lien) ; la bulle les retire pour juger « hors sujet » d'une recherche WEB,
+    /// et le favori, qui recopie les sources dans l'ordre, les retire de la même façon.
+    static func answerSnapshot(of content: FavoriteDetailContent) -> MessageBubblePresentation.AnswerSnapshot {
+        let segments = ReasoningSegmenter.segment(content.answer, isStreaming: false)
+        let attachmentCount = content.sources.prefix { UploadsSearchResultBuilder.attachmentID(fromSourceURL: $0.url) != nil }.count
+        return MessageBubblePresentation.AnswerSnapshot(
+            state: .completed,
+            reasoningPhase: segments.reasoningPhase,
+            hasTLDR: segments.tldr != nil,
+            hasBody: !segments.body.isEmpty,
+            sourceCount: content.sources.count,
+            webSourceCount: max(0, content.sources.count - attachmentCount),
+            answeredWithoutSearch: content.notes.answeredWithoutSearch,
+            answeredOffline: content.notes.answeredOffline,
+            answeredWithoutReadableSource: content.notes.answeredWithoutReadableSource,
+            sourcesMayBeOffTopic: content.notes.sourcesMayBeOffTopic
         )
     }
 }

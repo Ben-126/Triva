@@ -22,28 +22,28 @@ struct ImageSearchResult: Sendable, Equatable, Identifiable {
     let title: String
 }
 
-/// Port natif de `src/lib/agents/media/image.ts` (web) : reformule la requête
+/// Port natif de la recherche d'images de la version web d'origine : reformule la requête
 /// utilisateur en requête de recherche d'images via un appel LLM, cherche sur
 /// SearXNG (catégorie `images`), puis filtre/mappe les résultats.
 ///
-/// Écarts volontaires par rapport à la référence web, et pourquoi :
+/// Écarts volontaires par rapport à la version web d'origine, et pourquoi :
 /// 1. **Reformulation par prompt texte + parsing tolérant**, pas
 ///    `generateObject` (schéma zod + function-calling). Aucun des 3 moteurs
 ///    IA de Triva n'expose de function-calling fiable (voir `QueryClassifier`,
 ///    `SearchOrchestrator.decideNextAction`) : même principe ici, via
 ///    `MediaSearchQueryReformulator` (partagé avec `VideoSearchService`, les
 ///    deux n'ayant besoin que d'un unique champ `query`).
-/// 2. **Ne throw JAMAIS sur un échec de reformulation.** Le web ne gère pas
+/// 2. **Ne throw JAMAIS sur un échec de reformulation.** La version web d'origine ne gère pas
 ///    explicitement ce cas (une erreur `generateObject` remonterait telle
 ///    quelle) ; ici, un LLM qui échoue à reformuler correctement la requête
 ///    ne doit pas priver l'utilisateur d'une recherche d'images tout court —
 ///    repli sur la requête originale, documenté dans
 ///    `MediaSearchQueryReformulator.reformulate`.
-/// 3. **Filtre `https` strict, absent du web.** `SearXNGSearchResult` est un
+/// 3. **Filtre `https` strict, absent de la version web d'origine.** `SearXNGSearchResult` est un
 ///    type partagé avec le reste de l'app (voir `SearXNGModels.swift`) : rien
 ///    ne garantit qu'une instance publique mal configurée ne renvoie pas un
 ///    `img_src` en `http://` (contenu mixte bloqué par `AsyncImage` sur
-///    App Transport Security) ou une URL vide/malformée. Le web laisse passer
+///    App Transport Security) ou une URL vide/malformée. La version web d'origine laisse passer
 ///    ces cas (le navigateur affiche juste une image cassée) ; ici on les
 ///    exclut à la source pour ne jamais présenter de vignette qui ne
 ///    chargera jamais.
@@ -54,7 +54,7 @@ struct ImageSearchService: Sendable {
     private let maxHistoryMessages: Int
 
     /// `maxResults` par défaut à 10 : reprend exactement `.slice(0, 10)` de
-    /// `image.ts` — aucune raison de diverger, une grille d'images n'a pas la
+    /// la version web d'origine — aucune raison de diverger, une grille d'images n'a pas la
     /// contrainte de contexte-tokens qui a motivé les autres bornes du projet
     /// (`SearchPipelineConfiguration.maxScrapedContextCharacters`).
     /// `maxHistoryMessages` par défaut à 8, cohérent avec `QueryClassifier`.
@@ -94,7 +94,7 @@ struct ImageSearchService: Sendable {
     }
 
     /// Fonction pure et testable séparément du réseau : c'est elle qui porte
-    /// la logique de `image.ts` (`forEach` + `push` conditionnel +
+    /// la logique de la version web d'origine (`forEach` + `push` conditionnel +
     /// `.slice(0, 10)`), traduite en `compactMap` + `prefix`.
     static func filterAndMap(_ results: [SearXNGSearchResult], maxResults: Int) -> [ImageSearchResult] {
         let mapped = results.compactMap { result -> ImageSearchResult? in
@@ -118,7 +118,7 @@ struct ImageSearchService: Sendable {
         return url
     }
 
-    /// Port du system prompt de `imageSearchPrompt` (web) — condensé, cette
+    /// Port du system prompt de `imageSearchPrompt` de la version web d'origine — condensé, cette
     /// instruction unique n'a pas besoin de la distinction `.full`/`.concise`
     /// des prompts de classification/rédaction : c'est déjà la version la
     /// plus courte possible d'une consigne à un seul champ de sortie.

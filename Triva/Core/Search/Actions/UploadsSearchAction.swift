@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// Port de `uploadsSearch.ts` (web, `researcher/actions/uploadsSearch.ts`) :
+/// Port de la recherche dans les fichiers joints de la version web d'origine :
 /// recherche dans les fichiers joints à la conversation, entièrement sur
 /// l'appareil — aucun upload, aucun serveur, les fragments viennent de
 /// `AttachmentStore` (1.11a).
@@ -24,7 +24,7 @@ import Foundation
 /// garder d'une question à l'autre.
 ///
 /// SORTIE : `.searchResults`, UN résultat par pièce jointe — exactement la
-/// forme du web, qui renvoie `type: 'search_results'` après avoir fusionné
+/// forme de la version web d'origine, qui renvoie `type: 'search_results'` après avoir fusionné
 /// les fragments d'un même fichier (clé `metadata.url`). Les fichiers joints
 /// deviennent ainsi des sources citables `[n]` comme une page web, sans
 /// nouveau cas dans `SearchActionOutput`. Détails de construction (budget,
@@ -44,7 +44,7 @@ struct UploadsSearchAction: SearchAction {
     private let maxFragments: Int
     private let maxTotalCharacters: Int
 
-    /// `maxFragments` à 10 : le `topK` du web (`uploadStore.query(queries, 10)`).
+    /// `maxFragments` à 10 : le `topK` de la version web d'origine (`uploadStore.query(queries, 10)`).
     /// `maxTotalCharacters` à 6000 : voir
     /// `UploadsSearchResultBuilder.defaultMaxTotalCharacters`. Valeurs
     /// négatives ramenées à 0 (l'action rend alors toujours un résultat vide).
@@ -73,7 +73,7 @@ struct UploadsSearchAction: SearchAction {
     }
 
     /// `urls`, `failoverManager` et `scrapeService` sont ignorés : cette
-    /// action ne sort jamais sur le réseau (même consigne que le web : « Never
+    /// action ne sort jamais sur le réseau (même consigne que la version web d'origine : « Never
     /// use this tool to search the web »). Le protocole ne transporte qu'UNE
     /// requête ; les requêtes multiples passent par `search(queries:)`.
     func execute(
@@ -85,7 +85,7 @@ struct UploadsSearchAction: SearchAction {
         .searchResults(try await search(queries: [query]))
     }
 
-    /// Jusqu'à 3 requêtes, comme le web (`input.queries.slice(0, 3)`), fusion
+    /// Jusqu'à 3 requêtes, comme la version web d'origine (`input.queries.slice(0, 3)`), fusion
     /// par rangs réciproques déléguée à l'index. Aucune pièce jointe, aucune
     /// requête exploitable ou budget nul : tableau vide, JAMAIS une erreur —
     /// une conversation sans fichier joint n'est pas un échec de recherche.
@@ -116,12 +116,12 @@ struct UploadsSearchAction: SearchAction {
 /// de caractères -> `SearXNGSearchResult`. `nonisolated` : données et calcul
 /// déterministes, aucune raison d'être rattaché au main actor.
 nonisolated enum UploadsSearchResultBuilder {
-    /// Plafond du web (`'Can be a maximum of 3 queries'`). Au-delà, chaque
+    /// Plafond de la version web d'origine (`'Can be a maximum of 3 queries'`). Au-delà, chaque
     /// requête coûte un passage complet du scorer sur TOUS les fragments —
     /// le coût dominant sur l'appareil (voir `AttachmentSearchIndex`).
     static let maxQueries = 3
 
-    /// `topK` du web.
+    /// `topK` de la version web d'origine.
     static let defaultMaxFragments = 10
 
     /// Budget TOTAL des fragments injectés, toutes pièces jointes confondues.
@@ -130,14 +130,14 @@ nonisolated enum UploadsSearchResultBuilder {
     /// 6000 caractères (~1500 tokens, proxy caractères/4) plutôt que les
     /// 8000 du contenu scrapé : les deux blocs peuvent coexister dans un même
     /// prompt, et Apple Intelligence plafonne autour de 4k tokens au total —
-    /// 10 fragments de 800 caractères (le web) n'y tiendraient pas avec le
+    /// 10 fragments de 800 caractères (la version web d'origine) n'y tiendraient pas avec le
     /// reste. Réglable par l'appelant sans changer de code.
     static let defaultMaxTotalCharacters = 6000
 
     /// Schéma de l'URL synthétique d'une pièce jointe (voir `sourceURL(for:)`).
     static let attachmentURLScheme = "triva-attachment"
 
-    /// Même séparateur que le web (`existingResult.content += '\n\n' + ...`).
+    /// Même séparateur que la version web d'origine (`existingResult.content += '\n\n' + ...`).
     static let fragmentSeparator = "\n\n"
 
     // MARK: Requêtes
@@ -145,7 +145,7 @@ nonisolated enum UploadsSearchResultBuilder {
     /// Requêtes nettoyées, blanches retirées, doublons retirés (ordre
     /// conservé), puis plafonnées à `maxQueries`.
     ///
-    /// ÉCART ASSUMÉ avec le web, qui tronque à 3 AVANT tout dédoublonnage :
+    /// ÉCART ASSUMÉ avec la version web d'origine, qui tronque à 3 AVANT tout dédoublonnage :
     /// ici on dédoublonne d'abord, pour qu'une requête répétée ou blanche ne
     /// prenne pas la place d'une vraie troisième requête. Le dédoublonnage se
     /// fait après nettoyage des blancs de bord : « impôts » et « impôts  »
@@ -163,7 +163,7 @@ nonisolated enum UploadsSearchResultBuilder {
 
     /// `triva-attachment:<UUID>` — unique par pièce jointe, et SANS `//`.
     ///
-    /// PIÈGE ÉVITÉ : le web utilise `file_id://<id>`. En Swift, une URL de
+    /// PIÈGE ÉVITÉ : la version web d'origine utilise `file_id://<id>`. En Swift, une URL de
     /// forme `schéma://<uuid>` fait de l'UUID un HÔTE (`URL.host` non vide),
     /// et `SourcesListView` construit alors un `Link` tapable vers une
     /// adresse que rien ne sait ouvrir. La forme opaque sans autorité donne
@@ -190,11 +190,11 @@ nonisolated enum UploadsSearchResultBuilder {
     /// 1. au plus `maxFragments` fragments, dans l'ordre de classement reçu ;
     /// 2. déduplication (voir `deduplicated`) ;
     /// 3. regroupement par pièce jointe — port de la fusion par
-    ///    `metadata.url` du web : fichiers ordonnés par leur MEILLEUR
+    ///    `metadata.url` de la version web d'origine : fichiers ordonnés par leur MEILLEUR
     ///    fragment (ça compte : les fichiers joints ouvrent les sources de
     ///    `SearchOrchestrator`, leur rang devient leur numéro de citation
     ///    `[n]`), fragments d'un fichier dans l'ordre de classement, comme
-    ///    le `+=` du web ;
+    ///    le `+=` de la version web d'origine ;
     /// 4. budget réparti équitablement entre fichiers (`fairShares`), chaque
     ///    contenu tronqué à SA part. La troncature mange donc la fin d'un
     ///    contenu, c'est-à-dire ses fragments les MOINS pertinents.
@@ -352,8 +352,8 @@ nonisolated struct AttachmentFragmentGroup: Sendable, Equatable {
     }
 }
 
-/// Clé de position d'un fragment, indépendante de son score (voir le bug du
-/// web corrigé dans `AttachmentSearchIndex.search(queries:limit:)`).
+/// Clé de position d'un fragment, indépendante de son score (voir le bug de la
+/// version web d'origine corrigé dans `AttachmentSearchIndex.search(queries:limit:)`).
 nonisolated private struct FragmentPosition: Hashable {
     let attachmentID: UUID
     let chunkIndex: Int

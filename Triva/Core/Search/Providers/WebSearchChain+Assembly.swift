@@ -59,7 +59,11 @@ extension WebSearchChain {
             unreadableKeySources: keyed.unreadable + (cloud.keyUnreadable ? [.cloudProviderWebSearch] : []),
             fallbackLanguage: fallbackLanguage
         )
+        .retryingTransientFailures(after: transientRetryDelay)
     }
+
+    /// Pause avant la seconde passe sur les sources ouvertes (voir « SECONDE PASSE »).
+    static let transientRetryDelay: Duration = .seconds(2)
 
     /// Providers des clés de recherche enregistrées, dans l'ordre de préférence, et sources dont
     /// la clé n'a pas pu être lue. Lecture source par source : une clé illisible n'empêche pas

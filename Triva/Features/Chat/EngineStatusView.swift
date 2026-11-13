@@ -66,6 +66,23 @@ struct EngineStatusView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #if os(iOS)
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    #endif
+
+    /// Badge réduit à son icône ? Voir `EngineHeaderLayout.badgeIsIconOnly`.
+    private var isBadgeIconOnly: Bool {
+        #if os(iOS)
+        let isVerticallyCompact = verticalSizeClass == .compact
+        #else
+        let isVerticallyCompact = false
+        #endif
+        return EngineHeaderLayout.badgeIsIconOnly(
+            isVerticallyCompact: isVerticallyCompact,
+            dynamicTypeSize: dynamicTypeSize,
+            availableHeight: availableHeight
+        )
+    }
 
     /// En-tête replié sur le seul badge ? Voir `EngineHeaderLayout.isCollapsed`.
     private var isHeaderCollapsed: Bool {
@@ -75,6 +92,21 @@ struct EngineStatusView: View {
             needsSetup: session.setupRequirement != nil,
             isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
         )
+    }
+
+    /// La rangée moteur (badge icône + « Changer de moteur ») quitte l'en-tête pour la barre de
+    /// saisie : repliée, badge réduit à l'icône, et un chat à afficher pour l'accueillir. Une
+    /// icône de 50 pt ne libère rien tant que la rangée existe : c'est la rangée entière, avec son
+    /// espacement (63 pt), qui rend les 33 pt manquants (mesuré sur iPhone 18 Pro, paysage, AX3).
+    private var engineRowIsInComposer: Bool {
+        guard let chatViewModel = session.chatViewModel else { return false }
+        return isHeaderCollapsed && isBadgeIconOnly
+            && Self.showsChat(requirement: session.setupRequirement, hasMessages: !chatViewModel.messages.isEmpty)
+    }
+
+    private var composerEngineAccessory: ComposerEngineAccessory? {
+        guard engineRowIsInComposer else { return nil }
+        return ComposerEngineAccessory(icon: badge.icon, text: badge.text, onChangeEngine: onChangeEngine)
     }
 
     /// Le moteur affiché ET utilisé (voir `SearchSession.engine`).
@@ -98,7 +130,9 @@ struct EngineStatusView: View {
     var body: some View {
         let _ = chatPrepared
         VStack(alignment: .leading, spacing: 12) {
-            header
+            if !engineRowIsInComposer {
+                header
+            }
 
             if let message = session.setupRequirement?.message {
                 // Même colonne que l'en-tête et que `ChatView` (640 pt en
@@ -120,7 +154,7 @@ struct EngineStatusView: View {
 
             if let chatViewModel = session.chatViewModel,
                Self.showsChat(requirement: session.setupRequirement, hasMessages: !chatViewModel.messages.isEmpty) {
-                ChatView(viewModel: chatViewModel)
+                ChatView(viewModel: chatViewModel, engineAccessory: composerEngineAccessory)
                     // Brouillon de la session (voir `SearchDraft`) : survit au
                     // démontage de `ChatView` et reçoit le texte de
                     // Découvrir > « Chercher dans Triva ».
@@ -275,7 +309,7 @@ struct EngineStatusView: View {
     /// reste trouvable, elle ne prend juste plus une ligne à elle pendant toute la conversation.
     private var collapsedRow: some View {
         HStack(alignment: .center, spacing: 12) {
-            EngineBadge(badge: badge, showsCaption: false, badgeIdentifier: "search.engineBadge")
+            EngineBadge(badge: badge, showsCaption: false, badgeIdentifier: "search.engineBadge", iconOnly: isBadgeIconOnly)
             Spacer(minLength: 0)
             Button("Changer de moteur", systemImage: "arrow.triangle.2.circlepath", action: onChangeEngine)
                 .labelStyle(.iconOnly)
@@ -317,6 +351,29 @@ nonisolated enum EngineHeaderLayout {
     /// (QA Q2 point 12). Seuil volontairement bas (40 pt) : il ne doit écarter que ces
     /// valeurs de départ, jamais une vraie hauteur réduite (clavier ouvert en paysage).
     static let minimumMeasuredHeight: CGFloat = 40
+
+    /// iPhone en paysage, texte AX3 ou plus : en dessous de cette hauteur offerte, le clavier est
+    /// ouvert. Mesuré sur iPhone 18 Pro (402 pt de haut) : 260 pt clavier fermé, 100 pt clavier
+    /// ouvert (le clavier en paysage prend 177 pt). 180 pt tombe entre les deux, avec de la marge
+    /// des deux côtés pour un écran un peu plus ou moins haut.
+    static let keyboardOpenMaximumHeight: CGFloat = 180
+
+    /// Badge réduit à son icône (décision de Ben, mission E2c) : SEULEMENT en hauteur compacte
+    /// (iPhone en paysage), à AX3 ou plus, clavier ouvert. À ce réglage la barre de saisie
+    /// débordait d'environ 33 pt et le bouton d'envoi passait sous le clavier. Partout ailleurs
+    /// (AX1, AX2, portrait, Mac, iPad, clavier fermé) le badge garde son texte.
+    /// Clavier ouvert déduit de la hauteur MESURÉE, comme le repli de l'en-tête (jamais du modèle
+    /// d'appareil) ; en dessous de `minimumMeasuredHeight`, ce n'est pas encore une mesure.
+    static func badgeIsIconOnly(
+        isVerticallyCompact: Bool,
+        dynamicTypeSize: DynamicTypeSize,
+        availableHeight: CGFloat
+    ) -> Bool {
+        isVerticallyCompact
+            && dynamicTypeSize >= .accessibility3
+            && availableHeight >= minimumMeasuredHeight
+            && availableHeight < keyboardOpenMaximumHeight
+    }
 
     /// - Parameters:
     ///   - availableHeight: hauteur offerte à l'écran de Recherche ; `0` tant qu'elle n'est pas

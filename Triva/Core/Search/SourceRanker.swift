@@ -63,7 +63,7 @@ nonisolated struct NaturalLanguageTextIdentifier: TextLanguageIdentifying {
 /// classement explicable : un test qui veut vérifier que le multiplicateur
 /// de domaine a bien été appliqué n'a pas à refaire le calcul à l'envers, et
 /// un futur écran de débogage (ou une info de source dans l'UI) peut montrer
-/// pourquoi telle page est passée devant telle autre. Le web jette cette
+/// pourquoi telle page est passée devant telle autre. La version web d'origine jette cette
 /// information (`delete uniqueResult.metadata._similarity`) parce qu'elle y
 /// transite par le réseau ; ici tout reste en mémoire, ça ne coûte rien.
 ///
@@ -81,7 +81,7 @@ nonisolated struct RankedSource: Sendable, Equatable {
 }
 
 /// Portage du scoring / ranking des sources (tâche 1.3), depuis
-/// `src/lib/agents/search/researcher/actions/search/baseSearch.ts` (web) :
+/// la version web d'origine :
 /// listes `BOOSTED_DOMAINS` / `PENALIZED_DOMAINS`, formule
 /// `(similarity * 0,7 + positionScore * 0,3) * multiplicateur de domaine`,
 /// filtre `similarity > 0,2` avec repli sur les premiers par position,
@@ -93,9 +93,9 @@ nonisolated struct RankedSource: Sendable, Equatable {
 /// injecté sous forme de `TextSimilarityScoring` (fondation F1) — un scorer
 /// factice rend donc la sortie entièrement prévisible dans les tests.
 ///
-/// ## Deux scorers, pas un — divergence assumée vis-à-vis du web
+/// ## Deux scorers, pas un — divergence assumée vis-à-vis de la version web d'origine
 ///
-/// Le web réutilise le MÊME embedding pour mesurer la pertinence ET pour
+/// La version web d'origine réutilise le MÊME embedding pour mesurer la pertinence ET pour
 /// repérer les doublons (`similarity > 0.75` entre deux embeddings de
 /// résultats). On sépare les deux rôles ici, pour deux raisons mesurées.
 ///
@@ -122,7 +122,7 @@ nonisolated struct RankedSource: Sendable, Equatable {
 /// d'un modèle système, donc elle se comporte à l'identique dans toutes les
 /// langues, sur tous les appareils et dans tous les tests.
 ///
-/// ## Une langue à la fois — décision 3 de Ben, ajout sans équivalent web
+/// ## Une langue à la fois — décision 3 de Ben, ajout sans équivalent dans la version web d'origine
 ///
 /// La similarité est dominée par la LANGUE, pas par le sens (F1 : requête
 /// française, extrait FR hors-sujet 0,881 devant extrait EN pertinent 0,842),
@@ -132,21 +132,21 @@ nonisolated struct RankedSource: Sendable, Equatable {
 /// part : partition (`languageBuckets`), un appel de similarité PAR LANGUE,
 /// plancher/tri/déduplication par langue, puis fusion en tourniquet
 /// (`interleaved`). Aucun score n'est comparé d'une langue à l'autre.
-/// Une seule langue : sortie identique au port du web. Pas de seuil absolu
+/// Une seule langue : sortie identique au port de la version web d'origine. Pas de seuil absolu
 /// sur ces scores (deux phrases sans rapport marquent déjà 0,655) : changer
 /// ce mécanisme est un arbitrage produit réservé à Ben.
 nonisolated struct SourceRanker: Sendable {
 
-    // MARK: - Constantes portées du web
+    // MARK: - Constantes portées de la version web d'origine
 
-    /// Port littéral de `BOOSTED_DOMAINS` (`baseSearch.ts`). Sert AUSSI de
+    /// Port littéral de `BOOSTED_DOMAINS`. Sert AUSSI de
     /// définition des "sources fiables" du mode `reliable` (1.13) : le plan
     /// demande de restreindre aux domaines boostés, pas de maintenir une
     /// deuxième liste qui finirait par diverger de celle-ci.
     ///
     /// Conséquence à connaître : `github.com` et `stackoverflow.com` en font
     /// partie, donc le mode "fiable" accepte du contenu communautaire. C'est
-    /// volontaire — c'est la liste du web, et sur une question technique ce
+    /// volontaire — c'est la liste de la version web d'origine, et sur une question technique ce
     /// sont effectivement les meilleures sources disponibles. Restreindre
     /// davantage est un arbitrage produit qui appartient à Ben, pas une
     /// correction à glisser en douce dans un portage.
@@ -169,7 +169,7 @@ nonisolated struct SourceRanker: Sendable {
         "scholar.google.com",
     ]
 
-    /// Port littéral de `PENALIZED_DOMAINS` (`baseSearch.ts`) : des sites de
+    /// Port littéral de `PENALIZED_DOMAINS` : des sites de
     /// contenu généré par les utilisateurs, très bien référencés mais
     /// pauvres en information vérifiable.
     static let penalizedDomains: [String] = [
@@ -181,7 +181,7 @@ nonisolated struct SourceRanker: Sendable {
         "thoughtcatalog.com",
     ]
 
-    /// Multiplicateurs du web, inchangés. `1,25` récompense sans écraser (une
+    /// Multiplicateurs de la version web d'origine, inchangés. `1,25` récompense sans écraser (une
     /// source boostée mal notée reste derrière une source neutre bien notée),
     /// `0,4` relègue franchement sans éliminer (une page Quora peut rester le
     /// seul résultat exploitable d'une recherche).
@@ -189,7 +189,7 @@ nonisolated struct SourceRanker: Sendable {
     static let penalizedMultiplier = 0.4
     static let neutralMultiplier = 1.0
 
-    /// Poids de la formule du web : `similarity * 0,7 + positionScore * 0,3`.
+    /// Poids de la formule de la version web d'origine : `similarity * 0,7 + positionScore * 0,3`.
     /// La similarité domine, mais la position conserve 30 % — l'ordre rendu
     /// par le moteur de recherche est déjà un classement de qualité qu'il
     /// serait absurde de jeter entièrement.
@@ -200,7 +200,7 @@ nonisolated struct SourceRanker: Sendable {
     /// suivants ne tirent plus aucun bénéfice de leur position.
     static let positionScoreDecay = 0.1
 
-    /// Seuil de pertinence du web (`c.metadata._similarity > 0.2`), comparé
+    /// Seuil de pertinence de la version web d'origine (`c.metadata._similarity > 0.2`), comparé
     /// en STRICT supérieur comme là-bas.
     ///
     /// Attention à l'interprétation : ce n'est PAS un seuil de "bonne"
@@ -216,10 +216,10 @@ nonisolated struct SourceRanker: Sendable {
     static let minimumSimilarity = 0.2
 
     /// Seuil de quasi-doublon, comparé en STRICT supérieur comme le
-    /// `similarity > 0.75` du web — mais interprété dans l'espace LEXICAL,
+    /// `similarity > 0.75` de la version web d'origine — mais interprété dans l'espace LEXICAL,
     /// pas sémantique (voir l'explication du double scorer en tête de type).
     ///
-    /// La valeur 0,75 du web est conservée parce qu'elle est MESURÉE bonne
+    /// La valeur 0,75 de la version web d'origine est conservée parce qu'elle est MESURÉE bonne
     /// dans ce nouvel espace, pas par fidélité aveugle. Relevés avec
     /// `LexicalSimilarityScorer` (macOS 27, textes français réalistes de
     /// longueur d'extrait SearXNG) :
@@ -249,7 +249,7 @@ nonisolated struct SourceRanker: Sendable {
     static let defaultNearDuplicateThreshold = 0.75
 
     /// Nombre de résultats conservés quand le filtre `similarity > 0,2` a
-    /// TOUT éliminé (`scored.slice(0, 5)` côté web).
+    /// TOUT éliminé (`scored.slice(0, 5)` dans la version web d'origine).
     ///
     /// Ce repli compte, et le plan insiste pour qu'il soit porté : une
     /// similarité basse PARTOUT signale bien plus souvent un scorer en
@@ -563,7 +563,7 @@ nonisolated struct SourceRanker: Sendable {
             let content = Self.rankedContent(of: candidate.result)
             if !keptContents.isEmpty {
                 let duplicateScores = await duplicateScorer.similarities(of: content, against: keptContents)
-                // Comparaison STRICTE, comme `similarity > 0.75` côté web.
+                // Comparaison STRICTE, comme `similarity > 0.75` dans la version web d'origine.
                 if duplicateScores.contains(where: { $0 > nearDuplicateThreshold }) { continue }
             }
 

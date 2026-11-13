@@ -21,10 +21,9 @@ import SwiftData
 
 /// Une réponse de l'assistant mise en favori (1.10).
 ///
-/// Portage de `FavoriteEntry` (`src/lib/types.ts`, web) :
-/// `{ id, query, answer, sources: { title, url }[], savedAt }`, que le web
-/// stocke en JSON dans `localStorage` sous la clé `perplexica_favorites`
-/// (`src/lib/hooks/useFavorites.ts`).
+/// Portage de `FavoriteEntry` de la version web d'origine :
+/// `{ id, query, answer, sources: { title, url }[], savedAt }`, qu'elle
+/// stocke en JSON dans le stockage local du navigateur.
 ///
 /// ## Copie, et non relation — décision structurante
 /// Un favori est un **instantané autonome** : il recopie la question, la
@@ -42,7 +41,7 @@ import SwiftData
 ///    peut réécrire une réponse plus tard (régénération). Un favori relié
 ///    changerait de contenu sous les yeux de l'utilisateur ; une copie garde
 ///    exactement la réponse qu'il a jugée digne d'être conservée.
-/// 3. **Fidélité au web**, qui fait déjà une copie complète (`answer:
+/// 3. **Fidélité à la version web d'origine**, qui fait déjà une copie complète (`answer:
 ///    copyMessage`, sources recopiées dans l'entrée).
 /// 4. **Ne pas toucher au schéma de l'historique.** Une relation exigerait un
 ///    côté inverse déclaré dans `ChatHistoryModels.swift`, et couplerait les
@@ -71,10 +70,10 @@ import SwiftData
 /// d'un favori existant. L'unicité est garantie par `FavoritesStore.mark`,
 /// qui vérifie avant d'insérer — et c'est testé.
 ///
-/// ## Écart assumé avec le web : pas de plafond à 100
-/// Le web tronque la liste à `MAX_FAVORITES = 100` (`.slice(0, 100)`), ce qui
+/// ## Écart assumé avec la version web d'origine : pas de plafond à 100
+/// La version web d'origine tronque la liste à `MAX_FAVORITES = 100` (`.slice(0, 100)`), ce qui
 /// supprime **en silence** le plus ancien favori au 101e marquage. Cette limite
-/// n'existe là-bas que pour ménager le quota de `localStorage` (~5 Mo). SQLite
+/// n'existe là-bas que pour ménager le quota du stockage local du navigateur (~5 Mo). SQLite
 /// n'a pas cette contrainte, et perdre sans prévenir une réponse que
 /// l'utilisateur a explicitement demandé à garder est la pire issue possible
 /// pour une fonctionnalité de conservation : on ne porte donc pas le plafond.
@@ -92,8 +91,8 @@ nonisolated final class StoredFavorite {
     /// valide : toujours la résoudre via `ChatHistoryStore.conversation(with:)`.
     var conversationID: UUID?
 
-    /// Question de l'utilisateur à laquelle la réponse répondait (`query` côté
-    /// web). Peut être vide si aucune question n'a été retrouvée.
+    /// Question de l'utilisateur à laquelle la réponse répondait (`query` dans la
+    /// version web d'origine). Peut être vide si aucune question n'a été retrouvée.
     var question: String
 
     /// Réponse de l'assistant, Markdown brut avec ses marqueurs `[n]` —
@@ -101,7 +100,7 @@ nonisolated final class StoredFavorite {
     /// `orderedSources` exactement comme dans le chat.
     var answer: String
 
-    /// Date du marquage (`savedAt` côté web). Critère de tri de la liste.
+    /// Date du marquage (`savedAt` dans la version web d'origine). Critère de tri de la liste.
     var savedAt: Date
 
     /// Sources recopiées, **non ordonnées** (tableau de relation SwiftData) :
@@ -123,6 +122,37 @@ nonisolated final class StoredFavorite {
     var uncitableSourceNumbers: Set<Int> {
         get { SourceNumberCodec.decode(uncitableSourceNumbersRaw) }
         set { uncitableSourceNumbersRaw = SourceNumberCodec.encode(newValue) }
+    }
+
+    /// Les petites mentions de la bulle, copiées au marquage (mission E2b, décision de Ben) : le
+    /// détail les redit à l'identique. Scalaires à valeur par défaut, comme `uncitableSourceNumbersRaw`
+    /// (migration légère : un favori marqué avant leur ajout se relit sans mention). Lire et écrire
+    /// par `answerNotes`.
+    var answeredWithoutSearch: Bool = false
+    var answeredOffline: Bool = false
+    var answeredWithoutReadableSource: Bool = false
+    var sourcesMayBeOffTopic: Bool = false
+
+    /// Les mentions en valeur, comme `StoredMessage.answerNotes`. `searXNGUnreachable` n'est PAS
+    /// gardé (il ne dit rien dans un favori, qui n'a pas de boutons de recherche médias) : il se
+    /// relit toujours à `false`, et l'écriture l'ignore.
+    var answerNotes: StoredAnswerNotes {
+        get {
+            StoredAnswerNotes(
+                uncitableSourceNumbers: uncitableSourceNumbers,
+                answeredWithoutSearch: answeredWithoutSearch,
+                answeredOffline: answeredOffline,
+                answeredWithoutReadableSource: answeredWithoutReadableSource,
+                sourcesMayBeOffTopic: sourcesMayBeOffTopic
+            )
+        }
+        set {
+            uncitableSourceNumbers = newValue.uncitableSourceNumbers
+            answeredWithoutSearch = newValue.answeredWithoutSearch
+            answeredOffline = newValue.answeredOffline
+            answeredWithoutReadableSource = newValue.answeredWithoutReadableSource
+            sourcesMayBeOffTopic = newValue.sourcesMayBeOffTopic
+        }
     }
 
     init(
@@ -160,7 +190,7 @@ nonisolated final class StoredFavorite {
 /// tableau `Codable` stocké en attribut : c'est la forme déjà éprouvée (et
 /// testée) par l'historique, qui garde `order` explicite et reste interrogeable.
 ///
-/// Le web ne garde que `{ title, url }` ; on conserve aussi l'extrait, gratuit à
+/// La version web d'origine ne garde que `{ title, url }` ; on conserve aussi l'extrait, gratuit à
 /// ce stade et utile à la recherche plein texte ou à un aperçu hors ligne.
 @Model
 nonisolated final class StoredFavoriteSource {

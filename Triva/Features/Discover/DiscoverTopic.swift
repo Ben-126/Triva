@@ -8,7 +8,7 @@
 import Foundation
 
 /// Les 5 sujets de contenu tendance, identiques à `websitesForTopic`
-/// (src/app/api/discover/route.ts, web) — la liste de sujets elle-même n'est
+/// de la version web d'origine — la liste de sujets elle-même n'est
 /// pas une décision produit à reprendre, seule sa source de données change (des flux
 /// RSS/Atom, plus des recherches SearXNG).
 nonisolated enum DiscoverTopic: String, CaseIterable, Sendable, Equatable, Hashable, Codable {

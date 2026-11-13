@@ -52,6 +52,7 @@ struct MLXModelSelectionView: View {
         NavigationStack {
             content
                 .navigationTitle("Modèle local")
+                .macSheetTitleBar("Modèle local")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

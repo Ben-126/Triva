@@ -19,7 +19,7 @@ import Foundation
 /// celles qu'elle ne parvient pas à lire deviennent non citables
 /// (`PromptTemplates.numberedContext`), jamais renumérotées.
 ///
-/// Écart assumé avec le web (`researcher/index.ts`) : là-bas, toute lecture de
+/// Écart assumé avec la version web d'origine : là-bas, toute lecture de
 /// page est une décision du modèle. Ici, une source sans extrait n'a rien à
 /// offrir au rédacteur ; la lire n'est pas un choix, c'est la condition pour
 /// qu'elle compte. Aucun appel au modèle n'est fait pour cela.
@@ -69,8 +69,10 @@ extension SearchOrchestrator {
     /// lève jamais. Aucune source sans extrait : aucun appel, l'horloge n'est pas
     /// lue.
     ///
-    /// Statique, avec service, échéance et horloge en paramètres : les propriétés
-    /// stockées de l'orchestrateur sont privées à `SearchOrchestrator.swift`.
+    /// Statique, avec service, échéance et horloge en paramètres : sans instance
+    /// d'orchestrateur, les tests lisent des pages avec une horloge et un scrape
+    /// injectés, et l'exécution reste hors du main actor (les propriétés stockées
+    /// utiles sont internes depuis le découpage E1, ce n'est plus une contrainte).
     /// `nonisolated` explicite, comme tout membre d'extension de ce type : sans
     /// annotation, l'isolation par défaut du projet (main actor) s'appliquerait.
     nonisolated static func preRead<C: Clock<Duration>>(

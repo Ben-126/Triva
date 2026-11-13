@@ -66,7 +66,7 @@ nonisolated enum DiscoverLayout {
 
 /// Écran Découvrir (tâche 1.8) : l'actualité des 5 sujets du catalogue,
 /// récupérée sans backend par `DiscoverService`. Port de
-/// `src/app/discover/page.tsx` (web), refait selon DESIGN.md — étalon de
+/// la page Découvrir de la version web d'origine, refait selon DESIGN.md — étalon de
 /// sobriété : l'app Actualités d'Apple.
 ///
 /// ## Sélecteur de sujet : « Tout » puis les 5 sujets

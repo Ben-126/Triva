@@ -9,7 +9,7 @@ import Foundation
 
 /// Décision du planner (itérations 2+ de la boucle de recherche) : quelle
 /// action lancer ensuite, avec quelles URLs ou requêtes le cas échéant. Port
-/// de la boucle `for` de `researcher/index.ts` (web) — mais là où le TS
+/// de la boucle `for` de la version web d'origine — mais là où elle
 /// délègue le choix d'action à un vrai tool-calling LLM (schéma zod +
 /// function-calling natif), ici la décision passe par un parsing JSON
 /// tolérant, même principe que `QueryClassifier.parse` : aucun des 3
@@ -52,7 +52,7 @@ extension SearchOrchestrator {
     }
 
     /// Prompt du planner (itérations 2+) : contrairement au tool-calling
-    /// natif de `researcher/index.ts` (web), demande explicitement un JSON
+    /// natif de la version web d'origine, demande explicitement un JSON
     /// `{ "action": ..., "urls": [...] }`, même approche tolérante que
     /// `QueryClassifier.buildPrompt`. Le marqueur `<planner_context>` (absent
     /// du prompt de classification ET du prompt final) permet de distinguer

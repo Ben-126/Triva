@@ -36,7 +36,7 @@ nonisolated enum CitationDetailPresentationStyle: Sendable, Equatable {
 
 /// Texte de réponse avec citations `[n]` cliquables (tâche 1.12).
 ///
-/// Port de `src/components/MessageRenderer/Citation.tsx` (web), qui affiche
+/// Port du composant de citation de la version web d'origine, qui affiche
 /// au survol une bulle avec le titre et le domaine de la source. Ici : un
 /// toucher (iOS) ou un clic (macOS) sur un badge ouvre une fiche avec le
 /// titre, le domaine, l'extrait et un bouton d'ouverture.

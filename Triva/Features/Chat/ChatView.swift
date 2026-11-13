@@ -155,15 +155,23 @@ nonisolated enum ChatScrollFollowing {
 struct ChatView: View {
     let viewModel: ChatViewModel
     private let injectedResponseModeStore: ResponseModeSettingsStore?
+    /// Moteur IA posé dans la barre de saisie (iPhone en paysage, AX3, clavier ouvert) : voir
+    /// `ComposerEngineAccessory`. `nil` partout ailleurs.
+    private let engineAccessory: ComposerEngineAccessory?
 
     /// - Parameter responseModeStore: le store PARTAGÉ du mode de réponse
     ///   (1.13), le même que celui des Réglages. `nil` : l'instance unique du
     ///   processus (`sharedResponseModeStore`). Pas de valeur par défaut
     ///   `= ChatView.sharedResponseModeStore` : une expression par défaut est
     ///   évaluée hors du main actor (même piège que `EngineStatusView.init`).
-    init(viewModel: ChatViewModel, responseModeStore: ResponseModeSettingsStore? = nil) {
+    init(
+        viewModel: ChatViewModel,
+        responseModeStore: ResponseModeSettingsStore? = nil,
+        engineAccessory: ComposerEngineAccessory? = nil
+    ) {
         self.viewModel = viewModel
         self.injectedResponseModeStore = responseModeStore
+        self.engineAccessory = engineAccessory
     }
 
     /// Brouillon de la session (`SearchDraft`, `ContentView.swift`) : il
@@ -232,7 +240,7 @@ struct ChatView: View {
     }
 
     /// Suggestions de la DERNIÈRE réponse, une fois sa génération terminée
-    /// (même règle que le web) ; `nil` pendant une génération.
+    /// (même règle que la version web d'origine) ; `nil` pendant une génération.
     private var lastAnswerSuggestions: [String]? {
         guard !viewModel.isGenerating,
               let last = viewModel.messages.last,
@@ -511,7 +519,8 @@ struct ChatView: View {
             isSendDisabled: isSendDisabled,
             contentMaxWidth: contentMaxWidth,
             onSend: send,
-            onStop: { sendTask?.cancel() }
+            onStop: { sendTask?.cancel() },
+            engineAccessory: engineAccessory
         )
     }
 
@@ -525,7 +534,14 @@ struct ChatView: View {
         } else {
             localDraft = ""
         }
-        sendTask = Task { await viewModel.send(query: query) }
+        // `Task.immediate` : `send` ajoute la question et la réponse en cours (donc `isGenerating`)
+        // AVANT son premier `await`, dans la même transaction que le brouillon vidé ci-dessus.
+        // Avec un `Task {}` ordinaire, le corps ne partait qu'au tour suivant : une image où le
+        // brouillon est vide et la génération pas encore lancée, le bouton d'envoi (verre
+        // proéminent) passait « inactif » puis « actif » en une image, et SwiftUI signalait
+        // « glassEffect() tried to update multiple times per frame » à chaque envoi par toucher
+        // (mesuré : 4 sur 4 avec `Task {}`, 0 sur 4 sans ce clignotement).
+        sendTask = Task.immediate { await viewModel.send(query: query) }
     }
 
     /// Suggestion touchée : envoyée comme une nouvelle question, dans

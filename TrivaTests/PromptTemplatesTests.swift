@@ -504,7 +504,7 @@ struct PromptTemplatesTests {
         #expect(!PromptTemplates.bannedFillerPhrases.isEmpty)
         #expect(Set(PromptTemplates.allBannedPhrases).count == PromptTemplates.allBannedPhrases.count)
 
-        // Le web liste les deux langues : le portage doit garder les deux.
+        // La version web d'origine liste les deux langues : le portage doit garder les deux.
         #expect(PromptTemplates.bannedFillerPhrases.contains("en résumé"))
         #expect(PromptTemplates.bannedFillerPhrases.contains("in summary"))
         #expect(PromptTemplates.bannedSpeculationPhrases.contains("il est probable que"))

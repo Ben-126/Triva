@@ -208,7 +208,7 @@ struct StoredAnswerNotesStoreTests {
 
         let direct = try stores.favorites.mark(
             messageID: UUID(), conversationID: nil, question: "Q", answer: "R[1].", sources: [readable, unreadable],
-            uncitableSourceNumbers: [2]
+            notes: StoredAnswerNotes(uncitableSourceNumbers: [2])
         )
         #expect(direct.uncitableSourceNumbers == [2])
         let plain = try stores.favorites.mark(messageID: UUID(), conversationID: nil, question: "Q", answer: "R")

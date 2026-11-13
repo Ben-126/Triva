@@ -36,10 +36,14 @@ struct EngineBadge: View {
     /// `search.engineCaption`) : le parcours 01 lit le texte de la légende.
     var badgeIdentifier: String?
     var captionIdentifier: String?
+    /// Icône seule, sans texte (iPhone en paysage, texte AX3 et plus, clavier ouvert : voir
+    /// `EngineHeaderLayout.badgeIsIconOnly`). Le libellé d'accessibilité reste COMPLET : VoiceOver
+    /// lit le même texte que le badge déplié, et le bouton « Changer de moteur » garde son rôle.
+    var iconOnly = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(badge.text, systemImage: badge.icon)
+            label
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.tint)
                 .fixedSize(horizontal: false, vertical: true)
@@ -56,6 +60,17 @@ struct EngineBadge: View {
                     .padding(.leading, 4)
                     .accessibilityIdentifier(captionIdentifier ?? "")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if iconOnly {
+            Label(badge.text, systemImage: badge.icon)
+                .labelStyle(.iconOnly)
+                .accessibilityLabel(badge.text)
+        } else {
+            Label(badge.text, systemImage: badge.icon)
         }
     }
 }

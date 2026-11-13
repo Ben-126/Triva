@@ -9,10 +9,10 @@ import Foundation
 
 /// Les 3 modes de réponse proposés à l'utilisateur (voir 1.13 du plan).
 ///
-/// Portage de `ResponseMode` (`src/lib/types.ts` du web), qui compte un 4e cas
+/// Portage de `ResponseMode` de la version web d'origine, qui compte un 4e cas
 /// `debate` (arguments Pour/Contre) — **hors périmètre V1** (décision de Ben) :
 /// seuls `quick`, `deep` et `reliable` existent ici. Le mode par défaut est
-/// `quick` (décision de Ben, 2026-09-30), contrairement au web qui part sur
+/// `quick` (décision de Ben, 2026-09-30), contrairement à la version web d'origine qui part sur
 /// `deep` (voir `ResponseModeSettingsStore`).
 ///
 /// `String`-backed pour un `Codable` stable dans le temps (le brut stocké en
@@ -38,7 +38,7 @@ enum ResponseMode: String, Sendable, Codable, CaseIterable, Equatable {
 
     /// Phrase d'explication d'une ligne, affichée en complément du libellé
     /// (infobulle ou légende sous le sélecteur) — reprend l'esprit des
-    /// tooltips du composant web `ResponseMode.tsx`, adapté au français et au
+    /// tooltips du sélecteur de la version web d'origine, adapté au français et au
     /// fonctionnement réel du pipeline Swift (pas de garantie de longueur de
     /// texte : la génération n'est pas déterministe, voir `PromptBuilder` 1.4).
     var explanation: String {
@@ -129,8 +129,8 @@ enum ResponseMode: String, Sendable, Codable, CaseIterable, Equatable {
     /// l'implémentation du filtre, pour rester une simple description de
     /// paramétrage sans dépendre de 1.3).
     ///
-    /// Seul `reliable` l'active : c'est la raison d'être de ce mode (le web
-    /// vise `.gov`, `.edu`, Wikipédia… voir `ResponseMode.tsx`).
+    /// Seul `reliable` l'active : c'est la raison d'être de ce mode (la version web d'origine
+    /// vise `.gov`, `.edu`, Wikipédia…).
     var restrictsToTrustedDomains: Bool {
         self == .reliable
     }
@@ -149,7 +149,7 @@ final class ResponseModeSettingsStore {
     private static let storageKey = "chat.responseMode.selected"
 
     /// Valeur de repli si aucun mode n'est stocké, ou si la valeur stockée est
-    /// invalide (ancien format, corruption, ou cas `debate` retiré du web —
+    /// invalide (ancien format, corruption, ou cas `debate` retiré de la version web d'origine —
     /// voir le commentaire de `ResponseMode`). Ce repli est silencieux mais
     /// documenté : il n'y a rien d'autre à faire ici, `UserDefaults` ne peut
     /// pas signaler une erreur de lecture à l'appelant.

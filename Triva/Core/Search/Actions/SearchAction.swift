@@ -10,7 +10,7 @@ import Foundation
 /// Sortie unifiée d'une action de recherche, consommée par la boucle
 /// d'orchestration (`SearchOrchestrator`) sans qu'elle ait besoin de connaître
 /// le type concret de l'action exécutée. Port de la diversité des objets
-/// renvoyés par `ResearchAction.execute()` (web, `{type: 'search_results' |
+/// renvoyés par `ResearchAction.execute()` de la version web d'origine (`{type: 'search_results' |
 /// 'reasoning' | 'done', ...}`) — ici un `enum` Swift à la place d'un
 /// discriminant `type` en chaîne.
 enum SearchActionOutput: Sendable {
@@ -20,8 +20,8 @@ enum SearchActionOutput: Sendable {
     case done
 }
 
-/// Port de `ResearchAction` (web, `researcher/actions/types.ts`) : une action
-/// exécutable par la boucle d'orchestration. Contrairement à la référence web
+/// Port de `ResearchAction` de la version web d'origine : une action
+/// exécutable par la boucle d'orchestration. Contrairement à celle-ci
 /// (schéma zod + tool-calling natif exposé au LLM), chaque action Swift est
 /// sélectionnée par nom depuis `SearchOrchestrator` via un parsing JSON
 /// tolérant (`decideNextAction`) — aucun des 3 providers IA de Triva

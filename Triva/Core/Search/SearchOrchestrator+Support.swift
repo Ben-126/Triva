@@ -204,8 +204,8 @@ extension SearchOrchestrator {
         Dictionary(sources.map { (urlKey($0.url), $0.url) }, uniquingKeysWith: { first, _ in first })
     }
 
-    /// Dédoublonnage par URL normalisée (`urlKey`), comme côté web
-    /// (`researcher/index.ts`) : conserve l'ordre d'arrivée, ignore les
+    /// Dédoublonnage par URL normalisée (`urlKey`), comme dans la version web d'origine :
+    /// conserve l'ordre d'arrivée, ignore les
     /// doublons ultérieurs. Bug 11 corrigé : l'ensemble des URLs vues était
     /// calculé AVANT la boucle et jamais mis à jour, si bien que deux
     /// résultats de même URL dans un même lot passaient tous les deux — et

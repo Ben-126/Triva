@@ -46,7 +46,7 @@ extension ChatViewModel {
                     question: precedingQuestion(beforeIndex: index) ?? "",
                     answer: message.text,
                     sources: message.sources,
-                    uncitableSourceNumbers: message.uncitableSourceNumbers,
+                    notes: message.storedNotes,
                     now: now()
                 )
             }

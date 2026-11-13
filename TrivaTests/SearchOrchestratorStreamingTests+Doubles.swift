@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import Synchronization
 @testable import Triva
 
 /// Doublures et fabriques des suites `SearchOrchestratorStreamingTests` (découpage E1b : partagées par
@@ -167,15 +168,35 @@ struct RecordingScrapeService: ScrapeServing {
 struct SlowScrapeService: ScrapeServing {
     let slowURLs: Set<String>
     let cancellations: ScrapeLog
+    /// Pages rapides rendues, comptées SANS suspension juste avant le retour : le test ouvre
+    /// l'échéance (`GateClock`) sur cet événement, jamais après une durée.
+    let fastPages: ScrapeCounter
+
+    init(slowURLs: Set<String>, cancellations: ScrapeLog, fastPages: ScrapeCounter = ScrapeCounter()) {
+        self.slowURLs = slowURLs
+        self.cancellations = cancellations
+        self.fastPages = fastPages
+    }
 
     func scrape(url: String) async -> ScrapedPage {
         guard slowURLs.contains(url) else {
-            return ScrapedPage(url: url, title: "Titre scrapé", content: "Contenu scrapé pour \(url)", succeeded: true)
+            let page = ScrapedPage(url: url, title: "Titre scrapé", content: "Contenu scrapé pour \(url)", succeeded: true)
+            fastPages.increment()
+            return page
         }
         try? await Task.sleep(for: .seconds(30))
         if Task.isCancelled { await cancellations.record(url) }
         return ScrapedPage(url: url, title: "Titre tardif", content: "Contenu tardif pour \(url)", succeeded: true)
     }
+}
+
+/// Compteur synchrone (`Mutex`) : lisible depuis un test sans `await`.
+final class ScrapeCounter: Sendable {
+    private let count = Mutex(0)
+
+    var value: Int { count.withLock { $0 } }
+
+    func increment() { count.withLock { $0 += 1 } }
 }
 
 /// Lu par une fonction SYNCHRONE : `Thread.isMainThread` est indisponible en

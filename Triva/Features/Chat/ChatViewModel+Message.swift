@@ -94,7 +94,7 @@ extension ChatViewModel {
         var answeredWithoutReadableSource = false
         /// Aucune source n'a passé le test lexical de la chaîne : sources
         /// affichées « probablement hors sujet » (mission A2, décision 6,
-        /// `WebSearchChainReport.matchesQuestion`). Non persisté non plus.
+        /// `WebSearchChainReport.matchesQuestion`). Persisté (mission E2b, `StoredAnswerNotes`).
         var sourcesMayBeOffTopic = false
         /// Numéros `[n]` des sources affichées mais jamais LUES (`SearchArtifacts.uncitableSourceNumbers`,
         /// mission A1) : leur citation s'affiche en texte simple, pas en pastille, et la liste les
@@ -102,7 +102,7 @@ extension ChatViewModel {
         var uncitableSourceNumbers: Set<Int> = []
         /// SearXNG n'a pas répondu à cette recherche (`ChatViewModel.searXNGUnreachable`) : les
         /// boutons « Rechercher des images / vidéos », qui ne passent que par SearXNG, sont masqués
-        /// (décision de Ben, mission C1). Non persisté : un message relu montre les boutons.
+        /// (décision de Ben, mission C1). Persisté (mission E2b) : un message relu les masque aussi.
         var searXNGUnreachable = false
         /// Étape affichée près de l'indicateur de génération (finding 31). Voir `GenerationStage`.
         var generationStage: GenerationStage = .searching
@@ -148,12 +148,26 @@ extension ChatViewModel {
             reasoningTiming = reasoningTiming.updated(for: segments.reasoningPhase, at: date)
         }
 
-        /// Mentions d'un message relu (conversation de la Bibliothèque, mission E1a).
+        /// Les mentions à persister (sens inverse de `restore`), copiées aussi dans un favori.
+        var storedNotes: StoredAnswerNotes {
+            StoredAnswerNotes(
+                uncitableSourceNumbers: uncitableSourceNumbers,
+                answeredWithoutSearch: answeredWithoutSearch,
+                answeredOffline: answeredOffline,
+                answeredWithoutReadableSource: answeredWithoutReadableSource,
+                sourcesMayBeOffTopic: sourcesMayBeOffTopic,
+                searXNGUnreachable: searXNGUnreachable
+            )
+        }
+
+        /// Mentions d'un message relu (conversation de la Bibliothèque, missions E1a et E2b).
         mutating func restore(_ notes: StoredAnswerNotes) {
             uncitableSourceNumbers = notes.uncitableSourceNumbers
             answeredWithoutSearch = notes.answeredWithoutSearch
             answeredOffline = notes.answeredOffline
             answeredWithoutReadableSource = notes.answeredWithoutReadableSource
+            sourcesMayBeOffTopic = notes.sourcesMayBeOffTopic
+            searXNGUnreachable = notes.searXNGUnreachable
         }
 
         mutating func attach(_ artifacts: SearchArtifacts) {
@@ -168,6 +182,16 @@ extension ChatViewModel {
             answeredOffline = artifacts.answeredOffline
             answeredWithoutReadableSource = artifacts.answeredWithoutReadableSource
             sourcesMayBeOffTopic = !artifacts.webSearchReport.matchesQuestion
+        }
+
+        /// Les mentions de ces artefacts, à écrire avec la réponse : exactement ce que `attach` affiche
+        /// (un test compare les deux). `artifacts.storedNotes` porte les quatre premières ; les deux
+        /// drapeaux de la mission E2b se lisent sur le rapport de la chaîne de recherche.
+        static func storedNotes(of artifacts: SearchArtifacts) -> StoredAnswerNotes {
+            var notes = artifacts.storedNotes
+            notes.sourcesMayBeOffTopic = !artifacts.webSearchReport.matchesQuestion
+            notes.searXNGUnreachable = ChatViewModel.searXNGUnreachable(artifacts.webSearchReport)
+            return notes
         }
 
         /// État fixe « Aucune source fiable » : il ne porte RIEN d'autre que la

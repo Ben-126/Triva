@@ -7,11 +7,11 @@
 
 import Foundation
 
-/// Port de `webSearch.ts` (web) : recherche web générale, sans restriction de
+/// Port de la version web d'origine : recherche web générale, sans restriction de
 /// catégories ni de moteurs — SearXNG interroge son jeu de moteurs par
-/// défaut, exactement comme côté web (`executeSearch` n'y reçoit aucun
-/// `searchConfig`, contrairement à `academicSearch.ts`/`socialSearch.ts`).
-/// `baseSearch.ts` (web) n'a servi ici qu'à comprendre CETTE forme de
+/// défaut, exactement comme dans la version web d'origine (`executeSearch` n'y reçoit aucun
+/// `searchConfig`, contrairement aux recherches académique et sociale).
+/// La recherche de base de la version web d'origine n'a servi ici qu'à comprendre CETTE forme de
 /// requête : le scoring qu'il applique ensuite (`BOOSTED_DOMAINS`,
 /// similarité cosinus, dédoublonnage par embedding) est hors scope de 1.2,
 /// réservé à `SourceRanker` (1.3) — cette action renvoie les résultats bruts

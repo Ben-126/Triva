@@ -53,15 +53,51 @@ private final class ScriptedStreamProvider: AIGenerating {
 }
 
 /// Flux piloté par le test, pour observer le fil ENTRE deux instantanés.
+///
+/// DÉTERMINISTE : le flux est tiré par le consommateur (`unfolding`), et `pullCount` compte ses
+/// demandes. Le view model ne demande l'instantané N+1 qu'après avoir TRAITÉ l'instantané N : le
+/// test attend donc `pullCount >= N + 1` (un événement) au lieu de dormir une durée arbitraire,
+/// qui sous charge ne suffisait pas et laissait l'assertion « rien n'est montré » passer à vide.
 private final class ControlledStreamProvider: AIGenerating {
-    private(set) var continuation: AsyncThrowingStream<String, Error>.Continuation?
+    private var queued: [String?] = []
+    private var waiter: CheckedContinuation<String?, Never>?
+    /// Nombre de fois que le consommateur a demandé le prochain instantané.
+    private(set) var pullCount = 0
 
     func generate(prompt: String) async throws -> String { "" }
 
+    func yield(_ snapshot: String) { deliver(snapshot) }
+
+    func finish() { deliver(nil) }
+
     func streamGenerate(prompt: String) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            self.continuation = continuation
+        AsyncThrowingStream(unfolding: { [self] in await next() })
+    }
+
+    private func deliver(_ item: String?) {
+        if let waiter {
+            self.waiter = nil
+            waiter.resume(returning: item)
+        } else {
+            queued.append(item)
         }
+    }
+
+    private func next() async -> String? {
+        pullCount += 1
+        if !queued.isEmpty { return queued.removeFirst() }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+                if Task.isCancelled { continuation.resume(returning: nil) } else { waiter = continuation }
+            }
+        } onCancel: {
+            Task { @MainActor in self.cancelWaiter() }
+        }
+    }
+
+    private func cancelWaiter() {
+        waiter?.resume(returning: nil)
+        waiter = nil
     }
 }
 
@@ -157,7 +193,7 @@ struct ChatViewModelReliableModeTests {
 
     /// Poll coopératif : `Task.sleep`, jamais `Task.yield()` (voir `waitUntil`
     /// de `ChatViewModelTests`, échecs intermittents sous l'isolation main actor).
-    private func waitUntil(timeout: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+    private func waitUntil(timeout: Duration = .seconds(120), _ condition: () -> Bool) async -> Bool {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while !condition() {
             guard ContinuousClock.now < deadline else { return false }
@@ -289,21 +325,21 @@ struct ChatViewModelReliableModeTests {
         let viewModel = makeViewModel(provider: provider)
         let task = Task { await viewModel.send(query: Self.question) }
 
-        #expect(await waitUntil { provider.continuation != nil })
-        let continuation = try #require(provider.continuation)
-        continuation.yield("TypeScript ajoute")
-        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await waitUntil { provider.pullCount >= 1 })
+        provider.yield("TypeScript ajoute")
+        // Le view model redemande un instantané une fois celui-ci traité : plus de durée à deviner.
+        #expect(await waitUntil { provider.pullCount >= 2 })
         let held = try #require(viewModel.messages.last)
         #expect(held.status == .streaming)
         #expect(held.text.isEmpty)
         #expect(held.sources.isEmpty)
 
-        continuation.yield("TypeScript ajoute des types[1].")
-        #expect(await waitUntil { viewModel.messages.last?.text.isEmpty == false })
+        provider.yield("TypeScript ajoute des types[1].")
+        #expect(await waitUntil { provider.pullCount >= 3 })
         #expect(viewModel.messages.last?.text == "TypeScript ajoute des types[1].")
         #expect(viewModel.messages.last?.sources == Self.trustedResults)
 
-        continuation.finish()
+        provider.finish()
         await task.value
         #expect(viewModel.messages.last?.status == .completed)
     }
@@ -315,9 +351,9 @@ struct ChatViewModelReliableModeTests {
         let viewModel = makeViewModel(provider: provider, history: history)
         let task = Task { await viewModel.send(query: Self.question) }
 
-        #expect(await waitUntil { provider.continuation != nil })
-        provider.continuation?.yield("Réponse encore sans citation")
-        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await waitUntil { provider.pullCount >= 1 })
+        provider.yield("Réponse encore sans citation")
+        #expect(await waitUntil { provider.pullCount >= 2 })
         task.cancel()
         await task.value
 

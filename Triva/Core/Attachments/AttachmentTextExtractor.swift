@@ -13,8 +13,8 @@ import UniformTypeIdentifiers
 /// refusé explicitement (`AttachmentExtractionError.unsupportedFileType`),
 /// jamais « tenté pour voir ».
 ///
-/// DIVERGENCE assumée avec le web (`src/lib/uploads/manager.ts`), qui accepte
-/// PDF, DOCX et texte brut : ici DOCX est refusé. Côté serveur, Vane s'appuie
+/// DIVERGENCE assumée avec la version web d'origine, qui accepte
+/// PDF, DOCX et texte brut : ici DOCX est refusé. Côté serveur, elle s'appuie
 /// sur `officeparser` (npm) ; côté Apple, aucun framework natif ne lit un
 /// `.docx` sur iOS (`NSAttributedString` ne sait l'ouvrir que sur macOS), et
 /// la règle "zéro dépendance" interdit d'embarquer un parseur tiers. En
@@ -198,16 +198,16 @@ nonisolated struct ExtractedAttachment: Sendable, Equatable {
 }
 
 /// Lecture locale du texte d'une pièce jointe — port de
-/// `UploadManager.extractContentAndEmbed` (`src/lib/uploads/manager.ts`,
-/// web), avec les frameworks Apple uniquement.
+/// `UploadManager.extractContentAndEmbed` de la version web d'origine,
+/// avec les frameworks Apple uniquement.
 ///
-/// DIVERGENCE STRUCTURELLE : le web reçoit le fichier par HTTP, en écrit une
+/// DIVERGENCE STRUCTURELLE : la version web d'origine reçoit le fichier par HTTP, en écrit une
 /// copie sur le disque du serveur (`data/uploads/`), puis un second fichier
 /// `.content.json` avec les fragments et leurs vecteurs. Triva n'a pas de
 /// serveur et ne recopie RIEN : le fichier de l'utilisateur est lu sur place,
 /// le temps de l'extraction, puis relâché (voir `AttachmentStore` pour la
 /// justification complète). L'extracteur ne fait qu'une chose — produire du
-/// texte — et laisse le découpage à `AttachmentChunker`, là où le web mêle
+/// texte — et laisse le découpage à `AttachmentChunker`, là où la version web d'origine mêle
 /// extraction, découpage et vectorisation dans une même fonction.
 ///
 /// `nonisolated` + `Sendable` : aucun état d'interface. Mais sous

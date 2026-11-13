@@ -22,8 +22,9 @@ import Foundation
 /// un mode qui filtrerait un jour sans être Fiable devrait relire ce fichier.
 ///
 /// Deux moments, deux critères :
-/// 1. AVANT la génération, `lacksReliableSources` : rien de citable, donc aucune
-///    requête au moteur (décision (c), pas de requête cloud lancée puis annulée).
+/// 1. AVANT la génération, `lacksReliableSources` : rien de citable, ou rien de fiable qui parle
+///    de la question (E2a, `hasOnlyOffTopicWebSources`), donc aucune requête au moteur (décision
+///    (c), pas de requête cloud lancée puis annulée).
 /// 2. APRÈS le flux, `rejectsReliableAnswer(_:)` : le modèle a répondu, mais par
 ///    le refus exact que lui impose le rappel Fiable (`PromptTemplates`), ou sans
 ///    citer aucune page lue. Rapport T2, scénario t3 : des documents hors sujet
@@ -46,7 +47,32 @@ nonisolated extension SearchArtifacts {
     /// à l'ancien critère tant que chaque source porte un extrait.
     var lacksReliableSources: Bool {
         guard case .reliable = mode else { return false }
-        return controlsReliableSearch && citableSourceCount == 0 && widgets.isEmpty
+        return controlsReliableSearch && (citableSourceCount == 0 || hasOnlyOffTopicWebSources) && widgets.isEmpty
+    }
+
+    /// Mission E2a, trou 4 (décision de Ben, 2026-11-12) : « En Fiable, refuser le hors-sujet ».
+    /// Vrai quand AUCUNE source fiable ne passe le test lexical de pertinence de la chaîne
+    /// (`LexicalRelevance`, déjà appliqué par `WebSearchChain` aux seuls domaines fiables en mode
+    /// Fiable, et porté par `webSearchReport.matchesQuestion`) : le test existant est réutilisé,
+    /// pas redoublé. Une source fiable mais hors sujet ne rend plus une réponse qui la cite : l'issue
+    /// est `.noReliableSources`, comme sans source fiable.
+    ///
+    /// Les fichiers joints échappent à la règle (`attachmentSourceCount == 0` exigé) : ce sont les
+    /// documents de l'utilisateur, jamais « hors sujet » au sens d'une réponse de moteur.
+    ///
+    /// LIMITE CONNUE ET ACCEPTÉE PAR BEN : le test compare des MOTS, pas le sens. Il exige 2 mots
+    /// pleins de la question dans un même résultat (titre, extrait ou URL), ou tous s'il y en a
+    /// moins. Une source fiable dans une autre langue que la question, sur le même sujet, n'est
+    /// retenue que si elle partage assez de mots avec elle : noms propres, chiffres, termes
+    /// internationaux (« Python », « 2026 »). Elle peut être refusée à tort quand seul un nom propre
+    /// est commun (« Quelle est la hauteur de la tour Eiffel ? » face à « Eiffel Tower — height » :
+    /// seul « eiffel » correspond). La chaîne interroge Wikipédia dans la langue détectée de la
+    /// question, ce qui limite le cas en pratique. Un refus à tort reste sûr : « Aucune source
+    /// fiable » avec le bouton de relance en Rapide.
+    ///
+    /// Sans chaîne de repli (`webSearchReport` vide, `matchesQuestion` vrai), rien n'est jugé.
+    var hasOnlyOffTopicWebSources: Bool {
+        !webSearchReport.matchesQuestion && attachmentSourceCount == 0
     }
 
     /// Le contrôle Fiable s'applique-t-il ? Seulement si une recherche WEB a eu lieu (décision
@@ -101,7 +127,9 @@ nonisolated extension SearchArtifacts {
     /// citation, donc refusée — le repli sûr de ce mode.
     func rejectsReliableAnswer(_ text: String) -> Bool {
         guard requiresCitedAnswer else { return false }
-        return Self.isNoRelevantInformationAnswer(text) || !citesReadSource(in: text)
+        return hasOnlyOffTopicWebSources
+            || Self.isNoRelevantInformationAnswer(text)
+            || !citesReadSource(in: text)
     }
 
     /// Refus exact, reconnu sur ce que l'utilisateur lirait (corps, ou TL;DR

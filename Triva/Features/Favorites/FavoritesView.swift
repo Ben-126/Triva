@@ -47,12 +47,12 @@ struct FavoriteRoute: Hashable {
 
 /// Favoris : les réponses marquées d'une étoile (1.10).
 ///
-/// Portage de `src/app/favorites/page.tsx` (web) : question, extrait, date,
+/// Portage de la page Favoris de la version web d'origine : question, extrait, date,
 /// retrait. Construit comme `LibraryView` (chargement, états, cache
 /// d'extraits, copies en valeur) : qui connaît l'une connaît l'autre. Écarts
-/// assumés avec le web : recherche (question, réponse, titre des sources) ;
+/// assumés avec la version web d'origine : recherche (question, réponse, titre des sources) ;
 /// toucher une ligne ouvre la réponse COMPLÈTE, citations et sources comprises,
-/// quand le web n'en montre que l'aperçu tronqué ; retrait confirmé ; ni
+/// quand la version web d'origine n'en montre que l'aperçu tronqué ; retrait confirmé ; ni
 /// compteur « (12) » ni pastilles de sources sur la ligne (DESIGN.md : rien
 /// qui ne sert à rien) ; date relative sur la ligne, longue dans le détail.
 ///

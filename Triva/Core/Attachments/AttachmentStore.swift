@@ -61,9 +61,9 @@ nonisolated struct IndexedAttachment: Sendable, Equatable, Identifiable {
         )
     }
 
-    /// Port de `UploadStore.getFileData` (`src/lib/uploads/store.ts`, web) :
+    /// Port de `UploadStore.getFileData` de la version web d'origine :
     /// les premiers fragments joints par `\n---\n`, pour présenter au modèle
-    /// de quoi parle le fichier avant toute recherche. Comme côté web, les
+    /// de quoi parle le fichier avant toute recherche. Comme dans la version web d'origine, les
     /// fragments se recouvrent : la fin de l'un réapparaît au début du
     /// suivant.
     func initialContent(maxChunks: Int = 3) -> String {
@@ -115,8 +115,7 @@ nonisolated enum AttachmentStoreError: Error, Sendable, Equatable {
 // MARK: - Recherche
 
 /// Recherche dans les fragments — port de `UploadStore.query`
-/// (`src/lib/uploads/store.ts`), utilisé par l'action `uploads_search`
-/// (`researcher/actions/uploadsSearch.ts`). Instantané immuable et
+/// de la version web d'origine, utilisé par l'action `uploads_search`. Instantané immuable et
 /// `Sendable` des pièces jointes : le pipeline de recherche le reçoit une
 /// fois et l'interroge hors du main actor, sans jamais lire l'état vivant du
 /// store pendant que l'utilisateur ajoute ou retire un fichier.
@@ -133,7 +132,7 @@ nonisolated enum AttachmentStoreError: Error, Sendable, Equatable {
 /// commun ; le filtrer ferait disparaître exactement ce que la limite de
 /// langue du scorer rend déjà difficile à trouver.
 nonisolated struct AttachmentSearchIndex: Sendable {
-    /// Constante de fusion par rangs réciproques, inchangée du web (`k = 60`,
+    /// Constante de fusion par rangs réciproques, inchangée de la version web d'origine (`k = 60`,
     /// valeur de référence de Cormack et al., 2009) : elle aplatit l'écart
     /// entre les premiers rangs, pour qu'un fragment bien classé par
     /// plusieurs requêtes l'emporte sur un fragment premier d'une seule.
@@ -164,11 +163,11 @@ nonisolated struct AttachmentSearchIndex: Sendable {
         return Self.rankedPositions(of: scores).prefix(limit).map { references[$0].match(score: scores[$0]) }
     }
 
-    /// Plusieurs requêtes fusionnées — l'action web en envoie jusqu'à 3.
+    /// Plusieurs requêtes fusionnées — l'action de la version web d'origine en envoie jusqu'à 3.
     /// Score fusionné = Σ similarité ÷ (rang + 1 + k), rang à partir de 0 :
-    /// la formule de `store.ts`.
+    /// la formule de la version web d'origine.
     ///
-    /// BUG DU WEB CORRIGÉ : `store.ts` identifie un fragment par le hachage de
+    /// BUG DE LA VERSION WEB D'ORIGINE CORRIGÉ : elle identifie un fragment par le hachage de
     /// `{ chunk, score }`. Le score faisant partie de la clé, un même fragment
     /// obtient une clé DIFFÉRENTE d'une requête à l'autre (sauf score
     /// identique au bit près) : la fusion n'a en pratique jamais lieu, et le

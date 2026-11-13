@@ -7,8 +7,8 @@
 
 import Foundation
 
-/// Port de `plan.ts` (web, action `__reasoning_preamble`) : malgré son nom de
-/// fichier, ce n'est PAS un planificateur algorithmique — côté web, c'est un
+/// Port de l'action `__reasoning_preamble` de la version web d'origine : malgré son nom
+/// (« plan »), ce n'est PAS un planificateur algorithmique — dans la version web d'origine, c'est un
 /// outil de plus dans le registre, sans aucun effet de bord réel
 /// (`execute()` renvoie juste `{type: 'reasoning', reasoning: input.plan}`),
 /// qui sert uniquement à exposer le raisonnement du LLM dans l'UI de
@@ -18,7 +18,7 @@ import Foundation
 /// `SearchOrchestrator` ne câble PAS `PlanAction` dans sa boucle planner
 /// (`SearchOrchestrator.plannerActionNames` ne propose que `scrapeURL`,
 /// `uploadsSearch` depuis 1.11, et `done` — une UI "recherche en cours"
-/// façon web est hors scope).
+/// façon version web d'origine est hors scope).
 /// Ce type existe pour satisfaire "un protocole SearchAction avec une
 /// implémentation par type d'action" et rester testable isolément, pas parce
 /// qu'un appelant réel l'invoque aujourd'hui.
@@ -28,7 +28,7 @@ struct PlanAction: SearchAction {
 
     /// `query` porte ici le texte de raisonnement à renvoyer tel quel (seul
     /// paramètre texte disponible dans la signature commune de
-    /// `SearchAction`) — simple passthrough, comme `plan.ts`.
+    /// `SearchAction`) — simple passthrough, comme dans la version web d'origine.
     func execute(
         query: String,
         urls: [String],

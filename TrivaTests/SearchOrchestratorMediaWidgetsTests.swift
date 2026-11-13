@@ -153,22 +153,29 @@ extension SearchOrchestratorStreamingTests {
         #expect(received == ["réponse"])
     }
 
-    @Test("Médias trop lents : abandonnés après le délai de grâce (.failed), la réponse ne les attend pas")
+    @Test("Médias trop lents : abandonnés après le délai de grâce (.failed), la réponse ne les attend pas", .timeLimit(.minutes(1)))
     func slowMediaIsAbandonedAfterTheGracePeriod() async throws {
         let client = StreamingMockSearXNGClient(response: SearXNGSearchResponse(results: Self.sevenResults(), suggestions: []))
+        // Le délai de grâce est une porte, pas une durée : elle s'ouvre quand le minuteur de grâce a
+        // démarré (la recherche texte est finie), quelle que soit la charge. Des médias qui ne finissent
+        // qu'au bout de 30 s ne peuvent alors être `.failed` que si la réponse a cessé de les attendre.
+        let grace = GateClock()
         let orchestrator = makeStreamingOrchestrator(
             failoverManager: FailoverManager(client: client, instances: [Self.instance]),
             aiProvider: StreamingMockAIGenerating(),
             responseMode: .quick,
+            clock: grace,
             mediaSearcher: StubMediaSearcher(images: [Self.image("a")], videos: [], behavior: .sleep(.seconds(30)), log: MediaCallLog()),
             mediaGracePeriod: .milliseconds(20)
         )
+        let driver = Task {
+            while grace.sleeperCount < 1 { try? await Task.sleep(for: .milliseconds(1)) }
+            grace.open()
+        }
+        defer { driver.cancel() }
 
-        let start = ContinuousClock.now
         let answer = try await orchestrator.streamAnswer(query: "chats mignons", media: .images)
-        let elapsed = ContinuousClock.now - start
 
-        #expect(elapsed < .seconds(10))
         guard case .failed = answer.artifacts.images else {
             Issue.record("images attendues .failed")
             return

@@ -100,7 +100,7 @@ struct SourceRankerLanguageTests {
         let ranked = await ranker().rank(query: "fr: question", results: bilingualResults, limit: 5)
         #expect(ranked.map(\.result.content) == ["fr: 1", "en: 1", "fr: 2", "en: 2", "fr: 3"])
 
-        // Témoin : sans langue détectée, l'ordre du port web met tout le
+        // Témoin : sans langue détectée, l'ordre du port de la version web d'origine met tout le
         // français devant — exactement le biais que la décision 3 corrige.
         let singleBucket = await ranker(languages: UndeterminedLanguageIdentifier()).rank(query: "fr: question", results: bilingualResults, limit: 5)
         #expect(singleBucket.map(\.result.content) == ["fr: 1", "fr: 2", "fr: 3", "en: 1", "en: 2"])

@@ -82,7 +82,10 @@ extension SearchOrchestratorStreamingTests {
         let orchestrator = makeStreamingOrchestrator(
             failoverManager: FailoverManager(client: client, instances: [Self.instance]),
             aiProvider: aiProvider,
-            responseMode: .reliable
+            // Rapide, plus Fiable (mission E2a, décision de Ben du 2026-11-12) : « En Fiable, TOUJOURS
+            // chercher, sauf salutation et calcul » ; une demande sur la conversation y cherche
+            // désormais (`SearchRouteReliableModeTests`). Le chemin .skip reste celui des autres modes.
+            responseMode: .quick
         )
 
         let streamingAnswer = try await orchestrator.streamAnswer(query: "Traduis ta réponse en anglais", chatHistory: Self.appleHistory)
@@ -99,6 +102,29 @@ extension SearchOrchestratorStreamingTests {
         #expect(!finalPrompt.contains("<contexte>"))
         #expect(!finalPrompt.contains(PromptTemplates.noRelevantInformationAnswer))
         #expect(finalPrompt.hasSuffix("Question de l'utilisateur : Traduis ta réponse en anglais"))
+    }
+
+    @Test("E2a : en Fiable, le chemin sans recherche d'un calcul garde un prompt de conversation, sans sources exigées ni refus")
+    func reliableCalculationPathKeepsTheConversationPrompt() async throws {
+        let client = StreamingMockSearXNGClient()
+        let classification = Self.classificationJSON(skipSearch: true, standaloneFollowUp: "15 % de 240").replacingOccurrences(of: "\"showCalculationWidget\":false", with: "\"showCalculationWidget\":true")
+        let aiProvider = StreamingMockAIGenerating(classifyResponse: classification)
+        let orchestrator = makeStreamingOrchestrator(
+            failoverManager: FailoverManager(client: client, instances: [Self.instance]),
+            aiProvider: aiProvider,
+            responseMode: .reliable
+        )
+
+        let streamingAnswer = try await orchestrator.streamAnswer(query: "Combien font 15 % de 240 ?", chatHistory: Self.appleHistory)
+
+        #expect(streamingAnswer.sources.isEmpty)
+        #expect(await client.receivedQueries.isEmpty)
+        #expect(aiProvider.plannerPromptCount == 0)
+        let finalPrompt = try #require(aiProvider.receivedStreamPrompts.first)
+        #expect(!finalPrompt.contains("sources numérotées"))
+        #expect(!finalPrompt.contains("<contexte>"))
+        #expect(!finalPrompt.contains(PromptTemplates.noRelevantInformationAnswer))
+        #expect(finalPrompt.hasSuffix("Question de l'utilisateur : Combien font 15 % de 240 ?"))
     }
 
     @Test("Bug 1 : l'historique du prompt final est borné en nombre ET en longueur par message, selon les réglages de l'init")

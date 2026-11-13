@@ -33,7 +33,7 @@ nonisolated enum SuggestionsPresentation {
     /// Libellé de section, même rôle et même style que « ESSAIE » dans
     /// `TrivaHomeReferenceView` (label 11 pt, majuscules, tracking 1,5,
     /// `.tertiary`). Une forme courte et familière, dans le ton tutoyé de la
-    /// DA, plutôt qu'une traduction littérale du « Related » du web.
+    /// DA, plutôt qu'une traduction littérale du « Related » de la version web d'origine.
     static let sectionTitle = "À CREUSER"
 
     /// Ce que VoiceOver lit pour l'en-tête de section : « À CREUSER » est
@@ -174,7 +174,7 @@ nonisolated struct SuggestionsFlowLayout: Layout {
 /// Questions de suivi proposées sous une réponse (tâche 1.7) : des puces
 /// cliquables, chacune relançant une recherche via `onSelect`.
 ///
-/// Port de la section « Related » de `src/components/MessageBox.tsx` (web),
+/// Port de la section « Related » de la version web d'origine,
 /// refaite selon `DESIGN.md` : mêmes puces en verre que la section « ESSAIE »
 /// de `TrivaHomeReferenceView`, qui fait foi.
 ///
@@ -205,7 +205,7 @@ nonisolated struct SuggestionsFlowLayout: Layout {
 ///   côté du bandeau d'erreur) : cette vue ouvre son propre conteneur pour
 ///   ses puces, comme la référence, et deux conteneurs imbriqués seraient
 ///   faux.
-/// - Même règle que le web : seulement sous la DERNIÈRE réponse, une fois sa
+/// - Même règle que la version web d'origine : seulement sous la DERNIÈRE réponse, une fois sa
 ///   génération terminée. Pendant une génération, l'appelant masque la vue
 ///   ou applique `.disabled(true)`, que SwiftUI propage aux boutons.
 struct SuggestionsView: View {

@@ -7,8 +7,8 @@
 
 import Foundation
 
-/// Identité stable d'un widget. Remplace le `type: string` libre du web
-/// (`types.ts`, `Widget.type`) par un enum fermé : côté Swift, une chaîne
+/// Identité stable d'un widget. Remplace le `type: string` libre de la version web d'origine
+/// (`Widget.type`) par un enum fermé : côté Swift, une chaîne
 /// libre n'apporte rien (personne n'enregistre de widget dynamiquement dans
 /// une app compilée) et coûte un risque de faute de frappe silencieuse entre
 /// le service qui produit la sortie et la vue qui la consomme.
@@ -18,7 +18,7 @@ import Foundation
 /// APIs boursières gratuites sans clé n'existent pas de façon fiable, et
 /// Triva n'a ni backend ni clé partagée pour en héberger une. Conséquence
 /// directe : `QueryClassification.showStockWidget` peut valoir `true` (le
-/// classifieur 1.1 porte fidèlement les 7 champs du web), mais AUCUN widget
+/// classifieur 1.1 porte fidèlement les 7 champs de la version web d'origine), mais AUCUN widget
 /// ne peut se déclarer pour lui — il n'existe pas de `case stock` à adopter.
 /// `WidgetExecutor` n'a donc rien de spécial à filtrer : l'exclusion est
 /// garantie par le type, pas par une condition qu'on pourrait oublier.
@@ -43,7 +43,7 @@ nonisolated enum SearchWidgetKind: String, Sendable, CaseIterable, Equatable {
 /// distinction entre la température réelle et le ressenti, le symbole SF
 /// associé au code WMO, la borne basse et la borne haute du jour.
 ///
-/// Ce marqueur est la contrepartie typée du `data: any` du web : la donnée
+/// Ce marqueur est la contrepartie typée du `data: any` de la version web d'origine : la donnée
 /// reste précise au moment où elle est CRÉÉE (le service météo renvoie son
 /// propre type) et au moment où elle est AFFICHÉE (la vue fait un
 /// `as? WeatherWidgetData`), et seul le trajet entre les deux — à travers
@@ -69,11 +69,11 @@ nonisolated enum SearchWidgetKind: String, Sendable, CaseIterable, Equatable {
 nonisolated protocol SearchWidgetPayload: Sendable {}
 
 /// Tout ce dont un widget a besoin pour s'exécuter. Port de `WidgetInput`
-/// (web, `types.ts`) avec les mêmes 4 éléments : historique, requête,
+/// de la version web d'origine avec les mêmes 4 éléments : historique, requête,
 /// classification, moteur IA.
 ///
 /// `classification` est présente EN PLUS de l'argument de `shouldExecute`
-/// (comme côté web) parce qu'elle porte `standaloneFollowUp` — la
+/// (comme dans la version web d'origine) parce qu'elle porte `standaloneFollowUp` — la
 /// reformulation autonome de la requête produite par 1.1. C'est très souvent
 /// une meilleure entrée que `query` brute pour extraire un paramètre : sur
 /// « et à Lyon ? », `query` ne contient aucune mention de météo, alors que
@@ -82,7 +82,7 @@ nonisolated protocol SearchWidgetPayload: Sendable {}
 ///
 /// Pas d'`Equatable` : `aiProvider` est un existentiel non comparable.
 nonisolated struct SearchWidgetInput: Sendable {
-    /// Requête utilisateur telle quelle (le `followUp` du web).
+    /// Requête utilisateur telle quelle (le `followUp` de la version web d'origine).
     let query: String
     let chatHistory: [ClassifierChatMessage]
     let classification: QueryClassification
@@ -97,7 +97,7 @@ nonisolated struct SearchWidgetInput: Sendable {
     /// donc ce champ. Il reste dans l'entrée parce qu'un futur widget écrit
     /// directement comme `SearchWidget`, sans service séparé, n'aurait aucun
     /// autre moyen d'atteindre le moteur actif — et parce que c'est la forme
-    /// du `WidgetInput` du web qu'on porte.
+    /// du `WidgetInput` de la version web d'origine qu'on porte.
     let aiProvider: any AIGenerating
 
     init(
@@ -113,7 +113,7 @@ nonisolated struct SearchWidgetInput: Sendable {
     }
 }
 
-/// Sortie unifiée d'un widget. Port de `WidgetOutput` (web) : un identifiant,
+/// Sortie unifiée d'un widget. Port de `WidgetOutput` de la version web d'origine : un identifiant,
 /// le texte injecté dans le prompt de rédaction, et la donnée à afficher.
 ///
 /// `Identifiable` par `kind` : un `ForEach` SwiftUI sur les sorties d'un même
@@ -148,7 +148,7 @@ nonisolated struct SearchWidgetOutput: Sendable, Identifiable {
     }
 }
 
-/// Contrat commun des widgets. Port de `Widget` (web, `types.ts`) : un type,
+/// Contrat commun des widgets. Port de `Widget` de la version web d'origine : un type,
 /// un prédicat d'éligibilité, une exécution asynchrone optionnelle.
 ///
 /// `nonisolated` explicite (même modèle que `SearXNGSearching`,

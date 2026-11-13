@@ -11,14 +11,14 @@ import Foundation
 /// deuxième maille de la chaîne de repli (après une éventuelle clé de recherche personnelle),
 /// avec instances testées et classées par fiabilité.
 ///
-/// TRADUCTION DES OPTIONS — port de la logique de sélection d'actions du web
-/// (`academicSearch.ts` : `engines: ['arxiv', 'google scholar', 'pubmed']` ;
-/// `socialSearch.ts` : `engines: ['reddit']` ; `webSearch.ts` : aucun filtre) :
+/// TRADUCTION DES OPTIONS — port de la logique de sélection d'actions de la version web d'origine
+/// (recherche académique : `engines: ['arxiv', 'google scholar', 'pubmed']` ;
+/// recherche sociale : `engines: ['reddit']` ; recherche générale : aucun filtre) :
 /// - `.general` : ni catégorie ni moteur forcés, l'instance utilise sa configuration ;
 /// - `.academic` : moteurs `arxiv`, `google scholar`, `pubmed` ;
 /// - `.discussion` : moteur `reddit`.
 /// Les moteurs sont forcés plutôt que la catégorie `science` / `social media` parce que c'est
-/// ce que fait le web (parité), et qu'une catégorie dépend de la configuration de chaque
+/// ce que fait la version web d'origine (parité), et qu'une catégorie dépend de la configuration de chaque
 /// instance. Écart connu : une instance qui a désactivé ces moteurs renvoie peu ou pas de
 /// résultat ; `WebSearchChain` retombe alors sur la source suivante.
 ///

@@ -14,7 +14,11 @@ import Foundation
 /// - `answeredWithoutSearch` : « Réponse sans recherche » ;
 /// - `answeredOffline` : « Hors connexion, sans source », qui REMPLACE la mention précédente — la
 ///   persister seule ferait relire « Réponse sans recherche » sous une réponse hors connexion ;
-/// - `answeredWithoutReadableSource` : « Réponse sans source lisible » (recherche faite, rien de lisible).
+/// - `answeredWithoutReadableSource` : « Réponse sans source lisible » (recherche faite, rien de lisible) ;
+/// - `sourcesMayBeOffTopic` (mission E2b) : « Sources probablement hors sujet », sous la liste des sources ;
+/// - `searXNGUnreachable` (mission E2b) : SearXNG n'a pas répondu, donc les boutons « Rechercher des
+///   images / vidéos » restent masqués à la réouverture. Pas une mention : un favori n'a pas ces
+///   boutons, il ne la copie pas (`StoredFavorite.answerNotes`).
 ///
 /// Valeur pure : le modèle SwiftData n'en garde que des scalaires à valeur par défaut (migration
 /// légère des bases existantes, voir `StoredMessage`).
@@ -23,6 +27,8 @@ nonisolated struct StoredAnswerNotes: Sendable, Equatable {
     var answeredWithoutSearch = false
     var answeredOffline = false
     var answeredWithoutReadableSource = false
+    var sourcesMayBeOffTopic = false
+    var searXNGUnreachable = false
 }
 
 /// Les numéros de sources sont stockés en `String` (« 2,3 ») et non en `[Int]` ou `Set<Int>` : un

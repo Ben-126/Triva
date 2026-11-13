@@ -7,8 +7,8 @@
 
 import Foundation
 
-/// Trace structurée d'un widget qui n'a pas abouti. AJOUT vis-à-vis du web :
-/// `executor.ts` se contente d'un `console.error` et perd l'information. Ici
+/// Trace structurée d'un widget qui n'a pas abouti. AJOUT vis-à-vis de la version web d'origine :
+/// elle se contente d'un `console.error` et perd l'information. Ici
 /// l'échec remonte dans le résultat, ce qui le rend testable et exploitable
 /// (un widget météo qui échoue systématiquement doit pouvoir se constater
 /// autrement qu'en lisant une console).
@@ -59,13 +59,13 @@ nonisolated struct WidgetExecutionReport: Sendable {
     }
 }
 
-/// Port de `src/lib/agents/search/widgets/executor.ts` (web) : sélectionne
+/// Port de l'exécuteur de widgets de la version web d'origine : sélectionne
 /// les widgets éligibles à partir de la classification (1.1) et les exécute
 /// tous EN PARALLÈLE, sans jamais échouer globalement.
 ///
-/// DIVERGENCE structurelle assumée vis-à-vis du web : `executor.ts` est une
+/// DIVERGENCE structurelle assumée vis-à-vis de la version web d'origine : l'exécuteur est une
 /// classe statique avec un registre global (`static widgets = new Map`)
-/// alimenté par les effets de bord d'un `import` (`index.ts`). Ici les
+/// alimenté par les effets de bord d'un `import`. Ici les
 /// widgets sont INJECTÉS au constructeur, comme tout le reste du projet
 /// (`SearXNGSearching`, `ScrapeServing`, `AIGenerating`) : un état statique
 /// global rend l'ordre d'exécution des tests dépendant de qui a importé quoi,

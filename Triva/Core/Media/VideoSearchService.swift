@@ -25,16 +25,16 @@ struct VideoSearchResult: Sendable, Equatable, Identifiable {
     let embedURL: URL?
 }
 
-/// Port natif de `src/lib/agents/media/video.ts` (web) : reformule la requête
+/// Port natif de la recherche vidéo de la version web d'origine : reformule la requête
 /// utilisateur en requête de recherche vidéo, cherche sur SearXNG (engine
 /// `youtube`), puis filtre/mappe les résultats.
 ///
-/// Écarts volontaires par rapport à la référence web, et pourquoi :
+/// Écarts volontaires par rapport à la version web d'origine, et pourquoi :
 /// 1. **Reformulation + tolérance aux échecs LLM** : identique à
 ///    `ImageSearchService`, via le même `MediaSearchQueryReformulator`. Voir
 ///    sa justification là-bas, non répétée ici.
 /// 2. **DIVERGENCE ASSUMÉE — `iframe_src` optionnel, pas obligatoire.** La
-///    référence web exclut un résultat qui n'a pas `iframe_src`
+///    version web d'origine exclut un résultat qui n'a pas `iframe_src`
 ///    (`result.thumbnail && result.url && result.title && result.iframe_src`).
 ///    Ici, la mission demande explicitement d'exposer "de quoi ouvrir la
 ///    vidéo dans le navigateur/lecteur système" — c'est `sourceURL` (la page
@@ -51,7 +51,7 @@ struct VideoSearchService: Sendable {
     private let maxResults: Int
     private let maxHistoryMessages: Int
 
-    /// `maxResults` par défaut à 10, identique à `video.ts` (`.slice(0, 10)`)
+    /// `maxResults` par défaut à 10, identique à la version web d'origine (`.slice(0, 10)`)
     /// et à `ImageSearchService` — même absence de contrainte de contexte-
     /// tokens qui justifierait une valeur différente.
     init(
@@ -86,11 +86,11 @@ struct VideoSearchService: Sendable {
     }
 
     /// Fonction pure et testable séparément du réseau. Port de la boucle
-    /// `forEach` de `video.ts`, avec la relaxation de `iframe_src` documentée
+    /// `forEach` de la version web d'origine, avec la relaxation de `iframe_src` documentée
     /// en tête de fichier.
     ///
     /// Utilise `result.thumbnail` (pas `result.thumbnailSrc`) : c'est le
-    /// champ que `video.ts` lit (`result.thumbnail`), et SearXNG distingue
+    /// champ que la version web d'origine lit (`result.thumbnail`), et SearXNG distingue
     /// bien les deux (`thumbnail` = vignette déjà prête à afficher, souvent
     /// une image plus petite ; `thumbnail_src` = une URL alternative propre à
     /// certains engines). Rester fidèle au champ exact évite de récupérer une
@@ -119,7 +119,7 @@ struct VideoSearchService: Sendable {
         return url
     }
 
-    /// Port du system prompt de `videoSearchPrompt` (web), même style condensé
+    /// Port du system prompt de `videoSearchPrompt` de la version web d'origine, même style condensé
     /// que `ImageSearchService.reformulationSystemPrompt`.
     static let reformulationSystemPrompt = """
     Tu reformules la question d'un utilisateur en une courte requête de recherche vidéo, à partir de l'historique de conversation si besoin (ex. "Montre-moi des vidéos" après une question sur la photosynthèse -> "vidéo photosynthèse").

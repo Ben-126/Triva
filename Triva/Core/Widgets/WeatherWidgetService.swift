@@ -48,7 +48,7 @@ struct WeatherWidgetData: Sendable, Equatable {
 
 /// Résultat complet renvoyé par le service : la donnée d'affichage +
 /// `llmContext`, un texte compact destiné à être injecté dans le prompt de
-/// génération finale (voir `weatherWidget.ts`, champ `llmContext`) pour que
+/// génération finale (voir le champ `llmContext` de la version web d'origine) pour que
 /// la réponse rédigée par le LLM puisse citer la météo sans re-décrire toute
 /// la structure `WeatherWidgetData`.
 struct WeatherWidgetResult: Sendable, Equatable {
@@ -79,12 +79,12 @@ nonisolated protocol WeatherWidgetServing: Sendable {
     func fetchWeather(forQuery query: String, chatHistory: [ClassifierChatMessage]) async -> WeatherWidgetResult?
 }
 
-/// Port natif de `weatherWidget.ts` (web) + `api/weather/route.ts`, en un
-/// seul service Swift (le web sépare l'extraction LLM, côté agent, de l'appel
+/// Port natif du widget météo de la version web d'origine, en un
+/// seul service Swift (la version web d'origine sépare l'extraction LLM, côté agent, de l'appel
 /// API météo, côté route Next — inutile ici : pas de backend, tout tourne
 /// dans le même process).
 ///
-/// DIVERGENCE ASSUMÉE vis-à-vis de la référence web : `weatherWidget.ts`
+/// DIVERGENCE ASSUMÉE vis-à-vis de la version web d'origine : elle
 /// géocode via Nominatim/OpenStreetMap (`nominatim.openstreetmap.org`), qui
 /// exige un `User-Agent` identifiable et impose des limites de débit assez
 /// strictes pour un usage serveur partagé. Consigne de la mission 1.5a :
@@ -147,7 +147,7 @@ struct WeatherWidgetService: WeatherWidgetServing {
         case coordinates(latitude: Double, longitude: Double)
     }
 
-    /// Prompt traduit fidèlement de `weatherWidget.ts` (web), avec la même
+    /// Prompt traduit fidèlement de la version web d'origine, avec la même
     /// contrainte de sortie JSON stricte que `QueryClassifier` — voir sa
     /// documentation pour le choix d'un prompt texte plutôt qu'un schéma
     /// structuré (aucun provider de Triva n'expose de sortie structurée
@@ -316,7 +316,7 @@ struct WeatherWidgetService: WeatherWidgetServing {
 
     /// Géocodage direct : nom de lieu -> coordonnées. `count=1` : on ne veut
     /// que le meilleur résultat, pas de désambiguïsation UI ici (V1, comme
-    /// le web qui prend aussi `data[0]` sans autre choix). `language=fr` :
+    /// la version web d'origine qui prend aussi `data[0]` sans autre choix). `language=fr` :
     /// nom de lieu renvoyé en français quand une traduction existe
     /// (cohérent avec le ton français de tout Triva, DESIGN.md), Open-Meteo
     /// retombe silencieusement sur le nom natif sinon.
@@ -519,9 +519,9 @@ struct WeatherWidgetService: WeatherWidgetServing {
     // MARK: - Contexte pour le LLM
 
     /// Texte compact injecté dans le prompt de génération finale — même
-    /// intention que `llmContext` de `weatherWidget.ts`, mais en phrase FR
+    /// intention que `llmContext` de la version web d'origine, mais en phrase FR
     /// directement exploitable plutôt qu'un `JSON.stringify` brut de l'objet
-    /// `current` (le web laisse le LLM interpréter le JSON lui-même ;
+    /// `current` (elle laisse le LLM interpréter le JSON lui-même ;
     /// `AIGenerating.generate` de Triva n'a qu'un seul canal `prompt` texte,
     /// autant lui donner une phrase déjà digestible).
     static func llmContext(for data: WeatherWidgetData) -> String {

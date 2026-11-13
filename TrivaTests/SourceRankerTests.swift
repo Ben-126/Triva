@@ -116,14 +116,14 @@ struct SourceRankerDomainTests {
 
     @Test("Un domaine boosté l'emporte sur un pénalisé, comme la boucle du web")
     func boostWinsOverPenalty() {
-        // `docs.` est testé avant `quora.com` parce que le web retourne dès
+        // `docs.` est testé avant `quora.com` parce que la version web d'origine retourne dès
         // le premier motif boosté trouvé. Comportement porté tel quel.
         #expect(SourceRanker.domainMultiplier(for: "https://docs.quora.com/guide") == SourceRanker.boostedMultiplier)
     }
 
     @Test("Divergence documentée : on compare l'HÔTE, pas l'URL entière")
     func matchingIsHostBasedNotSubstringBased() {
-        // Le `url.includes('.edu')` du web matcherait `education.fr`.
+        // Le `url.includes('.edu')` de la version web d'origine matcherait `education.fr`.
         #expect(SourceRanker.domainMultiplier(for: "https://monsite.education.fr/cours") == 1.0)
         // Il matcherait aussi un domaine de hameçonnage entièrement contrôlé
         // par son propriétaire : c'est le faux positif le plus grave.
@@ -139,7 +139,7 @@ struct SourceRankerDomainTests {
 
     @Test("Règle ccTLD : data.gov.uk est boosté, evil.gov.com ne l'est pas")
     func countryCodeRuleClosesTheGovDotComHole() {
-        // Vrai portail public : le `includes('.gov')` du web l'attrapait
+        // Vrai portail public : le `includes('.gov')` de la version web d'origine l'attrapait
         // aussi, on ne régresse donc pas.
         #expect(SourceRanker.domainMultiplier(for: "https://data.gov.uk/dataset/x") == SourceRanker.boostedMultiplier)
         #expect(SourceRanker.domainMultiplier(for: "https://www.education.gov.au/page") == SourceRanker.boostedMultiplier)

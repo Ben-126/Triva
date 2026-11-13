@@ -25,7 +25,7 @@ enum TrivaRootDestination: String, CaseIterable, Identifiable, Hashable, Sendabl
 
     /// Libellés courts en français (DESIGN.md : phrases courtes, zéro
     /// remplissage). "Découvrir" plutôt que "Discover" (le nom de la
-    /// fonctionnalité côté web) : c'est un libellé visible par l'utilisateur,
+    /// fonctionnalité dans la version web d'origine) : c'est un libellé visible par l'utilisateur,
     /// il suit donc la règle de langue du reste de l'app.
     var title: String {
         switch self {
@@ -208,6 +208,7 @@ struct TrivaRootView: View {
                 stores.engineSettings.selectedOption = chosen
             }
             .navigationTitle("Changer de moteur")
+            .macSheetTitleBar("Changer de moteur")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

@@ -12,14 +12,14 @@ import Foundation
 /// Où en est le raisonnement visible (bloc `<think>`) d'une réponse, pour UN
 /// instantané de son texte.
 ///
-/// C'est l'état que la tâche 1.14 demande d'exposer explicitement. Le web n'a
-/// qu'un booléen `thinkingEnded` (`src/lib/hooks/useChat.tsx`), vrai dès
+/// C'est l'état que la tâche 1.14 demande d'exposer explicitement. La version web d'origine n'a
+/// qu'un booléen `thinkingEnded`, vrai dès
 /// qu'un `</think>` apparaît dans le texte. Un booléen ne suffit pas ici :
 /// - il ne distingue pas « aucun raisonnement » de « raisonnement pas encore
 ///   terminé ». Or l'absence de `<think>` est le cas NORMAL : Apple
 ///   Intelligence, modes Rapide et Fiable, petits modèles ;
 /// - il ne sait pas dire « le flux s'est arrêté avant `</think>` ». Dans ce
-///   cas le web affiche « Thinking… » indéfiniment.
+///   cas la version web d'origine affiche « Thinking… » indéfiniment.
 ///
 /// ## Contrat pour la vue (ThinkBoxView)
 ///
@@ -103,8 +103,8 @@ nonisolated struct ReasoningSegments: Sendable, Equatable {
 /// Sépare une réponse générée en raisonnement (`<think>…</think>`), TL;DR
 /// (`<tldr>…</tldr>`) et corps (tâche 1.14).
 ///
-/// Porté de `src/lib/hooks/useChat.tsx` et `src/components/MessageBox.tsx`
-/// (web). Côté web, `useChat` referme artificiellement les balises ouvertes
+/// Porté de la version web d'origine, où
+/// `useChat` referme artificiellement les balises ouvertes
 /// (`processedText += '</think> <a> </a>'`), puis `markdown-to-jsx` rend
 /// chaque `<think>` en `ThinkBox` et chaque `<tldr>` en carte, à l'endroit
 /// même où ils apparaissent. Ici pas de HTML intermédiaire : on produit
@@ -112,7 +112,7 @@ nonisolated struct ReasoningSegments: Sendable, Equatable {
 /// (raisonnement, puis TL;DR, puis corps).
 ///
 /// Les balises sont celles que demande le prompt du mode Approfondi
-/// (`PromptTemplates.modeSection`, port de `src/lib/prompts/search/writer.ts`),
+/// (`PromptTemplates.modeSection`, port de la version web d'origine),
 /// plus le bloc de réflexion natif de Qwen3, le seul modèle MLX du catalogue.
 ///
 /// LOGIQUE 100 % PURE : aucun état, aucun réseau, aucun accès disque. Le même
@@ -136,23 +136,23 @@ nonisolated struct ReasoningSegments: Sendable, Equatable {
 /// **Dans le TL;DR**, seuls `</tldr>` et un saut de ligne ferment le bloc. Le
 /// saut de ligne ne compte qu'une fois du texte écrit.
 ///
-/// ## Écarts assumés vis-à-vis du web
+/// ## Écarts assumés vis-à-vis de la version web d'origine
 ///
 /// 1. **Casse et espaces tolérés.** `<THINK>`, `< think >` et `</ tldr>` sont
-///    reconnus. Le web ne reconnaît que la forme exacte en minuscules. Un
+///    reconnus. La version web d'origine ne reconnaît que la forme exacte en minuscules. Un
 ///    saut de ligne à l'intérieur d'une balise n'est jamais toléré, et le
 ///    nombre d'espaces est borné (`maxTagPadding`). `<thinking>`, `<think/>`,
 ///    `List<T>` ou `a<b` restent du texte.
-/// 2. **Bloc vide ignoré.** Pour le web, un `</think>` suffit à terminer le
+/// 2. **Bloc vide ignoré.** Pour la version web d'origine, un `</think>` suffit à terminer le
 ///    raisonnement, même si le bloc est vide. Ici un bloc vide ne compte pas
 ///    (voir la garantie anti-clignotement sur `ReasoningPhase`).
-/// 3. **TL;DR non refermé, fermé au premier saut de ligne.** Le web referme
+/// 3. **TL;DR non refermé, fermé au premier saut de ligne.** La version web d'origine referme
 ///    un `<tldr>` orphelin à la toute fin du texte : un petit modèle qui
 ///    oublie `</tldr>` voit alors TOUTE sa réponse partir dans la carte
 ///    TL;DR. Le prompt exige UNE phrase ; un saut de ligne après du texte en
 ///    marque donc la fin de façon fiable. Les balises posées sur leur propre
 ///    ligne (`<tldr>\nPhrase.\n</tldr>`) restent correctement traitées.
-/// 4. **Plusieurs blocs, un seul encadré.** Le web affiche un `ThinkBox` par
+/// 4. **Plusieurs blocs, un seul encadré.** La version web d'origine affiche un `ThinkBox` par
 ///    bloc. Ici les blocs sont concaténés. C'est un cas RÉEL dans Triva :
 ///    Qwen3 en mode thinking émet son bloc natif, puis écrit le bloc
 ///    `<think>` de 2 à 4 phrases que lui demande le prompt Approfondi. Une
@@ -171,9 +171,9 @@ nonisolated struct ReasoningSegments: Sendable, Equatable {
 ///    sens de l'erreur.
 /// 6. **État interrompu.** Voir `ReasoningPhase.interrupted`.
 ///
-/// Même comportement que le web sur un point qui compte : c'est le PREMIER
+/// Même comportement que la version web d'origine sur un point qui compte : c'est le PREMIER
 /// `</think>` qui ferme le bloc, comme la regex non gourmande
-/// `/<think>[\s\S]*?<\/think>/` du web (et le découpage des serveurs
+/// `/<think>[\s\S]*?<\/think>/` de la version web d'origine (et le découpage des serveurs
 /// d'inférence). Compter la profondeur d'imbrication serait plus « juste »
 /// sur `<think>A<think>B</think>C</think>`, mais un `<think>` parasite suivi
 /// d'un seul `</think>` laisserait alors le bloc ouvert pour toujours, et la

@@ -21,7 +21,7 @@ nonisolated struct ClassifierChatMessage: Sendable, Equatable {
 }
 
 /// Résultat de la classification : port direct du schéma zod de
-/// `classifier.ts` (web) — 7 booléens indépendants (une requête peut par
+/// la version web d'origine — 7 booléens indépendants (une requête peut par
 /// exemple demander un widget météo ET être `skipSearch`) plus la
 /// reformulation autonome de la requête, utile pour les tours de conversation
 /// suivants.
@@ -82,8 +82,8 @@ extension QueryClassification {
 }
 
 /// Deux variantes du prompt système envoyé au LLM, selon la capacité du
-/// moteur IA actif. `.full` reprend le prompt détaillé de `classifier.ts`
-/// (web) — pensé pour un modèle cloud puissant. `.concise` est une version
+/// moteur IA actif. `.full` reprend le prompt détaillé de
+/// la version web d'origine — pensé pour un modèle cloud puissant. `.concise` est une version
 /// courte et directe, pensée pour un modèle local ultra-léger (MLX 0.5B/1.7B,
 /// voir le catalogue de modèles du plan) qui peut se perdre dans un long bloc
 /// d'instructions détaillées en langage naturel.
@@ -92,10 +92,10 @@ enum ClassifierPromptComplexity: Sendable, Equatable {
     case concise
 }
 
-/// Port natif de `src/lib/agents/search/classifier.ts` (web) : construit un
+/// Port natif du classifieur de la version web d'origine : construit un
 /// prompt à partir de l'historique de conversation et de la requête, le fait
 /// classifier par le provider IA déjà résolu, puis parse la sortie JSON
-/// attendue en `QueryClassification`. Contrairement à la référence web (appel
+/// attendue en `QueryClassification`. Contrairement à la version web d'origine (appel
 /// LLM avec schéma zod structuré et rôles système/utilisateur séparés),
 /// `AIGenerating` ne connaît qu'une seule chaîne `prompt` — tout (consignes +
 /// historique + requête) est donc concaténé dans un seul prompt texte, comme
@@ -105,8 +105,8 @@ struct QueryClassifier: Sendable {
     private let maxHistoryMessages: Int
     private let promptComplexity: ClassifierPromptComplexity
 
-    /// `maxHistoryMessages` par défaut à 8, comme la référence web
-    /// (`classifier.ts` ne garde que les 8 derniers messages de l'historique
+    /// `maxHistoryMessages` par défaut à 8, comme la version web d'origine
+    /// (elle ne garde que les 8 derniers messages de l'historique
     /// pour ne pas saturer le contexte du modèle avec une conversation longue).
     /// `promptComplexity` par défaut à `.full` : la checklist du plan (1.1)
     /// demande explicitement de prévoir un prompt adapté à la taille du
@@ -130,7 +130,7 @@ struct QueryClassifier: Sendable {
     /// Construction du prompt isolée dans une fonction pure et testable
     /// directement (pas `private`), même principe que
     /// `SearchOrchestrator.buildPrompt`. Reste fidèle au format XML-like de
-    /// `classifier.ts` : historique tronqué aux `maxHistoryMessages` derniers
+    /// la version web d'origine : historique tronqué aux `maxHistoryMessages` derniers
     /// messages dans `<conversation_history>`, requête dans `<user_query>`.
     static func buildPrompt(query: String, chatHistory: [ClassifierChatMessage], maxHistoryMessages: Int, promptComplexity: ClassifierPromptComplexity = .full) -> String {
         // `suffix(_:)` trappe sur un argument négatif ; aucun site d'appel ne
@@ -333,7 +333,7 @@ struct QueryClassifier: Sendable {
         }
     }
 
-    /// Prompt détaillé, port de `classifier.ts` (web). Écarts de la mission A2 :
+    /// Prompt détaillé, port de la version web d'origine. Écarts de la mission A2 :
     /// `academicSearch` n'est plus déclenché par « des citations » (décision 4
     /// de Ben : « Cite les 27 pays de l'UE » partait sur arXiv, constat Q1),
     /// et `discussionSearch` reçoit la ligne proposée et mesurée par T2
@@ -344,12 +344,12 @@ struct QueryClassifier: Sendable {
     /// Mission A5 (décision de Ben du 2026-11-11) : `skipSearch` suit la MÊME
     /// liste fermée que le prompt concis (salutation, écriture ou
     /// reformulation, calcul, météo répondue par le widget). Le `skipSearch`
-    /// du web (« connaissance générale ») faisait sauter la recherche à
+    /// de la version web d'origine (« connaissance générale ») faisait sauter la recherche à
     /// gpt-6-luna pour 6 questions de fait sur 8 (mesure A2, confirmée par
     /// A5 sur les 12 questions de A2 : 6 sur 8 avant, 0 sur 8 après, un seul
     /// essai par question) ; la réponse venait alors de tête, sans source.
     /// Les calculs, la météo et les écritures restent sautés (3 sur 3). Un
-    /// écart assumé avec `classifier.ts`, qui garde l'ancienne règle.
+    /// écart assumé avec la version web d'origine, qui garde l'ancienne règle.
     private static let classifierSystemPrompt: String = """
     <role>
     Tu es un système d'IA avancé chargé d'analyser la requête de l'utilisateur et l'historique de la conversation pour déterminer la classification la plus appropriée de l'opération de recherche.

@@ -35,6 +35,8 @@ extension TrivaUITests {
         static let responseMode = "chat.responseMode.selected"
         static let instanceOverrides = "searxng.instanceOverrides"
         static let directorySnapshot = "searxng.directorySnapshot.v1"
+        /// Remplace la liste embarquée des instances par une liste neutre (`PublicInstanceList`, DEBUG).
+        static let neutralInstances = "triva.uiTestNeutralInstances"
     }
 
     /// Les cinq espaces, avec le titre que montrent la barre d'onglets et la sidebar.

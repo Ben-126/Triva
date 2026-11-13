@@ -38,11 +38,19 @@ final class TrivaUITests: XCTestCase {
     /// académique, hors sujet (constaté, rapport Q1).
     private static let streamingQuestion = "Explique le fonctionnement d'un moteur à réaction, étape par étape"
     private static let streamingFragment = "moteur à"
+    /// Question de `test10b` : une réponse d'un mot, pour un fil qui tient dans la zone visible d'un iPad.
+    static let shortQuestion = "Réponds seulement par le mot OK, sans rien chercher."
+    private static let shortFragment = "seulement par le mot"
     /// Instances factices semées dans l'annuaire (`test08b`) : le domaine `.example` est réservé,
     /// aucune requête n'atteint jamais un vrai serveur.
     private static let seededInstances = ["annuaire-un.example", "annuaire-deux.example"]
     /// Seule instance de `test10`. `.invalid` : domaine réservé, jamais résolu (RFC 2606).
-    private static let deadInstance = "panne.invalid"
+    static let deadInstance = "panne.invalid"
+    /// Liste « par défaut » neutre que l'app montre sous `StoredKey.neutralInstances`
+    /// (`PublicInstanceList.uiTestNeutralInstances`) : les tests qui ouvrent l'écran des instances ne
+    /// doivent jamais afficher la liste embarquée, qui porte une instance personnelle sur une machine
+    /// de développement et finirait dans une capture, une vidéo d'échec ou un arbre joints au `.xcresult`.
+    static let neutralDefaults = ["defaut-un.invalid", "defaut-deux.invalid"]
 
     // MARK: - Mise en place
 
@@ -253,6 +261,16 @@ final class TrivaUITests: XCTestCase {
         attachText("Réponse et sources", "Source 1 : \(sources.firstMatch.label)\nRéponse : \(element("citation.text").label)")
     }
 
+    /// Branche prise par `scrollKeyboardAway`.
+    enum KeyboardAwayOutcome: Equatable {
+        /// Le fil a bougé et le geste a fermé le clavier : le cas normal.
+        case scrolled
+        /// iPad : le fil tient dans la zone visible, le geste ne peut rien fermer. Clavier fermé par Retour.
+        case threadFitsClosedByReturn
+        /// Échec déjà signalé.
+        case failed
+    }
+
     /// Le clavier, resté ouvert depuis l'envoi, cache la moitié de la réponse : on fait défiler le
     /// fil, sans toucher (un toucher pourrait ouvrir un lien de source).
     ///
@@ -263,31 +281,62 @@ final class TrivaUITests: XCTestCase {
     /// constat joint au rapport et clavier fermé par Retour (jamais par un toucher, qui pourrait
     /// ouvrir un lien de source) ; sur iPhone, le clavier réduit tant la zone visible que le fil doit
     /// défiler, donc l'immobilité est elle-même un échec.
-    private func scrollKeyboardAway() {
+    ///
+    /// Avant le geste, le fil doit s'être posé (`waitForThreadToSettle`) : les questions de suivi
+    /// arrivent APRÈS l'étoile, jusqu'à ~10 s plus tard, rallongent le fil et le recalent en bas. Un
+    /// geste fait pendant ce mouvement ne ferme rien (constaté sur iPhone, E2x2), et un fil qui bouge
+    /// pour une autre raison que le geste ferait croire à un défilement.
+    ///
+    /// Délais : tant que le fil a bougé, le clavier a `Timeout.screen` pour disparaître (5 s auparavant,
+    /// trop juste sous charge, mission E2x2). Le verdict « le fil ne bouge pas » n'attend en revanche
+    /// que `Timeout.screen / 6` : un fil qui défile a bougé bien avant.
+    @discardableResult
+    func scrollKeyboardAway(dragFrom start: XCUICoordinate? = nil) -> KeyboardAwayOutcome {
         let anchor = require(element("chat.question"), "Question absente du fil avant de le défiler.")
+        waitForThreadToSettle(anchoredOn: anchor)
         let before = anchor.frame
-        threadPoint.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        (start ?? threadPoint).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
         let keyboard = app.keyboards.firstMatch
-        if keyboard.waitForNonExistence(timeout: Timeout.stop / 6) { return }
+        if keyboard.waitForNonExistence(timeout: Timeout.screen / 6) { return .scrolled }
         let hasScrolled = anchor.frame != before
+        if hasScrolled, keyboard.waitForNonExistence(timeout: Timeout.screen) { return .scrolled }
         guard !hasScrolled, isPad else {
             XCTFail(hasScrolled ? "Défiler dans le fil ne ferme pas le clavier." : "Le fil ne défile pas, clavier ouvert : zone visible réduite et rien à défiler.")
-            return
+            return .failed
         }
         attachText("Fil non défilable", "Le fil tient dans la zone visible (iPad) : le défilement ne peut pas fermer le clavier. Fermé par Retour.")
         dismissKeyboard()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: Timeout.screen), "Le clavier ne se ferme pas, même par Retour.")
+        return .threadFitsClosedByReturn
+    }
+
+    /// Attend les questions de suivi (au plus `Timeout.screen / 2`, elles peuvent ne jamais venir), puis
+    /// que la question ne bouge plus pendant une seconde. Pas de pause fixe : `waitForNonExistence`
+    /// sur un élément présent sert d'attente interrompable.
+    private func waitForThreadToSettle(anchoredOn anchor: XCUIElement) {
+        _ = element(labelPrefix: "Questions de suivi").waitForExistence(timeout: Timeout.screen / 2)
+        var last = anchor.frame
+        var stableSince = Date.now
+        let deadline = Date.now.addingTimeInterval(Timeout.screen)
+        while Date.now.timeIntervalSince(stableSince) < 1, Date.now < deadline {
+            _ = anchor.waitForNonExistence(timeout: 0.25)
+            let current = anchor.frame
+            if current != last {
+                last = current
+                stableSince = Date.now
+            }
+        }
     }
 
     /// Attend l'étoile ou le bandeau d'erreur, sans pause fixe.
-    private func waitForAnswerEnd() {
+    func waitForAnswerEnd() {
         guard let end = firstExisting([element("chat.favorite"), element("chat.error")], timeout: Timeout.answer) else {
             return XCTFail("Pas de fin de réponse après \(Int(Timeout.answer)) s.")
         }
         XCTAssertNotEqual(end.identifier, "chat.error", "Erreur à la place de la réponse : \(end.label)")
     }
 
-    private func attachText(_ name: String, _ text: String) {
+    func attachText(_ name: String, _ text: String) {
         let attachment = XCTAttachment(string: text)
         attachment.name = name
         attachment.lifetime = .keepAlways
@@ -414,13 +463,17 @@ final class TrivaUITests: XCTestCase {
     }
 
     /// Saisit et envoie, puis attend le passage du bouton sur « Arrêter ». Rend le bouton.
-    private func sendQuestion(_ text: String) -> XCUIElement {
+    func sendQuestion(_ text: String) -> XCUIElement {
         let input = require(element("chat.input"), "Barre de saisie absente.")
         input.tap()
         // Le 1er clavier d'un simulateur peut se faire attendre (34 s sur iPhone Duo, mission E1dH) et
         // l'appui se perdre : sans clavier ouvert, `typeText` échoue (« no keyboard focus »). On
         // rappuie une fois, comme l'utilisateur.
-        if !app.keyboards.firstMatch.waitForExistence(timeout: Timeout.stop / 3) { input.tap() }
+        if !app.keyboards.firstMatch.waitForExistence(timeout: Timeout.stop / 3) {
+            // Trace pour savoir, run après run, si le rappui a servi (mission E2x2).
+            attachText("Rappui sur la barre de saisie", "Pas de clavier après \(Int(Timeout.stop / 3)) s : second appui.")
+            input.tap()
+        }
         input.typeText(text)
         let send = element("chat.send")
         XCTAssertTrue(waitUntil(send, "enabled == true"), "Bouton d'envoi inactif malgré le texte saisi.")
@@ -431,10 +484,13 @@ final class TrivaUITests: XCTestCase {
 
     /// Supprime par le balayage toutes les conversations de ce test, y compris celles d'un run
     /// interrompu : la Bibliothèque d'un simulateur ne doit pas se remplir de tests.
-    private func deleteConversationsLeftByAnEarlierRun() {
+    func deleteConversationsLeftByAnEarlierRun() {
         open(.library)
         let rows = elements("library.row").matching(
-            NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", Self.questionFragment, Self.streamingFragment)
+            NSPredicate(
+                format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@",
+                Self.questionFragment, Self.streamingFragment, Self.shortFragment
+            )
         )
         guard rows.firstMatch.waitForExistence(timeout: 3) else { return }
         var remaining = rows.count
@@ -537,7 +593,9 @@ final class TrivaUITests: XCTestCase {
     // MARK: - 8. Réglages
 
     func test08a_reglages_chaqueSection() throws {
-        launchToSearch()
+        // Liste neutre dès le lancement : la vidéo d'un échec, même loin de l'écran des instances,
+        // ne doit rien contenir de non fictif.
+        launchToSearch(extraArguments: try instanceArguments(directory: Self.seededInstances))
         open(.settings)
         capture("08-1 Réglages")
 
@@ -574,6 +632,7 @@ final class TrivaUITests: XCTestCase {
         }
         step("Avancé : page à part, puis instances SearXNG") {
             openSearXNGInstances()
+            requireOnlyFictionalInstances(allowing: Self.neutralDefaults + Self.seededInstances)
             XCTAssertTrue(element(labelPrefix: "Ajoutées automatiquement").exists || scrollAndFind("Ajoutées automatiquement"), "Section « Ajoutées automatiquement » absente.")
             capture("08-6 Instances SearXNG")
             goBack(to: "Avancé")
@@ -588,7 +647,7 @@ final class TrivaUITests: XCTestCase {
     }
 
     /// Touche une ligne de Réglages et attend le titre de l'écran poussé.
-    private func openSettingsRow(_ identifier: String, title: String) {
+    func openSettingsRow(_ identifier: String, title: String) {
         let row = element(identifier)
         scrollTo(row)
         row.tap()
@@ -602,7 +661,7 @@ final class TrivaUITests: XCTestCase {
     }
 
     /// Réglages > Avancé (page à part, 2026-11-12) > Instances SearXNG.
-    private func openSearXNGInstances() {
+    func openSearXNGInstances() {
         openSettingsRow("settings.advanced", title: "Avancé")
         let row = require(element("settings.searxngInstances"), "« Instances SearXNG » absent de la page « Avancé ».")
         row.tap()
@@ -615,6 +674,7 @@ final class TrivaUITests: XCTestCase {
         launchToSearch(extraArguments: try instanceArguments(directory: Self.seededInstances))
         open(.settings)
         openSearXNGInstances()
+        requireOnlyFictionalInstances(allowing: Self.neutralDefaults + Self.seededInstances)
 
         let rows = elements("searxng.row.automatic")
         let first = app.staticTexts[Self.seededInstances[0]].firstMatch
@@ -657,10 +717,18 @@ final class TrivaUITests: XCTestCase {
         }
     }
 
+    /// Garde-fou : l'écran des instances ne montre que des hôtes fictifs. Si la liste neutre cessait
+    /// de s'appliquer (build hors DEBUG, argument renommé), le test échoue ici, et le message ne
+    /// reprend jamais d'adresse : il finit dans le `.xcresult`.
+    func requireOnlyFictionalInstances(allowing allowed: [String]) {
+        let unexpected = listedInstanceAddresses().subtracting(allowed)
+        XCTAssertTrue(unexpected.isEmpty, "\(unexpected.count) instance(s) non fictive(s) à l'écran : la liste neutre ne s'applique pas. Ne partage pas ce résultat.")
+    }
+
     /// Arguments qui fixent l'annuaire et les personnalisations POUR CE LANCEMENT. `<hex>` est la
     /// notation plist d'un `Data`, seule forme que le domaine d'arguments accepte pour ces clés.
     /// `nextAttemptAt` lointain : l'entretien de fond ne doit pas remplacer l'annuaire semé.
-    private func instanceArguments(directory: [String], added: [String] = [], hidden: [String] = []) throws -> [String] {
+    func instanceArguments(directory: [String], added: [String] = [], hidden: [String] = []) throws -> [String] {
         let farFuture = Date().addingTimeInterval(7 * 86_400).timeIntervalSinceReferenceDate
         let snapshot = try JSONSerialization.data(withJSONObject: [
             "instances": directory.map { "https://\($0)" },
@@ -671,6 +739,7 @@ final class TrivaUITests: XCTestCase {
             "hiddenDefaultInstances": hidden.map { "https://\($0)" },
         ])
         return [
+            "-\(StoredKey.neutralInstances)", "YES",
             "-\(StoredKey.directorySnapshot)", Self.propertyListData(snapshot),
             "-\(StoredKey.instanceOverrides)", Self.propertyListData(overrides),
         ]
@@ -690,60 +759,5 @@ final class TrivaUITests: XCTestCase {
     /// sans rien avoir vu.
     func test09_invitationCleDeRecherche() throws {
         throw XCTSkip("Échec de toutes les sources non provoquable : ni le bouton « Ajouter une clé de recherche », ni le message hors connexion n'ont pu être vus à l'écran.")
-    }
-
-    // MARK: - 10. Chaîne de secours
-
-    /// Aucune instance SearXNG joignable, vrai réseau pour le reste : la question reçoit quand même
-    /// une réponse sourcée, sans bandeau d'erreur, grâce aux sources ouvertes de `WebSearchChain`.
-    ///
-    /// La liste par défaut est LUE À L'ÉCRAN puis masquée par argument : ce fichier ne doit contenir
-    /// aucune adresse de la liste locale, qui porte une instance personnelle, et l'argument ne laisse
-    /// rien dans le simulateur. Le journal du simulateur (catégorie `WebSearchChain`) montre en plus
-    /// l'échec de SearXNG, s'il faut recouper.
-    func test10_chaineDeSecours_sansSearXNG_sourcesOuvertes() throws {
-        launchToSearch()
-        open(.settings)
-        openSearXNGInstances()
-        let defaults = listedInstanceAddresses()
-        XCTAssertFalse(defaults.isEmpty, "Aucune instance lue à l'écran.")
-        app.terminate()
-
-        launchToSearch(extraArguments: try instanceArguments(directory: [], added: [Self.deadInstance], hidden: Array(defaults)))
-        step("Seule l'instance en panne reste dans la liste") {
-            open(.settings)
-            openSearXNGInstances()
-            XCTAssertEqual(listedInstanceAddresses(), [Self.deadInstance])
-            capture("10-1 Liste réduite à l'instance en panne")
-        }
-        step("La réponse vient des sources ouvertes") {
-            open(.search)
-            _ = sendQuestion("Cherche la hauteur de la tour Eiffel")
-            waitForAnswerEnd()
-            scrollKeyboardAway()
-            capture("10-2 Réponse sans SearXNG")
-            let sources = elements("source.link").allElementsBoundByIndex.map(\.label)
-            XCTAssertFalse(sources.isEmpty, "Réponse sans source alors que les sources ouvertes répondent.")
-            // Ligne discrète sous les sources : SearXNG n'a rien à y annoncer, tout autre service oui.
-            let origin = require(element(labelPrefix: "Résultats\u{00A0}: "), "L'écran ne dit pas d'où viennent les résultats.")
-            attachText("Sources reçues sans SearXNG", ([origin.label] + sources).joined(separator: "\n"))
-        }
-        deleteConversationsLeftByAnEarlierRun()
-    }
-
-    /// Adresses de la liste des instances. `Form` ne construit que ce qui est visible : on relit à
-    /// chaque écran, en balayage lent pour ne sauter aucune ligne, jusqu'au bouton qui suit la liste.
-    private func listedInstanceAddresses() -> Set<String> {
-        let testAll = "Tester toutes les instances"
-        let rowButtons = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Tester ' AND label != %@", testAll))
-        var addresses = Set<String>()
-        for _ in 0..<10 {
-            addresses.formUnion(rowButtons.allElementsBoundByIndex.map { String($0.label.dropFirst("Tester ".count)) })
-            if app.buttons[testAll].exists, app.buttons[testAll].isHittable {
-                break
-            }
-            app.collectionViews.firstMatch.swipeUp(velocity: .slow)
-        }
-        return addresses
     }
 }

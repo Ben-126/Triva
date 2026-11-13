@@ -7,15 +7,14 @@
 
 import Foundation
 
-/// Port natif de `src/lib/agents/suggestions/index.ts` et
-/// `src/lib/prompts/suggestions.ts` (web) : demande au LLM 3 à 5 questions de
+/// Port natif de la génération de suggestions de la version web d'origine : demande au LLM 3 à 5 questions de
 /// suivi pertinentes à partir de l'historique de conversation, une fois une
 /// réponse produite. Réutilise `ClassifierChatMessage` (défini dans
 /// `QueryClassifier.swift`) pour l'historique plutôt que d'inventer un
 /// nouveau type — l'historique de suggestions n'a besoin de rien de plus que
 /// "qui a dit quoi", exactement comme la classification.
 ///
-/// Différence majeure avec la référence web : `generateObject` (web) appelle
+/// Différence majeure avec la version web d'origine : `generateObject` appelle
 /// le LLM avec un schéma zod structuré (`{ suggestions: string[] }`) que le
 /// SDK garantit respecté. `AIGenerating` ne connaît qu'une seule chaîne
 /// `prompt` en sortie libre — aucun des 3 moteurs IA de Triva n'expose de
@@ -175,7 +174,7 @@ struct SuggestionsService: Sendable {
     /// Essaie d'abord un tableau JSON brut (`["...", "..."]`), la forme la
     /// plus simple à produire pour un petit modèle, puis un objet enveloppe
     /// `{"suggestions": ["...", "..."]}` (la forme du schéma zod de la
-    /// référence web). L'extraction par sous-chaîne entre premier/dernier
+    /// version web d'origine). L'extraction par sous-chaîne entre premier/dernier
     /// crochet fonctionne aussi quand le tableau est lui-même imbriqué dans
     /// un objet (`{"suggestions": [...]}` contient bien un `[` et un `]`) :
     /// c'est volontaire, ça absorbe la forme "objet" sans code dédié tant
@@ -322,8 +321,8 @@ struct SuggestionsService: Sendable {
     /// Prompt système unique et volontairement court (voir doc de
     /// `buildPrompt`). Demande la forme "objet enveloppe" plutôt que
     /// "tableau nu" pour rester au plus près du schéma zod
-    /// `{ suggestions: string[] }` de la référence web
-    /// (`src/lib/prompts/suggestions.ts`) — mais `parse` accepte de toute
+    /// `{ suggestions: string[] }` de la version web d'origine
+    /// — mais `parse` accepte de toute
     /// façon les deux formes, ainsi que le texte brut, donc un modèle qui
     /// dévie de la consigne n'entraîne jamais un résultat vide par excès de
     /// rigueur du parsing.

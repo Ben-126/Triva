@@ -62,15 +62,15 @@ import SwiftData
 
 /// Une conversation sauvegardée localement (racine de l'historique, 1.9).
 ///
-/// Portage de la table `chats` de `src/lib/db/schema.ts` (web, drizzle/SQLite),
+/// Portage de la table `chats` de la version web d'origine (SQLite),
 /// dont les colonnes sont `id`, `title`, `createdAt`, `sources` et `files`.
 /// Trois écarts assumés :
-/// - le web stocke `sources` et `files` **au niveau du chat**, en colonnes JSON
+/// - la version web d'origine stocke `sources` et `files` **au niveau du chat**, en colonnes JSON
 ///   (`$type<SearchSources[]>`, `$type<DBFile[]>`) ; ici les sources
 ///   appartiennent au MESSAGE qui les cite, ce qui est la vérité du produit
 ///   (chaque réponse a ses propres sources numérotées, voir `CitationParser`)
 ///   et évite de réécrire un gros blob JSON à chaque tour de conversation ;
-/// - le web n'a que `createdAt`, aucune date de mise à jour ; on ajoute
+/// - la version web d'origine n'a que `createdAt`, aucune date de mise à jour ; on ajoute
 ///   `updatedAt`, indispensable pour trier la Library par activité récente et
 ///   non par date de création (relancer une vieille conversation doit la faire
 ///   remonter en tête) ;
@@ -152,10 +152,10 @@ nonisolated enum StoredMessageRole: String, Sendable, Codable, CaseIterable, Equ
 
 /// Un message d'une conversation sauvegardée (1.9).
 ///
-/// Portage de la table `messages` de `src/lib/db/schema.ts`, avec un écart de
+/// Portage de la table `messages` de la version web d'origine, avec un écart de
 /// structure assumé et deux écarts de champs.
 ///
-/// **Structure** : côté web, une ligne de `messages` porte UN ÉCHANGE complet —
+/// **Structure** : dans la version web d'origine, une ligne de `messages` porte UN ÉCHANGE complet —
 /// la colonne `query` (la question) et la colonne `responseBlocks` (la réponse)
 /// dans la même ligne, sans notion de rôle, l'ordre venant de l'`id` entier
 /// auto-incrémenté. Ici une ligne = UN message, avec un `role` explicite et un
@@ -165,11 +165,11 @@ nonisolated enum StoredMessageRole: String, Sendable, Codable, CaseIterable, Equ
 /// pendant que la réponse est encore en cours de génération — impossible dans un
 /// modèle où les deux partagent la même ligne.
 ///
-/// **Champs** : le web stocke la réponse en tableau de `Block` JSON (son UI est
+/// **Champs** : la version web d'origine stocke la réponse en tableau de `Block` JSON (son UI est
 /// composée de blocs typés) ; ici le texte est une simple `String` Markdown,
 /// parce que c'est exactement ce que produit
 /// `AIGenerating.streamGenerate(prompt:)` et ce que la bulle de chat affiche. Et
-/// la colonne `status` du web (enum `answering`/`completed`/`error`, par défaut
+/// la colonne `status` de la version web d'origine (enum `answering`/`completed`/`error`, par défaut
 /// `answering`) n'est pas portée : rien n'est écrit en base avant la fin du
 /// streaming (voir la politique d'écriture documentée sur `ChatHistoryStore`),
 /// donc un message persisté est terminé par construction.
@@ -229,6 +229,9 @@ nonisolated final class StoredMessage {
     var answeredWithoutSearch: Bool = false
     var answeredOffline: Bool = false
     var answeredWithoutReadableSource: Bool = false
+    /// Mission E2b : « Sources probablement hors sujet » et SearXNG injoignable, même modèle.
+    var sourcesMayBeOffTopic: Bool = false
+    var searXNGUnreachable: Bool = false
 
     init(
         id: UUID = UUID(),
@@ -264,7 +267,9 @@ nonisolated final class StoredMessage {
                 uncitableSourceNumbers: SourceNumberCodec.decode(uncitableSourceNumbersRaw),
                 answeredWithoutSearch: answeredWithoutSearch,
                 answeredOffline: answeredOffline,
-                answeredWithoutReadableSource: answeredWithoutReadableSource
+                answeredWithoutReadableSource: answeredWithoutReadableSource,
+                sourcesMayBeOffTopic: sourcesMayBeOffTopic,
+                searXNGUnreachable: searXNGUnreachable
             )
         }
         set {
@@ -272,6 +277,8 @@ nonisolated final class StoredMessage {
             answeredWithoutSearch = newValue.answeredWithoutSearch
             answeredOffline = newValue.answeredOffline
             answeredWithoutReadableSource = newValue.answeredWithoutReadableSource
+            sourcesMayBeOffTopic = newValue.sourcesMayBeOffTopic
+            searXNGUnreachable = newValue.searXNGUnreachable
         }
     }
 
@@ -351,7 +358,7 @@ nonisolated final class StoredSource {
 
 /// Dérive le titre d'une conversation depuis sa première question.
 ///
-/// Le web ne dérive rien : `src/app/api/chat/route.ts` insère `title:
+/// La version web d'origine ne dérive rien : sa route de chat insère `title:
 /// input.query`, c'est-à-dire la question brute et entière, et laisse le CSS
 /// couper visuellement. Ce n'est pas portable ici pour deux raisons : une
 /// cellule de liste doit annoncer un libellé borné en VoiceOver (un titre de

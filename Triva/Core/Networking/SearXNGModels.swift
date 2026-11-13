@@ -19,7 +19,7 @@ import Foundation
 /// `nonisolated protocol SearXNGSearching: Sendable` dans `SearXNGClient.swift`.
 ///
 /// Paramètres de recherche optionnels transmis à une instance SearXNG.
-/// Port direct de `SearxngSearchOptions` (src/lib/searxng.ts).
+/// Port direct de `SearxngSearchOptions` de la version web d'origine.
 nonisolated struct SearXNGSearchOptions: Sendable, Equatable {
     var categories: [String] = []
     var engines: [String] = []
@@ -44,7 +44,7 @@ nonisolated struct SearXNGSearchOptions: Sendable, Equatable {
 
 /// Un résultat de recherche SearXNG. Ne modélise que les champs utilisés
 /// côté app — les champs additionnels renvoyés par l'instance (engine,
-/// score, positions…) sont ignorés par le décodage, comme côté web.
+/// score, positions…) sont ignorés par le décodage, comme dans la version web d'origine.
 nonisolated struct SearXNGSearchResult: Codable, Sendable, Equatable, Identifiable {
     var id: String { url }
 

@@ -69,7 +69,7 @@ struct AlwaysDuplicateScorer: TextSimilarityScoring {
 }
 
 /// Renvoie EXACTEMENT le seuil de quasi-doublon : sert à prouver que la
-/// comparaison est stricte (`> seuil`), comme le `similarity > 0.75` du web.
+/// comparaison est stricte (`> seuil`), comme le `similarity > 0.75` de la version web d'origine.
 struct AtThresholdDuplicateScorer: TextSimilarityScoring {
     func similarities(of reference: String, against candidates: [String]) async -> [Double] {
         Array(repeating: SourceRanker.defaultNearDuplicateThreshold, count: candidates.count)
@@ -89,8 +89,8 @@ struct TruncatedSimilarityScorer: TextSimilarityScoring {
     }
 }
 
-/// Langue toujours indéterminée : un seul groupe, donc exactement le port du
-/// web. Épinglée dans tous les tests d'avant la décision 3, pour qu'aucun
+/// Langue toujours indéterminée : un seul groupe, donc exactement le port de la
+/// version web d'origine. Épinglée dans tous les tests d'avant la décision 3, pour qu'aucun
 /// d'eux ne dépende de la détection de langue du système sur ses extraits.
 struct UndeterminedLanguageIdentifier: TextLanguageIdentifying {
     func dominantLanguage(of text: String) -> String? { nil }

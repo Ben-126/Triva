@@ -20,7 +20,7 @@ nonisolated struct MediaInlineLayout: Sendable, Equatable {
 
 /// Logique d'affichage des résultats médias (tâche 1.6), partagée par
 /// `ImageResultsView` et `VideoResultsView`. Port de la mise en page de
-/// `src/components/SearchImages.tsx` et `SearchVideos.tsx` (web).
+/// des résultats d'images et de vidéos de la version web d'origine.
 ///
 /// `nonisolated`, et uniquement des types primitifs ou génériques en entrée,
 /// jamais `ImageSearchResult` / `VideoSearchResult` : ces deux structs ne sont
@@ -35,7 +35,7 @@ nonisolated enum MediaResultsPresentation {
 
     // MARK: Proportions
 
-    /// Case de la grille d'images : 4:3, pas le 16:9 (`aspect-video`) du web.
+    /// Case de la grille d'images : 4:3, pas le 16:9 (`aspect-video`) de la version web d'origine.
     /// Les photos sont surtout en 4:3 ou 3:2 ; une case 16:9 rogne le haut et
     /// le bas de toute image en portrait, souvent là où se trouve le sujet.
     static let imageTileAspectRatio: CGFloat = 4.0 / 3.0
@@ -48,7 +48,7 @@ nonisolated enum MediaResultsPresentation {
 
     // MARK: Grille d'images
 
-    /// 2 colonnes en largeur compacte (iPhone), comme le `grid-cols-2` du web.
+    /// 2 colonnes en largeur compacte (iPhone), comme le `grid-cols-2` de la version web d'origine.
     static let compactColumnCount = 2
     /// 3 colonnes ailleurs : la colonne de chat plafonne à 640 pt
     /// (`ChatView.contentMaxWidth`), soit des cases d'environ 200 pt.
@@ -61,7 +61,7 @@ nonisolated enum MediaResultsPresentation {
     /// Rangées montrées avant la case « +N ».
     static let inlineRowCount = 2
 
-    /// Jamais moins de 4 cases : le web en montre 4 (3 images + « View N
+    /// Jamais moins de 4 cases : la version web d'origine en montre 4 (3 images + « View N
     /// more »). À une colonne, 4 cases empilées gardent un aperçu utile.
     static let minimumGridCapacity = 4
 
@@ -79,7 +79,7 @@ nonisolated enum MediaResultsPresentation {
         return max(minimumGridCapacity, columns * inlineRowCount)
     }
 
-    /// Port de la règle du web (`images.length > 4` → 3 images + « View N
+    /// Port de la règle de la version web d'origine (`images.length > 4` → 3 images + « View N
     /// more », sinon toutes), généralisée à une capacité quelconque : au-delà
     /// de la capacité, la dernière case devient « +N ». N vaut donc toujours au
     /// moins 2 : une case « +1 » prendrait la place de l'image qu'elle annonce.
@@ -98,8 +98,8 @@ nonisolated enum MediaResultsPresentation {
 
     // MARK: Liste de vidéos
 
-    /// 3 vidéos avant « Afficher les N autres vidéos », comme les 3 vidéos du
-    /// web devant sa case « View N more ».
+    /// 3 vidéos avant « Afficher les N autres vidéos », comme les 3 vidéos de la
+    /// version web d'origine devant sa case « View N more ».
     static let videoListLimit = 3
 
     /// Même règle que `gridLayout`, pour une liste : le bouton s'ajoute après
@@ -317,7 +317,7 @@ struct MediaResultsSectionHeader: View {
 /// Jamais de détail d'erreur : la phase `.failed` n'en transporte aucun (voir
 /// `ImageResultsPhase`).
 ///
-/// Pas de squelette de chargement façon web (`animate-pulse`) : des cases
+/// Pas de squelette de chargement façon la version web d'origine (`animate-pulse`) : des cases
 /// grises sans contenu sont précisément le « carré vide inexpliqué » à éviter,
 /// et une pulsation d'opacité est un calque semi-transparent animé. Une ligne
 /// « Recherche d'images… » dit la même chose, honnêtement.
@@ -387,8 +387,8 @@ struct MediaResultsStatusView: View {
 /// (≈ 48 Mo décodée par `AsyncImage`, que ce chargeur remplace) n'occupe plus que
 /// quelques Mo par case. Les bornes qui s'y ajoutent, par ordre d'importance :
 /// 1. le plafond des services : `maxResults = 10` par défaut dans
-///    `ImageSearchService` et `VideoSearchService` (le `.slice(0, 10)` du
-///    web) ;
+///    `ImageSearchService` et `VideoSearchService` (le `.slice(0, 10)` de la
+///    version web d'origine) ;
 /// 2. la grille repliée : 6 cases au plus tant que « +N » n'est pas touché
 ///    (`MediaResultsPresentation.gridLayout`) ;
 /// 3. la paresse des conteneurs, seulement là où elle est garantie : la

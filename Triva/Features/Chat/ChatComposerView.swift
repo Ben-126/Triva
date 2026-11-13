@@ -46,6 +46,18 @@ nonisolated enum ChatComposerPresentation {
     }
 }
 
+// MARK: - Moteur IA dans la barre
+
+/// Badge moteur (icône seule) et « Changer de moteur », posés en tête de la barre de saisie quand
+/// la hauteur ne laisse plus de place à une rangée d'en-tête (`EngineHeaderLayout.badgeIsIconOnly` :
+/// iPhone en paysage, AX3 et plus, clavier ouvert). La largeur, elle, ne manque pas. Le badge
+/// garde son libellé d'accessibilité complet et ses identifiants, le bouton aussi.
+struct ComposerEngineAccessory {
+    let icon: String
+    let text: String
+    let onChangeEngine: () -> Void
+}
+
 // MARK: - Vue
 
 /// Barre de saisie du chat : fichiers joints au-dessus (`FileAttachmentTray`, frère du
@@ -70,6 +82,8 @@ struct ChatComposerView: View {
     let contentMaxWidth: CGFloat?
     let onSend: () -> Void
     let onStop: () -> Void
+    /// Non `nil` : la rangée moteur de l'en-tête vit ici (voir `ComposerEngineAccessory`).
+    var engineAccessory: ComposerEngineAccessory?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
@@ -121,10 +135,27 @@ struct ChatComposerView: View {
             }
         } else {
             HStack(spacing: 12) {
+                engineControls
                 secondaryActions
                 field
                 sendButton
             }
+        }
+    }
+
+    @ViewBuilder
+    private var engineControls: some View {
+        if let engineAccessory {
+            EngineBadge(
+                badge: (engineAccessory.icon, engineAccessory.text, ""),
+                showsCaption: false,
+                badgeIdentifier: "search.engineBadge",
+                iconOnly: true
+            )
+            Button("Changer de moteur", systemImage: "arrow.triangle.2.circlepath", action: engineAccessory.onChangeEngine)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("search.changeEngine")
         }
     }
 

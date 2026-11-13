@@ -135,7 +135,7 @@ final class TrivaRootCoordinator {
     /// PAS envoyée : l'utilisateur peut la préciser avant (mission I4b,
     /// « requête pré-remplie »).
     ///
-    /// Écart assumé avec le web : Vane envoie aussitôt `Summary: <url>`, que
+    /// Écart assumé avec la version web d'origine : elle envoie aussitôt `Summary: <url>`, que
     /// son action `scrapeURL` sait résumer. Triva n'a pas cette action — une
     /// URL brute envoyée à SearXNG ne trouverait que la page elle-même — d'où
     /// le titre, la meilleure requête de recherche dont on dispose.

@@ -165,7 +165,7 @@ struct WebSearchChainTests {
         let error = WebSearchChainError.allSourcesFailed([
             WebSearchSourceFailure(source: .braveSearch, reason: .searchFailed(.unauthorized)),
         ])
-        #expect(error.userFacingMessage == "Aucune source de recherche n'a répondu. Vérifie ta connexion, puis réessaie.")
+        #expect(error.userFacingMessage == "Les sources de recherche sont surchargées ou indisponibles pour le moment. Réessaie dans un instant.")
         #expect(String(describing: error) == error.userFacingMessage)
     }
 

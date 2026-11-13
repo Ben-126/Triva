@@ -7,10 +7,10 @@
 
 import Foundation
 
-/// Port fidèle de `done.ts` (web) : registrée pour complétude (le nom
+/// Port fidèle de l'action `done` de la version web d'origine : registrée pour complétude (le nom
 /// "done" est exposé au planner dans `SearchOrchestrator.plannerPrompt`),
 /// mais son `execute()` n'est JAMAIS réellement appelé par la boucle
-/// d'orchestration — exactement comme côté web, où `researcher/index.ts`
+/// d'orchestration — exactement comme dans la version web d'origine, où la boucle de recherche
 /// intercepte le nom du dernier tool call AVANT tout appel à
 /// `ActionRegistry.executeAll` et sort de la boucle sans jamais exécuter
 /// l'action `done` elle-même (voir `SearchOrchestrator.runPlannerLoop`, qui
@@ -20,7 +20,7 @@ import Foundation
 /// `execute()` reste donc du code mort ASSUMÉ, jamais couvert par un appel
 /// réel dans le pipeline — commentaire volontairement explicite pour qu'un
 /// futur lecteur ne le prenne pas pour un oubli : le comportement fidèle à
-/// la référence web est justement de ne JAMAIS l'exécuter.
+/// la version web d'origine est justement de ne JAMAIS l'exécuter.
 struct DoneAction: SearchAction {
     let name = "done"
     let descriptionForPlanner = "Signale que la recherche est terminée — arrête la boucle sans lancer de nouvelle action."

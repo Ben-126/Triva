@@ -66,8 +66,8 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
         self.id = Self.normalizedKey(for: url)
     }
 
-    /// Même règle de déduplication que le web (`item.url?.toLowerCase().trim()`,
-    /// route.ts) : suffisant pour éliminer le même article repris par deux flux d'un même
+    /// Même règle de déduplication que la version web d'origine (`item.url?.toLowerCase().trim()`) :
+    /// suffisant pour éliminer le même article repris par deux flux d'un même
     /// sujet (ESPN « news » et « soccer »), pas une normalisation d'URL complète.
     static func normalizedKey(for url: String) -> String {
         url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

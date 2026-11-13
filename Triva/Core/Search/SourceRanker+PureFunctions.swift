@@ -16,7 +16,7 @@ nonisolated extension SourceRanker {
     // MARK: - Fonctions pures (testables seules)
 
     /// Texte représentant un résultat pour le calcul de similarité. Port de
-    /// `r.content || r.title` (web) : en JavaScript une chaîne vide est
+    /// `r.content || r.title` (version web d'origine) : en JavaScript une chaîne vide est
     /// falsy, donc un extrait vide bascule automatiquement sur le titre.
     /// Swift n'ayant pas cette notion, on teste explicitement le contenu non
     /// vide APRÈS nettoyage des blancs — sinon un `content: " "` renvoyé par
@@ -49,7 +49,7 @@ nonisolated extension SourceRanker {
     /// Multiplicateur de domaine.
     ///
     /// LES DOMAINES BOOSTÉS SONT TESTÉS EN PREMIER ET L'EMPORTENT :
-    /// `docs.quora.com` vaut 1,25 et non 0,4. C'est le comportement du web,
+    /// `docs.quora.com` vaut 1,25 et non 0,4. C'est le comportement de la version web d'origine,
     /// dont la boucle `for` retourne dès le premier motif boosté trouvé ;
     /// conservé tel quel pour ne pas modifier silencieusement un classement
     /// au passage d'un portage.
@@ -75,7 +75,7 @@ nonisolated extension SourceRanker {
 
     /// Hôte de l'URL, en minuscules et sans `www.`.
     ///
-    /// DIVERGENCE VOLONTAIRE vis-à-vis du web, qui fait un simple
+    /// DIVERGENCE VOLONTAIRE vis-à-vis de la version web d'origine, qui fait un simple
     /// `url.toLowerCase().includes(motif)` sur l'URL ENTIÈRE. Ce test produit
     /// trois faux positifs bien réels :
     /// - `.edu` matche `monsite.education.fr`, et `.gov` matche
@@ -87,8 +87,8 @@ nonisolated extension SourceRanker {
     ///   une simple mention dans le chemin ou la requête.
     ///
     /// On raisonne donc sur l'hôte réel, extrait via `URLComponents`. C'est
-    /// strictement plus juste, et la seule chose qu'on "perd" par rapport au
-    /// web est la correspondance sur des mentions hors-hôte, qui n'avait
+    /// strictement plus juste, et la seule chose qu'on "perd" par rapport à la
+    /// version web d'origine est la correspondance sur des mentions hors-hôte, qui n'avait
     /// aucun sens.
     ///
     /// URL non analysable ou sans hôte -> `nil` -> multiplicateur neutre : une
@@ -109,7 +109,7 @@ nonisolated extension SourceRanker {
 
     /// Décide si `host` correspond à `pattern`. Trois formes, déduites de la
     /// forme du motif lui-même pour que les listes restent des copies
-    /// littérales de celles du web :
+    /// littérales de celles de la version web d'origine :
     ///
     /// - `".gov"` (commence par un point) — domaine de premier niveau. Matche
     ///   `nasa.gov`, et `data.gov.uk` via la règle ccTLD ci-dessous.
@@ -122,7 +122,7 @@ nonisolated extension SourceRanker {
     ///   de le contenir (`notwikipedia.org`, `github.com.phishing.example`).
     ///
     /// RÈGLE ccTLD, la seule subtilité : `.gov` doit matcher `data.gov.uk`
-    /// (vrai portail public britannique, que le `includes('.gov')` du web
+    /// (vrai portail public britannique, que le `includes('.gov')` de la version web d'origine
     /// attrapait aussi) sans matcher `evil.gov.com`. Un simple
     /// `host.contains(".gov.")` attraperait les deux — or `gov.com` est un
     /// domaine librement enregistrable, donc ce serait un trou de classement

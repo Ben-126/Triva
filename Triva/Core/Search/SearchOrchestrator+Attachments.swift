@@ -37,7 +37,7 @@ extension SearchOrchestrator {
     nonisolated static let minimumAttachmentExcerptCharacters = 300
 
     /// Nombre d'extraits de fichiers joints pour un budget donné (I1b) : les
-    /// 10 du web (`UploadsSearchResultBuilder.defaultMaxFragments`), sauf si
+    /// 10 de la version web d'origine (`UploadsSearchResultBuilder.defaultMaxFragments`), sauf si
     /// le budget ne leur laisse pas `minimumAttachmentExcerptCharacters`
     /// chacun. Chaque extrait coûte aussi ~90 caractères d'en-tête dans le
     /// prompt (`[n]`, nom du fichier, URL synthétique `triva-attachment:<UUID>`) :

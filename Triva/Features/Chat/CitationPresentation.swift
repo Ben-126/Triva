@@ -358,8 +358,7 @@ nonisolated enum CitationPresentation {
 
     /// « lemonde.fr » : hôte en minuscules, sans `www.`. Délègue à
     /// `SourceRanker.normalizedHost(of:)` pour ne pas dupliquer une règle
-    /// qui doit rester la même partout (même rendu que le web, `getHostname`
-    /// dans `Citation.tsx`).
+    /// qui doit rester la même partout (même rendu que la version web d'origine).
     static func displayHost(for source: SearXNGSearchResult) -> String? {
         SourceRanker.normalizedHost(of: source.url)
     }

@@ -66,7 +66,7 @@ nonisolated enum WeatherWidgetPresentation {
     /// Équivalents de nuit des symboles « soleil » produits par
     /// `WeatherWidgetService.condition(forWMOCode:)`. Le service dérive le
     /// symbole du seul code WMO, sans tenir compte de `is_day` : un ciel
-    /// dégagé à 23 h s'afficherait avec un soleil. Le web choisit l'icône
+    /// dégagé à 23 h s'afficherait avec un soleil. La version web d'origine choisit l'icône
     /// selon `is_day` (`clear-night.svg`…), d'où cette table, alignée
     /// EXACTEMENT sur les deux seuls symboles solaires du service (codes 0-1
     /// et 2). Tous les autres (nuages, brouillard, pluie, neige, orage) valent
@@ -201,7 +201,7 @@ nonisolated enum WeatherWidgetPresentation {
 
 /// Carte du widget météo (1.5), affichée AU-DESSUS de la réponse quand
 /// `WeatherWidgetService` a produit une donnée. Port de
-/// `src/components/Widgets/Weather.tsx` (web), refait selon `DESIGN.md`.
+/// la carte météo de la version web d'origine, refait selon `DESIGN.md`.
 ///
 /// ## Ce qui est montré, et pourquoi pas plus
 /// Le lieu (il confirme lequel a été géocodé : « Paris, Île-de-France,
@@ -209,7 +209,7 @@ nonisolated enum WeatherWidgetPresentation {
 /// temps, puis au plus trois informations complémentaires — voir
 /// `WeatherWidgetPresentation.details` pour leur choix.
 ///
-/// ## Écarts assumés vis-à-vis du web
+/// ## Écarts assumés vis-à-vis de la version web d'origine
 /// - Pas de dégradé de ciel par condition ni d'ombre portée : interdits par la
 ///   DA (« ne doit jamais faire IA »). La carte est en verre neutre, comme la
 ///   bulle assistant qu'elle surmonte.

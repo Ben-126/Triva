@@ -116,7 +116,7 @@ struct SearXNGClientTests {
 
     /// Régression mesurée le 2026-11-05 : `Accept: application/json` fait répondre 429 au limiteur
     /// de SearXNG (`botdetection/http_accept.py`, voir la doc de `SearXNGClient`), sur toutes les
-    /// instances où il est actif. Sans en-tête, `URLSession` envoie `*/*`, comme le web.
+    /// instances où il est actif. Sans en-tête, `URLSession` envoie `*/*`, comme la version web d'origine.
     @Test("N'impose aucun en-tête Accept : le limiteur de SearXNG refuse ce qui exclut text/html")
     func doesNotSendAcceptHeader() async throws {
         let capturedHeader = LockedBox<String?>("non capturé")

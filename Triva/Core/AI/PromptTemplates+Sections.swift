@@ -58,7 +58,7 @@ extension PromptTemplates {
     // MARK: - Sections par mode
 
     /// Consignes de forme propres au mode. `quick` et `deep` sont des ports
-    /// de `writer.ts` ; `reliable` est écrit ici (écart 2 en tête de fichier).
+    /// de la version web d'origine ; `reliable` est écrit ici (écart 2 en tête de fichier).
     ///
     /// Divergence assumée entre les deux verbosités, indispensable à
     /// comprendre pour lire `ResponseStructureValidator` : en `deep` +
@@ -132,7 +132,7 @@ extension PromptTemplates {
         }
     }
 
-    /// Checklist finale, port de `Final checklist before writing` du web.
+    /// Checklist finale, port de `Final checklist before writing` de la version web d'origine.
     /// Utile uniquement en `.full` : sur un petit modèle, elle doublerait la
     /// longueur du prompt pour rappeler des règles déjà énoncées — d'où la
     /// chaîne vide en `.concise`. `complexity` reste un paramètre (plutôt

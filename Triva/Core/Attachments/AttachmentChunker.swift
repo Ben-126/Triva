@@ -20,24 +20,24 @@ nonisolated struct AttachmentChunk: Sendable, Equatable {
 }
 
 /// Découpage d'un texte extrait en fragments recouvrants — port de
-/// `splitText` (`src/lib/utils/splitText.ts`, web), appelé par `manager.ts`
+/// `splitText` de la version web d'origine, appelé
 /// avec `splitText(content, 512, 128)`.
 ///
-/// DIVERGENCES ASSUMÉES avec le web :
+/// DIVERGENCES ASSUMÉES avec la version web d'origine :
 /// - Unité de mesure : le `Character` Swift (un graphème complet), pas le
 ///   jeton `cl100k` de `js-tiktoken`. Aucun tokenizer BPE n'existe dans les
 ///   frameworks Apple, et compter en graphèmes est précisément ce qui rend
 ///   impossible de couper un caractère composé en deux.
 /// - Frontières : hiérarchie « bloc (ligne vide) → phrase (`NLTokenizer`) →
 ///   mot (blanc, puis `NLTokenizer` pour les écritures sans espaces) →
-///   graphème », là où le web découpe sur une regex de ponctuation. Le
+///   graphème », là où la version web d'origine découpe sur une regex de ponctuation. Le
 ///   niveau suivant n'intervient QUE pour un morceau trop long pour un
 ///   fragment : un paragraphe qui tient n'est jamais coupé.
 /// - Blocs détectés à la main plutôt que via `NLTokenizer(unit: .paragraph)`,
 ///   qui coupe à CHAQUE retour à la ligne (vérifié sur macOS 27) : pour un
 ///   texte justifié à 80 colonnes ou un PDF, chaque ligne deviendrait un
 ///   « paragraphe ». Seule une ligne vide sépare deux blocs.
-/// - BUG DU WEB NON REPRODUIT : si un segment dépasse à lui seul `maxTokens`,
+/// - BUG DE LA VERSION WEB D'ORIGINE NON REPRODUIT : si un segment dépasse à lui seul `maxTokens`,
 ///   la boucle de `splitText` n'avance plus (`chunkEnd` reste égal à
 ///   `chunkStart`) et tourne indéfiniment. Ici, chaque unité est d'abord
 ///   ramenée sous la taille utile d'un fragment, ce qui garantit qu'au moins
@@ -51,7 +51,7 @@ nonisolated struct AttachmentChunk: Sendable, Equatable {
 /// défaut de 800 garde une marge sous ce plafond. Si ce plafond du scorer
 /// baisse un jour, ce défaut doit baisser avec lui.
 ///
-/// RECOUVREMENT : 150 caractères (≈ 19 %, proche des 25 % du web avec
+/// RECOUVREMENT : 150 caractères (≈ 19 %, proche des 25 % de la version web d'origine avec
 /// 128/512). Il ne démarre JAMAIS au milieu d'un mot : il reprend la fin du
 /// fragment précédent à partir d'un début de phrase si l'une tient dans la
 /// fenêtre, sinon d'un début de mot, sinon il est omis. C'est là que la

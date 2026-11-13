@@ -112,8 +112,8 @@ struct FavoritesContentView: View {
 }
 
 /// Question, extrait, date, empilés comme une ligne de la Bibliothèque.
-/// Extrait sur trois lignes et non deux : c'est le contenu même du favori (le
-/// web en montre aussi trois, `line-clamp-3`). Sans texte affichable, il est
+/// Extrait sur trois lignes et non deux : c'est le contenu même du favori (la
+/// version web d'origine en montre aussi trois, `line-clamp-3`). Sans texte affichable, il est
 /// omis : question et date suffisent à reconnaître la ligne.
 struct FavoriteRowLabel: View {
     let favorite: FavoriteSummary

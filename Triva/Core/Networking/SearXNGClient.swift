@@ -27,10 +27,10 @@ nonisolated protocol SearXNGSearching: Sendable {
 }
 
 /// Client HTTP réel vers une instance SearXNG publique.
-/// Port direct de `searchSearxng` (src/lib/searxng.ts) : `GET {instance}/search?format=json`,
+/// Port direct de `searchSearxng` de la version web d'origine : `GET {instance}/search?format=json`,
 /// timeout de 10s, mêmes paramètres de requête.
 ///
-/// AUCUN EN-TÊTE `Accept`, exprès : `URLSession` envoie alors `*/*`, comme le `fetch` du web (qui
+/// AUCUN EN-TÊTE `Accept`, exprès : `URLSession` envoie alors `*/*`, comme le `fetch` de la version web d'origine (qui
 /// n'en pose pas non plus). Le limiteur de SearXNG répond 429 à toute requête `/search` dont
 /// l'`Accept` exclut `text/html` (`searx/botdetection/http_accept.py`), et il est actif sur toutes
 /// les instances publiques dont la configuration se lit (31 sur 31, `/config`, mesuré le
@@ -113,8 +113,8 @@ struct SearXNGClient: SearXNGSearching {
     /// encoder la valeur avant de la confier à `queryItems` donnerait `%252B`,
     /// puisque le setter réencode le `%`.
     ///
-    /// Ce n'est PAS un écart assumé avec le web : `searxng.ts` passe par
-    /// `URLSearchParams.append`, qui sérialise déjà `+` en `%2B`. Le web n'a
+    /// Ce n'est PAS un écart assumé avec la version web d'origine : elle passe par
+    /// `URLSearchParams.append`, qui sérialise déjà `+` en `%2B`. La version web d'origine n'a
     /// jamais eu ce bug, et ce correctif rétablit la parité.
     ///
     /// Pourquoi le remplacement sur toute la query est sûr : après le setter

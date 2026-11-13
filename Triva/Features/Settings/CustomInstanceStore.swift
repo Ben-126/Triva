@@ -695,7 +695,7 @@ final class CustomInstanceStore {
 
     private static func loadBundledDefaults() -> (instances: [URL], failed: Bool) {
         do {
-            return (try PublicInstanceList.load(), false)
+            return (try PublicInstanceList.loadForApp(), false)
         } catch {
             return ([], true)
         }

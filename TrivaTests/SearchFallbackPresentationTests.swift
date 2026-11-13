@@ -245,7 +245,7 @@ struct ChatViewModelSearchFallbackTests {
 
         let answer = try #require(viewModel.messages.last)
         #expect(answer.status == .failed)
-        #expect(viewModel.errorDescription == "Aucune source de recherche n'a répondu. Vérifie ta connexion, puis réessaie.")
+        #expect(viewModel.errorDescription == "Aucune source de recherche n'a répondu. Réessaie dans un instant ; si ça continue, vérifie ta connexion.")
         let invitation = try #require(viewModel.searchKeyInvitation)
         #expect(invitation.actionTitle == SearchKeyInvitation.addKeyTitle)
     }

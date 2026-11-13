@@ -282,7 +282,7 @@ nonisolated enum ThinkBoxPresentation {
 /// Bloc repliable du raisonnement visible (tâche 1.14), placé au-dessus du
 /// corps de la réponse.
 ///
-/// Port de `src/components/ThinkBox.tsx` (web), refait selon la décision de
+/// Port du bloc de réflexion de la version web d'origine, refait selon la décision de
 /// Ben : « un peu comme dans Claude chat », sans coûter de temps ni de
 /// performance.
 /// - Pendant la réflexion : une seule ligne discrète, « Réflexion… 12 s »,
@@ -292,7 +292,7 @@ nonisolated enum ThinkBoxPresentation {
 ///
 /// ## Écarts assumés vis-à-vis de `ReasoningPhase`
 /// La documentation de `ReasoningPhase` décrit `.inProgress` comme DÉPLIÉ
-/// avec un libellé animé : c'était le comportement du web. La décision plus
+/// avec un libellé animé : c'était le comportement de la version web d'origine. La décision plus
 /// récente de Ben (replié, sans animation continue) l'emporte. `.completed`
 /// (repli automatique, une fois) et `.interrupted` (déplié, jamais replié
 /// automatiquement) suivent ce contrat. Voir

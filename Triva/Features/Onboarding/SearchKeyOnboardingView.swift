@@ -82,6 +82,7 @@ struct SearchKeyOnboardingView: View {
     private var keySheet: some View {
         NavigationStack {
             SearchKeysView()
+                .macSheetTitleBar("Clés de recherche")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         // Explicite : le libellé du système sortirait en anglais.

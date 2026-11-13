@@ -60,6 +60,7 @@ struct AddCustomProviderView: View {
                 .padding(.top, 24)
             }
             .navigationTitle("Fournisseur personnalisé")
+            .macSheetTitleBar("Fournisseur personnalisé")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Annuler") { dismiss() }

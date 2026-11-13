@@ -57,6 +57,11 @@ nonisolated struct FailoverExhaustedError: Error, Sendable, Equatable {
 ///   délais et échecs réseau de la même recherche ne le sont pas non plus (le Wi-Fi qui tombe
 ///   pendant une requête donne un délai dépassé, puis la coupure). Une réponse HTTP d'erreur, elle,
 ///   reste imputée à son instance ;
+/// - BUDGET DE TEMPS (`attemptBudget`, mission E2d) : une instance qui ne répond pas coûte jusqu'à
+///   10 s (délai de `SearXNGClient`). Avec huit instances en panne, l'utilisateur attendait plus d'une
+///   minute avant que la chaîne ne passe à Wikipédia. Passé le budget, on cesse d'ouvrir de NOUVELLES
+///   tentatives (celle en cours va à son terme) : les instances restantes ne sont pas enregistrées
+///   comme fautives, elles n'ont pas été essayées ;
 /// - une `Task` annulée n'est JAMAIS un échec d'instance (voir le commentaire dans la boucle).
 actor FailoverManager {
     private let client: any SearXNGSearching
@@ -67,6 +72,7 @@ actor FailoverManager {
     let reliability: InstanceReliabilityStore
     private let now: @Sendable () -> Date
     private let maxBenchedAttempts: Int
+    private let attemptBudget: TimeInterval
     private var cachedInstance: URL?
 
     /// - Parameters:
@@ -82,13 +88,15 @@ actor FailoverManager {
         instances: [URL],
         reliability: InstanceReliabilityStore = InstanceReliabilityStore(),
         now: @escaping @Sendable () -> Date = { Date() },
-        maxBenchedAttempts: Int = 2
+        maxBenchedAttempts: Int = 2,
+        attemptBudget: TimeInterval = 30
     ) {
         self.client = client
         self.instances = instances
         self.reliability = reliability
         self.now = now
         self.maxBenchedAttempts = max(0, maxBenchedAttempts)
+        self.attemptBudget = attemptBudget
     }
 
     func search(
@@ -113,11 +121,13 @@ actor FailoverManager {
         }
 
         var failures: [AttemptFailure] = []
+        let searchStart = now()
         for instance in attemptOrder() {
             if Task.isCancelled {
                 commit(failures, success: nil)
                 throw CancellationError()
             }
+            if !failures.isEmpty, now().timeIntervalSince(searchStart) >= attemptBudget { break }
             let clock = ContinuousClock()
             let start = clock.now
             do {

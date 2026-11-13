@@ -12,7 +12,7 @@ import Testing
 
 // Mission E1a, point 4 : les champs ajoutés à `StoredMessage` et `StoredFavorite` ne doivent pas
 // casser les bases existantes. On écrit un VRAI fichier SQLite avec le schéma tel qu'il était au
-// commit fc5a4be (copies des cinq modèles, mêmes noms de classes, sans les nouveaux champs), puis on le
+// commit fc5a4be, donc avant les missions E1a ET E2b (copies des cinq modèles, mêmes noms de classes, sans les nouveaux champs), puis on le
 // rouvre avec le schéma actuel, par le chemin du conteneur de l'app (`Schema(TrivaModelContainer.models)`,
 // sans plan de migration : migration légère automatique). Fichier dans un dossier temporaire, JAMAIS
 // le store de l'utilisateur.
@@ -197,12 +197,17 @@ struct StoredAnswerNotesMigrationTests {
         #expect(answer.orderedSources.map(\.title) == ["Lue", "Non lue"])
         #expect(answer.answerNotes == StoredAnswerNotes())
         #expect(answer.uncitableSourceNumbersRaw == "")
+        #expect(!answer.sourcesMayBeOffTopic && !answer.searXNGUnreachable)
 
         let favorite = try #require(try favorites.favorite(forMessageID: Self.favoriteMessageID))
         #expect(favorite.uncitableSourceNumbers.isEmpty)
+        // Mission E2b : un favori d'avant les mentions se relit sans aucune, et le détail n'en pose pas.
+        #expect(favorite.answerNotes == StoredAnswerNotes())
         let content = FavoritePresentation.detailContent(copying: favorite)
         #expect(content.sources.count == 1)
         #expect(content.uncitableSourceNumbers.isEmpty)
+        #expect(content.notes == StoredAnswerNotes())
+        #expect(MessageBubblePresentation.answerNote(FavoritePresentation.answerSnapshot(of: content)) == nil)
 
         // Les nouveaux champs s'écrivent ensuite normalement sur ce même fichier.
         let newAnswer = try history.appendAssistantMessage(
@@ -220,7 +225,8 @@ struct StoredAnswerNotesMigrationTests {
         try writeLegacyStore(at: url)
         let written = StoredAnswerNotes(
             uncitableSourceNumbers: [2, 3], answeredWithoutSearch: true,
-            answeredOffline: true, answeredWithoutReadableSource: true
+            answeredOffline: true, answeredWithoutReadableSource: true,
+            sourcesMayBeOffTopic: true, searXNGUnreachable: true
         )
         let favoriteID = UUID()
         let answerID: UUID
@@ -232,7 +238,8 @@ struct StoredAnswerNotesMigrationTests {
             answerID = try history.appendAssistantMessage(to: conversation, text: "Suite", notes: written).id
             try favorites.mark(
                 messageID: favoriteID, conversationID: Self.conversationID,
-                question: "Question", answer: "Suite", uncitableSourceNumbers: [3]
+                question: "Question", answer: "Suite",
+                notes: StoredAnswerNotes(uncitableSourceNumbers: [3], sourcesMayBeOffTopic: true)
             )
         }
 
@@ -243,6 +250,7 @@ struct StoredAnswerNotesMigrationTests {
         let storedFavorites = try reopened.fetch(FetchDescriptor<StoredFavorite>())
         let favorite = try #require(storedFavorites.first { $0.messageID == favoriteID })
         #expect(favorite.uncitableSourceNumbers == [3])
+        #expect(favorite.sourcesMayBeOffTopic)
     }
 
     @Test("La conversation ancienne se rouvre dans le chat, sans mention")
@@ -264,5 +272,6 @@ struct StoredAnswerNotesMigrationTests {
         #expect(restored.sources.count == 2)
         #expect(restored.uncitableSourceNumbers.isEmpty)
         #expect(!restored.answeredWithoutSearch && !restored.answeredOffline && !restored.answeredWithoutReadableSource)
+        #expect(!restored.sourcesMayBeOffTopic && !restored.searXNGUnreachable)
     }
 }

@@ -113,22 +113,22 @@ nonisolated struct CitationParseResult: Sendable, Equatable {
 
 /// Analyseur des marqueurs de citation `[n]` d'une réponse générée (tâche 1.12).
 ///
-/// Porté de `src/lib/hooks/useChat.tsx` (web), qui remplace les marqueurs par
+/// Porté de la gestion des citations de la version web d'origine, qui remplace les marqueurs par
 /// des balises `<citation href=… title=…>` avant de laisser `markdown-to-jsx`
-/// les rendre via `src/components/MessageRenderer/Citation.tsx`. Ici pas de
+/// les rendre via un composant dédié. Ici pas de
 /// HTML intermédiaire : on produit directement une structure typée, ce qui
-/// supprime au passage tout le risque d'échappement du web (le titre de la
+/// supprime au passage tout le risque d'échappement de la version web d'origine (le titre de la
 /// source y est injecté dans un attribut, d'où le `replace(/"/g, '&quot;')`).
 ///
 /// LOGIQUE 100 % PURE : aucun état, aucun réseau, aucun accès disque. Le même
 /// texte donne toujours le même découpage, ce qui rend les cas limites
 /// couvrables exhaustivement en test.
 ///
-/// ## Écarts assumés vis-à-vis du web
+/// ## Écarts assumés vis-à-vis de la version web d'origine
 ///
-/// 1. **Indice hors bornes : on garde le texte.** Le web supprime purement et
+/// 1. **Indice hors bornes : on garde le texte.** La version web d'origine supprime purement et
 ///    simplement le marqueur quand la source n'existe pas (branche
-///    `return \`\`` de `useChat.tsx`). On ne fait pas ça, pour une raison
+///    `return \`\`` de la version web d'origine). On ne fait pas ça, pour une raison
 ///    précise à Triva : les sources sont attachées au message AVANT que le
 ///    texte ne commence à streamer (voir `ChatViewModel.send(query:)`, où
 ///    `message.sources = streamingAnswer.sources` précède la boucle de
@@ -138,15 +138,15 @@ nonisolated struct CitationParseResult: Sendable, Equatable {
 ///    l'utilisateur ; afficher un badge qui n'ouvre rien est pire encore.
 ///    On laisse `[9]` tel quel : c'est visible, c'est honnête, et ça se
 ///    diagnostique.
-/// 2. **Pas de liste `[1,2]`.** Le web accepte `[1, 2]` et le développe en
+/// 2. **Pas de liste `[1,2]`.** La version web d'origine accepte `[1, 2]` et le développe en
 ///    plusieurs liens. Nos prompts interdisent explicitement cette forme
 ///    (`PromptTemplates.citationSection` : « Jamais [1,2] », on demande
 ///    `[1][2]`). La supporter ici obligerait un segment à référencer
 ///    plusieurs sources, donc compliquerait la vue, pour couvrir une forme
 ///    qu'on a demandé au modèle de ne pas produire. `[1,2]` reste donc du
 ///    texte brut.
-/// 3. **Pas de tolérance aux espaces.** `[ 1 ]` n'est pas une citation. Le
-///    web les tolère via un `trim()`. Ici toute tolérance supplémentaire
+/// 3. **Pas de tolérance aux espaces.** `[ 1 ]` n'est pas une citation. La
+///    version web d'origine les tolère via un `trim()`. Ici toute tolérance supplémentaire
 ///    augmente mécaniquement le risque de faux positif sur du texte
 ///    ordinaire, sans contrepartie : le modèle recopie le format qu'on lui
 ///    montre dans le prompt.
@@ -173,8 +173,8 @@ nonisolated struct CitationParseResult: Sendable, Equatable {
 /// prix d'un parseur sans état (qui n'a donc aucun moyen de se désynchroniser
 /// du texte affiché). Ce qui est évité en revanche :
 /// - **aucune expression régulière**, ni `Regex` ni `NSRegularExpression` :
-///   pas de construction ni de compilation de motif à chaque appel, là où le
-///   web reconstruit deux regex littérales par bloc de texte ;
+///   pas de construction ni de compilation de motif à chaque appel, là où la
+///   version web d'origine reconstruit deux regex littérales par bloc de texte ;
 /// - **une seule passe de découpage**, précédée d'un pré-filtre sur les
 ///   octets UTF-8 qui sort immédiatement si le texte ne contient aucun `[` —
 ///   le cas d'une réponse conversationnelle sans source, où l'on évite alors

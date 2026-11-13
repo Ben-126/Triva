@@ -218,7 +218,7 @@ nonisolated enum CalculationWidgetPresentation {
 
 /// Carte du widget calculatrice (1.5), affichée AU-DESSUS de la réponse quand
 /// `CalculationWidgetService` a produit un résultat. Port de
-/// `src/components/Widgets/Calculation.tsx` (web), refait selon `DESIGN.md`.
+/// la carte calculatrice de la version web d'origine, refait selon `DESIGN.md`.
 ///
 /// ## Hiérarchie : celle de l'accroche de `TrivaHomeReferenceView`
 /// L'expression en `.subheadline` secondaire, le résultat juste en dessous en
@@ -231,7 +231,7 @@ nonisolated enum CalculationWidgetPresentation {
 /// mais suit Dynamic Type, contrairement au `.system(size: 28)` de la
 /// référence.
 ///
-/// ## Écarts assumés vis-à-vis du web
+/// ## Écarts assumés vis-à-vis de la version web d'origine
 /// - Pas d'intitulés « Expression » / « Result » ni d'icônes calculatrice et
 ///   égal : la hiérarchie typographique dit déjà tout, ce serait le
 ///   remplissage que DESIGN.md interdit.

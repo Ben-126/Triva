@@ -169,7 +169,7 @@ nonisolated struct ResponseStructureValidator: Sendable {
     /// premier ajustement du prompt.
     ///
     /// - `maxConclusionSentences: 2` — « Conclusion : 2 phrases MAXIMUM » du
-    ///   mode approfondi, repris du web (`2 sentences MAXIMUM — 3 or more is
+    ///   mode approfondi, repris de la version web d'origine (`2 sentences MAXIMUM — 3 or more is
     ///   a hard violation`).
     /// - `maxQuickModeSentences: 3` — « EXACTEMENT 2 à 3 phrases » du mode
     ///   rapide.

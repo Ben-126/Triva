@@ -49,7 +49,7 @@ enum ResponseModeSelectorPresentation {
 /// Sélecteur du mode de réponse (tâche 1.13 : Rapide, Approfondie, Fiable), à
 /// poser dans la barre de saisie, à côté du champ de texte.
 ///
-/// Port de `src/components/MessageInputActions/ResponseMode.tsx` (web), qui
+/// Port du sélecteur de mode de la version web d'origine, qui
 /// aligne quatre boutons-icônes dans une pilule à bordure et ne montre
 /// l'explication d'un mode qu'au survol (`title=`). Le 4e mode, « Débat », est
 /// hors périmètre V1 (décision de Ben) : `ResponseMode` n'en a que trois.
@@ -287,7 +287,7 @@ extension ResponseModeSelector {
         .dynamicTypeSize(.accessibility3)
 }
 
-/// Repli sur une valeur stockée inconnue (ancien cas « debate » du web) : le
+/// Repli sur une valeur stockée inconnue (ancien cas « debate » de la version web d'origine) : le
 /// store retombe sur `ResponseModeSettingsStore.defaultMode`. Cette preview
 /// doit afficher Rapide (décision de Ben) ; si elle affiche Approfondie, c'est
 /// `defaultMode` qui n'a pas été mis à jour, pas cette vue. La clé est recopiée

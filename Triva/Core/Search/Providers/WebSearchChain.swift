@@ -71,6 +71,15 @@ import OSLog
 /// - Une source de secours a répondu après SearXNG : le chat invite aussi, discrètement, à ajouter
 ///   une clé (décision 7 de Ben, `SearchKeyInvitation.init(afterFallback:retainedSource:)`).
 ///
+/// SECONDE PASSE (mission E2d, `retryingTransientFailures`) : toutes les sources ont levé, l'appareil
+/// n'est pas hors ligne. Un échec isolé d'une source ouverte (connexion perdue, DNS, délai, 5xx)
+/// est souvent passager ; sans seconde chance, UNE requête manquée de Wikipédia et de Marginalia
+/// donnait « Aucune source ne répond » à quelqu'un sans clé. Après un court délai, seules les
+/// sources OUVERTES en échec transitoire (`.timeout`, `.unavailable`) sont réessayées, UNE fois,
+/// avec la même requête et les mêmes en-têtes : jamais les clés personnelles ni la recherche cloud
+/// (payantes, quota), jamais SearXNG (déjà long), jamais après un 429 (insister aggraverait), et
+/// aucune protection anti-robot n'est contournée.
+///
 /// MODE FIABLE (`requiringTrustedDomains`, décision de Ben) : une réponse ne suffit à arrêter la
 /// chaîne que si l'un de ses résultats passe le filtre de `SourceRanker`, qui reste le seul à
 /// filtrer ensuite — et, depuis la mission A2, si ce résultat fiable est aussi sur le sujet :
@@ -80,8 +89,10 @@ import OSLog
 /// répondent rarement avec un domaine fiable : les clés et l'étape cloud PAYANTE sont donc plus
 /// souvent sollicitées qu'hors de ce mode. Si rien ne passe, une réponse sort quand même : la
 /// moins éloignée (voir « HORS SUJET »). Sans domaine fiable, le classement la vide, et le chat
-/// affiche `.noReliableSources` ; fiable mais hors sujet, le rédacteur en est prévenu
-/// (`PromptTemplates.offTopicReminder`), et son refus mène au même état (mission A1).
+/// affiche `.noReliableSources` ; fiable mais hors sujet (`matchesQuestion` faux), c'est le même état,
+/// décidé AVANT la génération (`SearchArtifacts.hasOnlyOffTopicWebSources`, mission E2a, décision de
+/// Ben du 2026-11-12) : le rédacteur n'est plus sollicité en Fiable. Hors Fiable, il est toujours
+/// prévenu (`PromptTemplates.offTopicReminder`).
 ///
 /// ANNULATION : vérifiée avant CHAQUE source, donc avant la recherche cloud payante, et une
 /// erreur d'annulation n'est jamais comptée comme un échec de source (même critère que
@@ -120,6 +131,9 @@ nonisolated struct WebSearchChain: Sendable {
     private let languageIdentifier: any TextLanguageIdentifying
     private let fallbackLanguage: String?
     private var requiresTrustedDomains = false
+    /// Délai avant la seconde passe sur les sources ouvertes (voir « SECONDE PASSE »), `nil` : pas de
+    /// seconde passe (défaut des tests ; l'app l'active dans `assemble`).
+    private var transientRetryDelay: Duration?
 
     /// - Parameters:
     ///   - keyedProviders: sources à clé personnelle, dans l'ordre de préférence.
@@ -179,6 +193,14 @@ nonisolated struct WebSearchChain: Sendable {
         return copy
     }
 
+    /// Même chaîne, avec une seconde passe sur les sources ouvertes en échec transitoire (voir
+    /// « SECONDE PASSE ») après `delay`. Opt-in : l'assemblage de l'app l'active, les tests choisissent.
+    func retryingTransientFailures(after delay: Duration) -> WebSearchChain {
+        var copy = self
+        copy.transientRetryDelay = delay
+        return copy
+    }
+
     /// Sources à essayer, dans l'ordre, pour une catégorie.
     func providers(for category: WebSearchCategory) -> [any WebSearchProviding] {
         let searxngStep: [any WebSearchProviding] = searxng.map { [SearXNGWithWebFallbackStep(base: $0)] } ?? []
@@ -199,11 +221,31 @@ nonisolated struct WebSearchChain: Sendable {
     /// tâche est annulée ; jamais d'autre erreur.
     @concurrent
     func search(query: String, options: WebSearchOptions) async throws -> WebSearchChainResult {
-        var passedOver = unreadableKeySources.map { WebSearchSourceFailure(source: $0, reason: .keychainUnreadable) }
+        let unreadable = unreadableKeySources.map { WebSearchSourceFailure(source: $0, reason: .keychainUnreadable) }
+        do {
+            return try await attempt(providers(for: options.category), startingWith: unreadable, query: query, options: options)
+        } catch let error as WebSearchChainError {
+            guard let retry = secondPass(after: error, category: options.category) else { throw error }
+            Self.logger.info("Recherche web : aucune réponse, nouvel essai des sources ouvertes en échec transitoire")
+            try await Task.sleep(for: retry.delay)
+            return try await retried(retry, query: query, options: options)
+        }
+    }
+
+    /// Une passe sur `providers`, dans l'ordre (voir `search`). `startingWith` : échecs déjà constatés
+    /// avant la passe (clés illisibles).
+    @concurrent
+    private func attempt(
+        _ providers: [any WebSearchProviding],
+        startingWith: [WebSearchSourceFailure],
+        query: String,
+        options: WebSearchOptions
+    ) async throws -> WebSearchChainResult {
+        var passedOver = startingWith
         var bestSetAside: SetAsideAnswer?
         let relevance = LexicalRelevance(query: query)
         let localized = localizedOptions(options, query: query)
-        for provider in providers(for: options.category) {
+        for provider in providers {
             try Task.checkCancellation()
             let kind = provider.kind
             do {
@@ -230,6 +272,66 @@ nonisolated struct WebSearchChain: Sendable {
         // Aucune réponse : `passedOver` ne contient alors que des échecs (erreurs, clés illisibles).
         guard let bestSetAside else { throw WebSearchChainError.allSourcesFailed(passedOver) }
         return bestSetAside.result(passedOver: passedOver.filter { $0.source != bestSetAside.source })
+    }
+
+    /// Plan de la seconde passe (voir « SECONDE PASSE »).
+    private struct SecondPass {
+        let delay: Duration
+        let providers: [any WebSearchProviding]
+        /// Échecs de la première passe, dans l'ordre : la seconde en remplace les entrées.
+        let failures: [WebSearchSourceFailure]
+    }
+
+    /// `nil` : pas de seconde passe. Sinon les sources OUVERTES dont l'échec est transitoire.
+    private func secondPass(after error: WebSearchChainError, category: WebSearchCategory) -> SecondPass? {
+        guard let delay = transientRetryDelay, !error.isDeviceOffline,
+              case .allSourcesFailed(let failures) = error else { return nil }
+        let transient = Set(failures.filter { Self.isTransient($0.reason) }.map(\.source))
+        let providers = openSourceProviders(category).filter { transient.contains($0.kind) }
+        return providers.isEmpty ? nil : SecondPass(delay: delay, providers: providers, failures: failures)
+    }
+
+    /// Délai dépassé ou source indisponible (réseau, 5xx, 403 des sources ouvertes) : une seconde
+    /// tentative peut aboutir. Pas `.rateLimited` (insister aggraverait), `.invalidResponse` ni
+    /// `.unauthorized` (la réponse ne changera pas).
+    private static func isTransient(_ reason: WebSearchSourceFailure.Reason) -> Bool {
+        guard case .searchFailed(let error) = reason else { return false }
+        return error == .timeout || error == .unavailable
+    }
+
+    /// Seconde passe, résultat fusionné avec les échecs de la première (même ordre, même source par
+    /// entrée, motif de la seconde tentative quand il y en a une).
+    @concurrent
+    private func retried(
+        _ plan: SecondPass,
+        query: String,
+        options: WebSearchOptions
+    ) async throws -> WebSearchChainResult {
+        let second: WebSearchChainResult
+        do {
+            second = try await attempt(plan.providers, startingWith: [], query: query, options: options)
+        } catch WebSearchChainError.allSourcesFailed(let again) {
+            throw WebSearchChainError.allSourcesFailed(Self.merged(plan.failures, with: again, retained: nil))
+        }
+        return WebSearchChainResult(
+            response: second.response,
+            source: second.source,
+            report: WebSearchChainReport(
+                passedOver: Self.merged(plan.failures, with: second.report.passedOver, retained: second.source),
+                matchesQuestion: second.report.matchesQuestion
+            )
+        )
+    }
+
+    private static func merged(
+        _ first: [WebSearchSourceFailure],
+        with second: [WebSearchSourceFailure],
+        retained: WebSearchSourceKind?
+    ) -> [WebSearchSourceFailure] {
+        first.compactMap { failure in
+            if failure.source == retained { return nil }
+            return second.first { $0.source == failure.source } ?? failure
+        }
     }
 
     /// Verdict sur une réponse : test lexical sur ses résultats, ou sur ses seuls domaines fiables en
@@ -376,11 +478,28 @@ nonisolated enum WebSearchChainError: Error, Sendable, Equatable, CustomStringCo
         }
     }
 
+    /// Une source au moins a reçu une RÉPONSE HTTP (clé refusée, limite de débit, format inattendu) :
+    /// la connexion marche, ce sont les services qui refusent ou sont surchargés. Les délais et
+    /// `.unavailable` ne prouvent rien (aussi bien un 5xx qu'un DNS qui échoue).
+    var reachedAService: Bool {
+        guard case .allSourcesFailed(let failures) = self else { return false }
+        return failures.contains { failure in
+            guard case .searchFailed(let error) = failure.reason else { return false }
+            return error == .unauthorized || error == .rateLimited || error == .invalidResponse
+        }
+    }
+
+    /// Hors ligne : se reconnecter. Un service a répondu : la connexion n'est pas en cause, ne
+    /// pas la faire vérifier. Sinon : réessayer d'abord, la connexion ensuite (un échec passager
+    /// est le cas le plus courant, la connexion n'est pas prouvée coupée).
     var userFacingMessage: String {
         if isDeviceOffline {
             return "Pas de connexion à internet. Reconnecte-toi, puis réessaie."
         }
-        return "Aucune source de recherche n'a répondu. Vérifie ta connexion, puis réessaie."
+        if reachedAService {
+            return "Les sources de recherche sont surchargées ou indisponibles pour le moment. Réessaie dans un instant."
+        }
+        return "Aucune source de recherche n'a répondu. Réessaie dans un instant ; si ça continue, vérifie ta connexion."
     }
 
     var description: String { userFacingMessage }
