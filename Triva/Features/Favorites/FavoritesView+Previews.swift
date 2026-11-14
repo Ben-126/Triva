@@ -91,12 +91,11 @@ enum FavoritesPreviewData {
 struct FavoritesContentPreview: View {
     let phase: FavoritesPhase
     var query = ""
-    var isStorageVolatile = false
 
     var body: some View {
         NavigationStack {
             FavoritesContentView(
-                phase: phase, query: query, isStorageVolatile: isStorageVolatile,
+                phase: phase, query: query,
                 onRequestRemoval: { _ in }, onRetry: {}
             )
             .navigationTitle("Favoris")
@@ -106,7 +105,7 @@ struct FavoritesContentPreview: View {
 
 #Preview("Écran complet — stores en mémoire") {
     let stores = FavoritesPreviewData.seededStores()
-    FavoritesView(store: stores.favorites, historyStore: stores.history, isStorageVolatile: false, onOpenConversation: { _ in })
+    FavoritesView(store: stores.favorites, historyStore: stores.history, onOpenConversation: { _ in })
 }
 
 #Preview("500 favoris") {
@@ -129,9 +128,12 @@ struct FavoritesContentPreview: View {
     FavoritesContentPreview(phase: .failed(message: "Impossible de lire les favoris."))
 }
 
-#Preview("Stockage volatil — sombre") {
-    FavoritesContentPreview(phase: .loaded(FavoritesPreviewData.snapshot(count: 3)), isStorageVolatile: true)
-        .preferredColorScheme(.dark)
+#Preview("Base inaccessible — sombre") {
+    FavoritesContentPreview(phase: .failed(
+        message: TrivaStorage.unavailableTitle,
+        detail: TrivaStorage.unavailableDetail
+    ))
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Très grand texte") {

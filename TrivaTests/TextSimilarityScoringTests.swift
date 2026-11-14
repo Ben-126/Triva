@@ -61,7 +61,7 @@ struct TextVectorMathTests {
         #expect(TextVectorMath.cosine([], []) == nil)
     }
 
-    @Test("Norme nulle : 0, comme computeSimilarity.ts")
+    @Test("Norme nulle : 0, comme dans la version web d'origine")
     func cosineWithZeroNorm() {
         #expect(TextVectorMath.cosine([0, 0], [1, 1])! == 0.0)
         #expect(TextVectorMath.cosine([0, 0], [0, 0])! == 0.0)

@@ -15,7 +15,7 @@ struct CloudProviderSelectionStoreTests {
     /// `UserDefaults` isolé par test, même principe que
     /// `CustomProviderStoreTests.uniqueDefaults()`.
     private func uniqueDefaults() -> UserDefaults {
-        UserDefaults(suiteName: "test.cloudProviderSelectionStore.\(UUID().uuidString)")!
+        TestDefaults.suite(named: "test.cloudProviderSelectionStore.\(UUID().uuidString)")!
     }
 
     @Test("nil sans donnée stockée")

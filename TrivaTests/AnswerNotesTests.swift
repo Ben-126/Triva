@@ -40,6 +40,8 @@ struct SmallTalkTests {
         "Bonjour !", "bonjour", "Salut Triva", "Coucou tout le monde", "Hello", "Hi there", "Bonsoir",
         "Merci beaucoup !", "Merci pour ta réponse", "Ça va ?", "Comment vas-tu ?", "Bonne journée",
         "Au revoir", "À bientôt !", "Good morning", "D'accord, merci",
+        // Mission C1, K10 : espagnol minimal.
+        "Hola qué tal", "¿Cómo estás?", "Buenos días", "Hola, buenas tardes",
     ])
     func greetingsAreRecognised(message: String) {
         #expect(SmallTalk.isGreeting(message))
@@ -48,6 +50,7 @@ struct SmallTalkTests {
     @Test("Une question précédée d'un bonjour, une demande d'écriture ou un calcul : pas une salutation", arguments: [
         "Bonjour, quelle est la hauteur de la tour Eiffel ?", "Écris un haïku sur l'automne.", "Combien font 1284 × 37 ?",
         "Merci de m'expliquer la photosynthèse", "", "   ", "?!",
+        "Hola, quelle est la capitale du Chili ?", "Que sais-tu de la tour Eiffel ?", "Hola qué tal la hauteur de la tour Eiffel",
     ])
     func otherMessagesAreNotGreetings(message: String) {
         #expect(!SmallTalk.isGreeting(message))

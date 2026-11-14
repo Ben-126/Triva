@@ -237,7 +237,7 @@ struct CustomInstanceStoreTests {
     private let userDefaults: UserDefaults
 
     init() throws {
-        userDefaults = try #require(UserDefaults(suiteName: "test.customInstanceStore.\(UUID().uuidString)"))
+        userDefaults = try #require(TestDefaults.suite(named: "test.customInstanceStore.\(UUID().uuidString)"))
     }
 
     /// Liste par défaut TOUJOURS injectée : jamais celle de `Bundle.main`.

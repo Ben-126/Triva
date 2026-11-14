@@ -24,15 +24,24 @@ final class StubFeedFetcher: FeedFetching, @unchecked Sendable {
     private let behaviors: [String: StubFeedBehavior]
     private let fallback: StubFeedBehavior
     private let delay: Duration?
+    /// Délai propre à un flux (par identifiant), prioritaire sur `delay` : de quoi faire arriver les
+    /// flux dans un ordre choisi.
+    private let sourceDelays: [String: Duration]
     private let lock = NSLock()
     private var recordedIDs: [String] = []
     private var currentInFlight = 0
     private var peakInFlight = 0
 
-    init(_ behaviors: [String: StubFeedBehavior] = [:], fallback: StubFeedBehavior = .items([]), delay: Duration? = nil) {
+    init(
+        _ behaviors: [String: StubFeedBehavior] = [:],
+        fallback: StubFeedBehavior = .items([]),
+        delay: Duration? = nil,
+        sourceDelays: [String: Duration] = [:]
+    ) {
         self.behaviors = behaviors
         self.fallback = fallback
         self.delay = delay
+        self.sourceDelays = sourceDelays
     }
 
     var requestedIDs: [String] { lock.withLock { recordedIDs } }
@@ -44,7 +53,7 @@ final class StubFeedFetcher: FeedFetching, @unchecked Sendable {
             currentInFlight += 1
             peakInFlight = max(peakInFlight, currentInFlight)
         }
-        if let delay { try? await Task.sleep(for: delay) }
+        if let delay = sourceDelays[source.id] ?? delay { try? await Task.sleep(for: delay) }
         lock.withLock { currentInFlight -= 1 }
         switch behaviors[source.id] ?? fallback {
         case .items(let items): return items

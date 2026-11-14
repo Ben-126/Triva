@@ -95,42 +95,17 @@ enum TrivaModelContainer {
         ]
     }
 
-    /// Conteneur partagé par toute l'app, créé à la première utilisation.
-    static var shared: ModelContainer { sharedResult.container }
-
-    /// `true` quand `shared` a dû se rabattre sur un conteneur volatil : rien
-    /// ne sera conservé après la fermeture de l'app.
+    /// Stockage de l'app, ouvert à la première utilisation : UN seul pour toute
+    /// l'app, que se partagent l'historique et les favoris.
     ///
-    /// La Library doit le signaler à l'utilisateur plutôt que d'afficher une
-    /// liste vide trompeuse — « ton historique est vide » et « ton historique
-    /// est illisible » ne veulent pas dire la même chose.
-    static var isUsingVolatileFallback: Bool { sharedResult.usedFallback }
-
-    /// Si le store sur disque est inutilisable (fichier corrompu, schéma
-    /// incompatible après une mise à jour), on ne laisse PAS l'app planter au
-    /// lancement pour un historique : on bascule sur un conteneur en mémoire.
-    /// L'app reste entièrement fonctionnelle, seule la persistance de
-    /// l'historique est perdue pour cette session.
-    private static let sharedResult: (container: ModelContainer, usedFallback: Bool) = {
-        do {
-            return (try makeOnDisk(), false)
-        } catch {
-            do {
-                return (try makeInMemory(), true)
-            } catch {
-                // Un conteneur en mémoire ne dépend d'aucune donnée externe :
-                // s'il échoue, c'est forcément le schéma qui est invalide,
-                // donc un bug de développement, jamais une entrée
-                // utilisateur — la règle « pas de `fatalError` sur une entrée
-                // externe » n'est pas en cause ici. Échouer bruyamment est la
-                // bonne réponse : masquer ça livrerait une app silencieusement
-                // dépourvue de persistance.
-                preconditionFailure(
-                    "Schéma SwiftData invalide : même un conteneur en mémoire est impossible. \(error)"
-                )
-            }
-        }
-    }()
+    /// Si la base sur disque est inutilisable (fichier corrompu, schéma
+    /// incompatible après une mise à jour, disque verrouillé), l'app ne bascule
+    /// PLUS en silence sur un conteneur en mémoire (décision de Ben, K8) :
+    /// l'ouverture est retentée plusieurs fois, puis `TrivaStorage` passe à
+    /// `.unavailable`, la Bibliothèque et les Favoris affichent une erreur avec
+    /// « Réessayer », et rien n'est écrit dans le vide. L'app reste utilisable
+    /// pour la recherche. Le fichier sur disque n'est jamais touché.
+    static let sharedStorage = TrivaStorage(opener: { try makeOnDisk() })
 
     /// Conteneur persistant sur disque, celui de l'utilisateur.
     static func makeOnDisk() throws -> ModelContainer {

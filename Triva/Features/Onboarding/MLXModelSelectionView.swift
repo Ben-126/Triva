@@ -182,7 +182,8 @@ struct MLXModelSelectionView: View {
                 }
                 Text(entry.summary)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    // Encre des légendes sur verre : `.secondary` y mesure 2,88:1 (revue R3-4).
+                    .foregroundStyle(MessageBubbleView.legendStyle)
                     .multilineTextAlignment(.leading)
             }
             .padding(16)

@@ -27,6 +27,10 @@ nonisolated enum FavoritesStoreError: Error, Sendable, Equatable {
     /// plutôt que convertie en silence en un favori incohérent.
     case notAnAssistantMessage
 
+    /// La base locale n'a pas pu être ouverte (`TrivaStorage`) : aucune lecture
+    /// ni écriture n'est tentée.
+    case storageUnavailable
+
     /// Message court destiné à l'UI (DESIGN.md : français, factuel, sans
     /// remplissage).
     var userFacingMessage: String {
@@ -37,6 +41,9 @@ nonisolated enum FavoritesStoreError: Error, Sendable, Equatable {
             return "Impossible de lire les favoris."
         case .notAnAssistantMessage:
             return "Seule une réponse peut être ajoutée aux favoris."
+        case .storageUnavailable:
+            // À VALIDER PAR BEN.
+            return "Tes favoris enregistrés sont inaccessibles pour l'instant."
         }
     }
 
@@ -49,6 +56,8 @@ nonisolated enum FavoritesStoreError: Error, Sendable, Equatable {
             return "Échec de lecture des favoris : \(reason)"
         case .notAnAssistantMessage:
             return "Marquage refusé : le message n'est pas une réponse de l'assistant."
+        case .storageUnavailable:
+            return "Base locale indisponible : lecture et écriture refusées."
         }
     }
 }
@@ -101,26 +110,43 @@ nonisolated enum FavoritesStoreError: Error, Sendable, Equatable {
 @Observable
 @MainActor
 final class FavoritesStore {
-    /// Conteneur retenu explicitement : il doit vivre aussi longtemps que le
-    /// store, et les tests en dérivent un `ModelContext` neuf pour vérifier ce
-    /// qui a réellement atteint la base.
-    let container: ModelContainer
+    /// Stockage partagé avec `ChatHistoryStore` (voir `TrivaStorage`).
+    let storage: TrivaStorage
 
-    /// Compteur d'écritures réussies, signal de rafraîchissement des vues.
-    private(set) var revision = 0
+    /// Conteneur du stockage : les tests en dérivent un `ModelContext` neuf
+    /// pour vérifier ce qui a réellement atteint la base. Indisponible : un
+    /// conteneur de réserve vide, jamais lu ni écrit.
+    var container: ModelContainer { storage.container }
 
-    private let context: ModelContext
+    /// Compteur d'écritures réussies et d'ouvertures réussies du stockage,
+    /// signal de rafraîchissement des vues.
+    var revision: Int { writeCount + storage.generation }
+
+    private var writeCount = 0
 
     /// Locale de normalisation de la recherche, injectable pour que les tests
     /// ne dépendent pas de la langue de la machine.
     private let locale: Locale
 
-    init(container: ModelContainer, locale: Locale = .current) {
-        self.container = container
-        self.context = container.mainContext
-        self.locale = locale
-        self.context.autosaveEnabled = false
+    convenience init(container: ModelContainer, locale: Locale = .current) {
+        self.init(storage: TrivaStorage(container: container), locale: locale)
     }
+
+    init(storage: TrivaStorage, locale: Locale = .current) {
+        self.storage = storage
+        self.locale = locale
+    }
+
+    /// Contexte unique de l'app, ou `storageUnavailable` : toute lecture et
+    /// toute écriture passent par ici.
+    private func readyContext() throws -> ModelContext {
+        guard let context = storage.context else { throw FavoritesStoreError.storageUnavailable }
+        return context
+    }
+
+    /// Retente l'ouverture de la base (bouton « Réessayer »).
+    @discardableResult
+    func retryOpeningStorage() -> Bool { storage.retry() }
 
     // MARK: - Marquage
 
@@ -223,6 +249,7 @@ final class FavoritesStore {
         _ favorite: StoredFavorite,
         sources: [StoredFavoriteSource]
     ) throws -> StoredFavorite {
+        let context = try readyContext()
         context.insert(favorite)
         for source in sources {
             context.insert(source)
@@ -260,6 +287,7 @@ final class FavoritesStore {
         let matches = try favorites(forMessageID: messageID)
         guard !matches.isEmpty else { return false }
 
+        let context = try readyContext()
         for favorite in matches {
             context.delete(favorite)
         }
@@ -269,7 +297,7 @@ final class FavoritesStore {
 
     /// Retire un favori déjà chargé (bouton de suppression de la liste).
     func remove(_ favorite: StoredFavorite) throws {
-        context.delete(favorite)
+        try readyContext().delete(favorite)
         try save(operation: "retrait d'un favori")
     }
 
@@ -278,6 +306,7 @@ final class FavoritesStore {
     /// sources est couverte par les tests (même choix que
     /// `ChatHistoryStore.deleteAll()`). N'affecte en rien l'historique.
     func deleteAll() throws {
+        let context = try readyContext()
         for favorite in try favorites() {
             context.delete(favorite)
         }
@@ -290,6 +319,7 @@ final class FavoritesStore {
     /// objet chargé.
     func isFavorite(messageID: UUID) throws -> Bool {
         let descriptor = FetchDescriptor<StoredFavorite>(predicate: Self.matching(messageID))
+        let context = try readyContext()
         do {
             return try context.fetchCount(descriptor) > 0
         } catch {
@@ -310,6 +340,7 @@ final class FavoritesStore {
 
     private func favorites(forMessageID messageID: UUID) throws -> [StoredFavorite] {
         let descriptor = FetchDescriptor<StoredFavorite>(predicate: Self.matching(messageID))
+        let context = try readyContext()
         do {
             return try context.fetch(descriptor)
         } catch {
@@ -350,6 +381,7 @@ final class FavoritesStore {
             descriptor.fetchLimit = limit
         }
 
+        let context = try readyContext()
         do {
             return try context.fetch(descriptor)
         } catch {
@@ -396,6 +428,7 @@ final class FavoritesStore {
     // MARK: - Sauvegarde
 
     private func save(operation: String) throws {
+        let context = try readyContext()
         do {
             try context.save()
         } catch {
@@ -408,6 +441,6 @@ final class FavoritesStore {
                 reason: String(describing: error)
             )
         }
-        revision += 1
+        writeCount += 1
     }
 }

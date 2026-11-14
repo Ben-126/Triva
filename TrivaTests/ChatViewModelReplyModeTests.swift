@@ -144,7 +144,7 @@ extension ChatViewModelTests {
     @Test("Mode mémorisé : Rapide par défaut, puis celui que le sélecteur a écrit (décision 6)")
     func persistedModeDefaultsToQuickThenFollowsTheSelector() throws {
         let suiteName = "ChatViewModelTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let defaults = try #require(TestDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         #expect(ChatViewModel.persistedResponseMode(in: defaults) == .quick)
@@ -179,8 +179,6 @@ extension ChatViewModelTests {
         #expect(viewModel.isGenerating == false)
         #expect(viewModel.canRetryInQuickMode(answer))
         #expect(ChatViewModel.noReliableSourcesMessage == "Aucune source fiable pour ce type de question.")
-        try? await Task.sleep(for: .milliseconds(10))
-        #expect(suggestions.histories.isEmpty)
         // Aucune requête au moteur (l'orchestrateur ne génère pas).
         #expect(aiProvider.receivedStreamPrompts.isEmpty)
         // Décision de Ben (2026-10-30) : l'état est persisté après la question.
@@ -189,6 +187,17 @@ extension ChatViewModelTests {
         #expect(conversation.orderedMessages.last?.reportsNoReliableSources == true)
         #expect(answer.storedMessageID == conversation.orderedMessages.last?.id)
         #expect(!viewModel.canToggleFavorite(answer))
+
+        // Événement plutôt que délai : une question suivante en mode Rapide aboutit, et ses suggestions
+        // arrivent ; l'enregistreur ne doit alors contenir QUE celle-là, jamais une demande pour l'état
+        // « Aucune source fiable ».
+        settings.mode = .quick
+        await viewModel.send(query: "Une question simple")
+        await waitUntil("suggestions de la seconde question demandées") { suggestions.histories.count >= 1 }
+        await waitUntil("suggestions de la seconde question affichées") { viewModel.messages.last?.suggestions == ["Suggestion"] }
+        #expect(suggestions.histories.count == 1)
+        #expect(suggestions.histories.first?.last { $0.role == .user }?.content == "Une question simple")
+        #expect(viewModel.messages.first { $0.status == .noReliableSources }?.suggestions.isEmpty == true)
     }
 
     @Test("Une conversation relue montre l'état « Aucune source fiable » et propose encore la relance")

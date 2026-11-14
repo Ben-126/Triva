@@ -27,11 +27,11 @@ enum SearchSessionError: Error, Sendable, Equatable {
     /// moteur IA qui reconstruit toute la session) alors qu'une génération
     /// était encore en vol.
     ///
-    /// Le cas courant est déjà couvert sans passer par ici : changer de
-    /// destination fait disparaître `ChatView`, qui annule sa `Task`, et
-    /// `ChatViewModel` traite une annulation comme un arrêt volontaire. Reste
-    /// la course de la fermeture de fenêtre pendant une génération, où la
-    /// session peut être libérée avant que l'annulation ne soit constatée :
+    /// Le cas courant est déjà couvert sans passer par ici : `SearchSession.deinit`
+    /// arrête la génération (`ChatViewModel.stop()`), que `ChatViewModel` traite
+    /// comme un arrêt volontaire. Reste la course de la fermeture de fenêtre
+    /// pendant une génération, où la session peut être libérée avant que
+    /// l'annulation ne soit constatée :
     /// `ChatViewModel.userFacingMessage(for:)` lui donne un message français
     /// (I2). Levée aussi par le chargement de Découvrir si la session a
     /// disparu (`TrivaRootCoordinator`), qui s'affiche alors comme un échec
@@ -233,6 +233,14 @@ final class SearchSession {
         self.connectivity = connectivity
         self.hasMLXWeights = hasMLXWeights
         self.appleModel = appleModel
+    }
+
+    /// Fin de session (changement de moteur, fenêtre fermée) : la génération en cours appartient au
+    /// `ChatViewModel`, qui la garde en vie même quand `ChatView` est démontée (revue R3-1) ; il faut
+    /// donc l'arrêter ici, sinon elle tournerait pour personne. La `Task` du modèle retient le modèle,
+    /// jamais la session (closures `[weak self]`), donc ce `deinit` s'exécute bien.
+    isolated deinit {
+        chatViewModel?.stop()
     }
 
     /// Modèle MLX validé (0.5) pour la sélection courante, `nil` tant qu'aucun

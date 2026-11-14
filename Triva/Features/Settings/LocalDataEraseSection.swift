@@ -28,7 +28,8 @@ struct LocalDataEraseSection: View {
         case idle
         case erasing
         case done
-        case incomplete
+        /// Les étapes en base qui n'ont pas pu être jouées (les caches, eux, l'ont été).
+        case incomplete(failedSteps: [LocalDataEraseStep])
     }
 
     var body: some View {
@@ -70,8 +71,27 @@ struct LocalDataEraseSection: View {
             "Effacement en cours…"
         case .done:
             "Tout a été effacé."
-        case .incomplete:
-            "Triva n'a pas pu tout effacer. Réessaie ; si cela se reproduit, redémarre l'app."
+        case .incomplete(let failedSteps):
+            Self.incompleteMessage(failedSteps: failedSteps)
+        }
+    }
+
+    /// Dit ce qui n'a PAS été effacé, et ce qui l'a été. Les caches sont
+    /// toujours vidés, même quand la base échoue (`LocalDataEraser`). **Textes
+    /// À VALIDER PAR BEN.**
+    static func incompleteMessage(failedSteps: [LocalDataEraseStep]) -> String {
+        let retry = " Réessaie ; si cela se reproduit, redémarre l'app."
+        let failedFavorites = failedSteps.contains(.favorites)
+        let failedHistory = failedSteps.contains(.history)
+        switch (failedHistory, failedFavorites) {
+        case (true, true):
+            return "Tes conversations et tes favoris n'ont pas pu être effacés. Seuls les caches de recherche l'ont été." + retry
+        case (true, false):
+            return "Tes conversations n'ont pas pu être effacées ; tes favoris et les caches de recherche l'ont été." + retry
+        case (false, true):
+            return "Tes favoris n'ont pas pu être effacés ; tes conversations et les caches de recherche l'ont été." + retry
+        case (false, false):
+            return "Triva n'a pas pu tout effacer." + retry
         }
     }
 
@@ -81,7 +101,7 @@ struct LocalDataEraseSection: View {
             try await eraser.eraseAll()
             phase = .done
         } catch {
-            phase = .incomplete
+            phase = .incomplete(failedSteps: error.failedSteps)
         }
     }
 }

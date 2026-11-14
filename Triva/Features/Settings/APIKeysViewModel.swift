@@ -52,23 +52,44 @@ final class APIKeysViewModel {
         state = .validating
         do {
             try await validator.validate(apiKey: trimmed)
-            try keyStore.save(apiKey: trimmed, account: account)
-            hasStoredKey = true
-            state = .saved
         } catch APIKeyValidationError.unverifiable(let message) {
             // Pas un refus : on ne dit pas « clé invalide » à quelqu'un dont le réseau est coupé.
             state = .failed("Impossible de vérifier la clé pour l'instant. \(message)")
+            return
         } catch {
             state = .failed("Clé invalide ou refusée par le fournisseur.")
+            return
         }
+
+        do {
+            try keyStore.save(apiKey: trimmed, account: account)
+        } catch {
+            // Une clé VALIDE que le Trousseau refuse n'est pas une « clé invalide ». **À VALIDER PAR BEN.**
+            state = .failed(Self.keychainSaveFailureMessage)
+            return
+        }
+        hasStoredKey = true
+        state = .saved
     }
+
+    /// Textes **À VALIDER PAR BEN**.
+    static let keychainSaveFailureMessage = "La clé est valide, mais le Trousseau n'a pas pu l'enregistrer. Réessaie."
+    static let keychainDeleteFailureMessage = "La clé n'a pas pu être supprimée du Trousseau : elle y est toujours. Réessaie."
 
     /// Supprime la clé Keychain de ce fournisseur. Si ce fournisseur était le
     /// fournisseur BYOK actuellement sélectionné (`CloudProviderSelectionStore`),
     /// la sélection est aussi effacée — sinon elle resterait orpheline
     /// indéfiniment, sans clé pour la résoudre.
+    ///
+    /// Si le Trousseau refuse, la clé est toujours là : `hasStoredKey`, la
+    /// sélection et l'écran ne bougent pas, et l'échec est dit (`state`).
     func deleteStoredKey() {
-        try? keyStore.deleteAPIKey(account: account)
+        do {
+            try keyStore.deleteAPIKey(account: account)
+        } catch {
+            state = .failed(Self.keychainDeleteFailureMessage)
+            return
+        }
         hasStoredKey = false
         state = .idle
 

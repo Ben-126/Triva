@@ -44,7 +44,7 @@ private final class StubModelListRequester: HTTPDataRequesting, @unchecked Senda
 @Suite("CloudProviderModelPickerViewModel")
 struct CloudProviderModelPickerViewModelTests {
     private func uniqueSelectionStore() -> CloudProviderSelectionStore {
-        CloudProviderSelectionStore(userDefaults: UserDefaults(suiteName: "test.modelPickerVM.\(UUID().uuidString)")!)
+        CloudProviderSelectionStore(userDefaults: TestDefaults.suite(named: "test.modelPickerVM.\(UUID().uuidString)")!)
     }
 
     @Test("Ne liste que les fournisseurs pour lesquels une clé est enregistrée")

@@ -90,6 +90,12 @@ nonisolated enum SearchRoute: Sendable, Equatable {
     /// modèle ne peut pas tirer de ses connaissances. Seule route qui attend
     /// les widgets AVANT de chercher.
     case webUnlessWeatherAnswered
+    /// Calcul sans recherche demandée EN MODE FIABLE seulement (mission C1, K2) : le widget calcul
+    /// répond, aucune recherche. S'il ne produit rien (expression que `CalculationWidget` ne sait pas
+    /// lire, « Combien de jours avant Noël ? »), le modèle répondrait de mémoire, sans source : ce que
+    /// Fiable promet de ne jamais faire. Repli sur une recherche web générale, comme pour la météo.
+    /// Hors Fiable, un calcul sans widget reste `.none` (comportement d'avant, inchangé).
+    case webUnlessCalculationAnswered
 
     /// Règles, dans cet ordre :
     /// 1. `personalSearch` avec fichiers joints -> `.attachments`, même si
@@ -124,6 +130,16 @@ nonisolated enum SearchRoute: Sendable, Equatable {
     /// Hors connexion, `SearchOrchestrator.routeAvailable` réduit ensuite toute
     /// route web à `.none` : le comportement hors ligne reste prioritaire.
     ///
+    /// ## Fiable : travail sur du texte (mission C1, décision K1 de Ben)
+    /// Ne cherchent pas non plus en Fiable : les demandes qui travaillent SUR LA CONVERSATION
+    /// (traduire, reformuler, résumer un échange ou une réponse précédente) et l'ÉCRITURE (poème,
+    /// e-mail, lettre, histoire). Règle : `skipSearch` ET `textTask` (second avis du classifieur,
+    /// `QueryClassification.textTask`, faux par défaut) tous deux vrais. Une vraie question que le
+    /// classifieur croirait « sans recherche » n'a aucune raison d'être aussi marquée `textTask` ;
+    /// un doute (champ absent, illisible, ou faux) cherche, comme avant. Pas de liste de mots-clés :
+    /// la reconnaissance reste au classifieur, qui lit déjà la conversation.
+    /// Calcul sans widget abouti : `.webUnlessCalculationAnswered` (K2).
+    ///
     /// - Parameters:
     ///   - mode: mode de réponse du tour (`.quick` par défaut : comportement historique).
     ///   - query: question BRUTE de l'utilisateur, pour reconnaître une salutation
@@ -141,7 +157,16 @@ nonisolated enum SearchRoute: Sendable, Equatable {
             return .web(.general)
         }
         if classification.skipSearch, honorsSkipSearch(classification, mode: mode, query: query) {
-            return classification.showWeatherWidget ? .webUnlessWeatherAnswered : .none
+            if case .reliable = mode, classification.textTask || SmallTalk.isGreeting(query) {
+                return .none
+            }
+            if classification.showWeatherWidget {
+                return .webUnlessWeatherAnswered
+            }
+            if case .reliable = mode, classification.showCalculationWidget {
+                return .webUnlessCalculationAnswered
+            }
+            return .none
         }
         if classification.academicSearch {
             return .web(.academic)
@@ -157,6 +182,6 @@ nonisolated enum SearchRoute: Sendable, Equatable {
     /// propriété de `ResponseMode` : même raison que `SearchArtifacts+ReliableMode.swift`.
     private static func honorsSkipSearch(_ classification: QueryClassification, mode: ResponseMode, query: String) -> Bool {
         guard case .reliable = mode else { return true }
-        return classification.showCalculationWidget || SmallTalk.isGreeting(query)
+        return classification.showCalculationWidget || classification.textTask || SmallTalk.isGreeting(query)
     }
 }

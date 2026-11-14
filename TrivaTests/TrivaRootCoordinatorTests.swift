@@ -25,7 +25,7 @@ private struct CoordinatorTestKeyStore: APIKeyStoring {
 /// volontairement d'une machine à l'autre).
 @MainActor
 private func makeStores(instances: [URL] = [URL(string: "https://searx.example")!]) throws -> TrivaSharedStores {
-    let userDefaults = try #require(UserDefaults(suiteName: "test.rootCoordinator.\(UUID().uuidString)"))
+    let userDefaults = try #require(TestDefaults.suite(named: "test.rootCoordinator.\(UUID().uuidString)"))
     return TrivaSharedStores(
         userDefaults: userDefaults,
         container: try TrivaModelContainer.makeInMemory(),
@@ -366,7 +366,7 @@ struct SearchSessionSetupTests {
 @Suite("BYOKProvidersView — sélection cloud partagée")
 struct BYOKSharedSelectionTests {
     private func makeSelectionStore() throws -> CloudProviderSelectionStore {
-        let userDefaults = try #require(UserDefaults(suiteName: "test.byokShared.\(UUID().uuidString)"))
+        let userDefaults = try #require(TestDefaults.suite(named: "test.byokShared.\(UUID().uuidString)"))
         return CloudProviderSelectionStore(userDefaults: userDefaults)
     }
 

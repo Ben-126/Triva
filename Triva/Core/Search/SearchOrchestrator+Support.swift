@@ -74,6 +74,11 @@ extension SearchOrchestrator {
     /// Limite assumée : sortir d'un `TaskGroup` attend ses tâches, une tâche
     /// annulée doit donc s'arrêter d'elle-même — `ScrapeService` le fait
     /// (`URLSession` async) ; une page arrivée après l'échéance est ignorée.
+    /// `onPageCollected` (mission C1, K3) : appelé par la boucle d'attente, sur sa propre exécution, juste
+    /// APRÈS avoir enregistré une page finie et AVANT de relire le groupe. Seul point d'où un test sait
+    /// qu'une page est réellement prise en compte (et non seulement rendue par son scrape, ce que la
+    /// tâche fille n'a pas encore livré) : il y ouvre l'échéance, et « à l'échéance, la page finie est
+    /// gardée » ne dépend plus d'une course entre la livraison de la page et celle de l'échéance. `nil` en production.
     /// `clock.now` est lu ICI, sur l'exécuteur de l'orchestrateur, et non
     /// dans la tâche minuteur : un test s'en sert comme sonde du `@concurrent`.
     /// Non `private` depuis la mission A1 : la lecture des sources sans
@@ -82,7 +87,8 @@ extension SearchOrchestrator {
         _ urls: [String],
         using scrapeService: any ScrapeServing,
         timeout: Duration,
-        clock: C
+        clock: C,
+        onPageCollected: (@Sendable (ScrapedPage) -> Void)? = nil
     ) async -> [ScrapedPage] {
         guard !urls.isEmpty else { return [] }
         let deadline = clock.now.advanced(by: timeout)
@@ -97,6 +103,7 @@ extension SearchOrchestrator {
             var finishedPages: [Int: ScrapedPage] = [:]
             while finishedPages.count < urls.count, case .page(let index, let page)? = await group.next() {
                 finishedPages[index] = page
+                onPageCollected?(page)
             }
             group.cancelAll()
             return urls.indices.map { finishedPages[$0] ?? ScrapedPage(url: urls[$0], title: urls[$0], content: "", succeeded: false) }

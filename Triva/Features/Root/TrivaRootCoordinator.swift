@@ -120,10 +120,9 @@ final class TrivaRootCoordinator {
     /// conversation n'existe plus. ») et garde le fil en cours. Rester sur la
     /// Bibliothèque sans rien dire serait un bouton qui ne fait rien.
     ///
-    /// Rouvrir une conversation remplace le fil : une réponse en cours dans
-    /// cette fenêtre est arrêtée, et sa partie déjà reçue reste enregistrée
-    /// dans SA conversation (`ChatViewModel.loadConversation(id:)`, qui passe
-    /// par `startNewConversation()`).
+    /// Rouvrir une conversation remplace le fil affiché, mais une réponse en
+    /// cours dans cette fenêtre CONTINUE en arrière-plan et finit dans SA
+    /// conversation (décision R3-2 de Ben, `ChatViewModel+Background`).
     func openConversation(id: UUID) {
         session.ensureChatViewModel()
         session.chatViewModel?.loadConversation(id: id)

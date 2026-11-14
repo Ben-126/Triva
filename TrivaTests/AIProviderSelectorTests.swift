@@ -49,7 +49,7 @@ struct AIEngineSettingsStoreTests {
     @Test("Persiste et recharge le moteur choisi")
     func persistsSelectedOption() {
         let suiteName = "AIEngineSettingsStoreTests.\(UUID().uuidString)"
-        let userDefaults = UserDefaults(suiteName: suiteName)!
+        let userDefaults = TestDefaults.suite(named: suiteName)!
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let store = AIEngineSettingsStore(userDefaults: userDefaults)
@@ -70,7 +70,7 @@ struct AIEngineSettingsStoreTests {
     @Test("Deux instances sur le même domaine divergent en mémoire : d'où une instance unique par app")
     func twoInstancesDivergeInMemory() {
         let suiteName = "AIEngineSettingsStoreTests.\(UUID().uuidString)"
-        let userDefaults = UserDefaults(suiteName: suiteName)!
+        let userDefaults = TestDefaults.suite(named: suiteName)!
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let windowA = AIEngineSettingsStore(userDefaults: userDefaults)
@@ -90,7 +90,7 @@ struct AIEngineSettingsStoreTests {
 @Suite("TrivaSharedStores")
 struct TrivaSharedStoresTests {
     private func makeStores() throws -> TrivaSharedStores {
-        let userDefaults = UserDefaults(suiteName: "TrivaSharedStoresTests.\(UUID().uuidString)")!
+        let userDefaults = TestDefaults.suite(named: "TrivaSharedStoresTests.\(UUID().uuidString)")!
         let container = try TrivaModelContainer.makeInMemory()
         return TrivaSharedStores(
             userDefaults: userDefaults,
@@ -131,7 +131,7 @@ struct TrivaSharedStoresTests {
         )
         stores.cloudSelection.selection = CloudProviderSelection(providerID: preset.id, model: "mon-modele")
 
-        stores.customProviders.remove(id: preset.id)
+        try stores.customProviders.remove(id: preset.id)
 
         #expect(stores.cloudSelection.selection == nil)
     }

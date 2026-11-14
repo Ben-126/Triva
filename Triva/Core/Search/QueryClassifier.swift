@@ -34,6 +34,14 @@ nonisolated struct QueryClassification: Sendable, Equatable {
     let showStockWidget: Bool
     let showCalculationWidget: Bool
     let standaloneFollowUp: String
+    /// Mission C1 (décision K1 de Ben) : la demande travaille SUR LA CONVERSATION (traduire,
+    /// reformuler, résumer un échange ou une réponse précédente) ou demande un TEXTE à écrire
+    /// (poème, e-mail, lettre, histoire) : aucun fait du monde à vérifier. Second avis du
+    /// classifieur, distinct de `skipSearch` : en mode Fiable, `skipSearch` seul ne dispense plus
+    /// d'une recherche (une vraie question mal classée doit chercher), mais `skipSearch` ET
+    /// `textTask` oui (`SearchRoute.resolve`). Absent ou illisible dans la sortie du modèle :
+    /// `false`, donc Fiable cherche (en cas de doute, Fiable cherche). Hors Fiable, sans effet.
+    var textTask: Bool = false
 }
 
 /// Action unique à laquelle une classification peut mener. Le routage
@@ -203,7 +211,8 @@ struct QueryClassifier: Sendable {
                 showWeatherWidget: classification.showWeatherWidget,
                 showStockWidget: classification.showStockWidget,
                 showCalculationWidget: classification.showCalculationWidget,
-                standaloneFollowUp: decoded.standaloneFollowUp ?? fallbackQuery
+                standaloneFollowUp: decoded.standaloneFollowUp ?? fallbackQuery,
+                textTask: classification.textTask
             )
         }
 
@@ -310,6 +319,7 @@ struct QueryClassifier: Sendable {
         let showWeatherWidget: Bool
         let showStockWidget: Bool
         let showCalculationWidget: Bool
+        let textTask: Bool
 
         private enum CodingKeys: String, CodingKey {
             case skipSearch
@@ -319,6 +329,7 @@ struct QueryClassifier: Sendable {
             case showWeatherWidget
             case showStockWidget
             case showCalculationWidget
+            case textTask
         }
 
         init(from decoder: Decoder) throws {
@@ -330,6 +341,10 @@ struct QueryClassifier: Sendable {
             self.showWeatherWidget = try container.decodeIfPresent(Bool.self, forKey: .showWeatherWidget) ?? false
             self.showStockWidget = try container.decodeIfPresent(Bool.self, forKey: .showStockWidget) ?? false
             self.showCalculationWidget = try container.decodeIfPresent(Bool.self, forKey: .showCalculationWidget) ?? false
+            // Champ ajouté après les autres (mission C1) : un modèle qui l'omet, ou le met au mauvais
+            // type, ne doit PAS faire retomber toute la classification sur le repli (`try?`) ; il
+            // vaut alors `false`, le côté prudent (Fiable cherche).
+            self.textTask = (try? container.decodeIfPresent(Bool.self, forKey: .textTask)) ?? false
         }
     }
 
@@ -387,6 +402,10 @@ struct QueryClassifier: Sendable {
        - Mets-le à true si la requête implique des calculs mathématiques, des conversions, ou toute tâche de calcul.
        - Mets-le à true pour des requêtes comme "Combien font 25% de 80 ?" ou "Convertis 100 USD en EUR" ou "Calcule la racine carrée de 256" ou "Combien font 2 * 3 + 5 ?" ou d'autres expressions mathématiques.
        - Si cela répond entièrement à la requête sans recherche supplémentaire, mets aussi skipSearch à true (cas calcul de la liste fermée).
+    8. textTask (booléen) : Décide si la demande est un travail sur du texte, sans aucun fait du monde à vérifier.
+       - Mets-le à true SEULEMENT si la requête demande de traduire, reformuler ou résumer la conversation ou une réponse précédente (« Traduis ta réponse en anglais », « Résume notre échange »), ou d'écrire un texte (poème, e-mail, lettre, histoire).
+       - Mets-le à false pour toute question de fait, MÊME formulée comme une demande d'écriture (« Écris-moi la hauteur de la tour Eiffel »), et pour toute demande qui s'appuie sur une information du monde réel.
+       - METS TOUJOURS TEXTTASK À FALSE SI TU ES INCERTAIN.
     </labels>
 
     <standalone_followup>
@@ -408,7 +427,8 @@ struct QueryClassifier: Sendable {
         "discussionSearch": booléen,
         "showWeatherWidget": booléen,
         "showStockWidget": booléen,
-        "showCalculationWidget": booléen
+        "showCalculationWidget": booléen,
+        "textTask": booléen
       },
       "standaloneFollowUp": chaîne de caractères
     }
@@ -447,7 +467,8 @@ struct QueryClassifier: Sendable {
         "discussionSearch": true seulement si la requête demande des avis/opinions/discussions communautaires, sinon false,
         "showWeatherWidget": true seulement si la requête porte sur la météo d'un lieu précis, sinon false,
         "showStockWidget": true seulement si la requête porte sur le cours d'une action précise (jamais pour une analyse de marché), sinon false,
-        "showCalculationWidget": true seulement si la requête est un calcul ou une conversion, sinon false
+        "showCalculationWidget": true seulement si la requête est un calcul ou une conversion, sinon false,
+        "textTask": true seulement pour traduire, reformuler ou résumer la conversation, ou écrire un texte (poème, e-mail, lettre, histoire) sans fait à vérifier ; false pour toute question de fait et si incertain
       },
       "standaloneFollowUp": "reformulation courte et autonome de la requête, compréhensible sans le reste de la conversation"
     }

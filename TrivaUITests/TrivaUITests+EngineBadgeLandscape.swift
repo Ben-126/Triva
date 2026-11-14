@@ -81,7 +81,7 @@ extension TrivaUITests {
         open(.search)
         let input = element("chat.input")
         openKeyboard(on: input)
-        input.typeText("Cherche le prix d'un billet pour la tour Eiffel")
+        input.typeText(Self.marked("Cherche le prix d'un billet pour la tour Eiffel"))
         // Le bouton, pas Retour : seul le toucher sur l'envoi déclenchait l'avertissement.
         let send = element("chat.send")
         XCTAssertTrue(waitUntil(send, "enabled == true"), "Envoi inactif après la saisie.")

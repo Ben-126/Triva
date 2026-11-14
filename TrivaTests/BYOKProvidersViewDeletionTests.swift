@@ -13,10 +13,13 @@ import Foundation
 private final class DeletionKeyStore: APIKeyStoring, @unchecked Sendable {
     var keys: [String: String] = [:]
     private(set) var deletedAccounts: [String] = []
+    /// Erreur à lever à chaque suppression (Trousseau en panne), `nil` = tout va bien.
+    var deleteError: (any Error)?
 
     func apiKey(account: String) throws -> String? { keys[account] }
     func save(apiKey: String, account: String) throws { keys[account] = apiKey }
     func deleteAPIKey(account: String) throws {
+        if let deleteError { throw deleteError }
         deletedAccounts.append(account)
         keys[account] = nil
     }
@@ -34,11 +37,11 @@ struct BYOKProvidersViewDeletionTests {
 
     private func makeFixture() -> Fixture {
         let selection = CloudProviderSelectionStore(
-            userDefaults: UserDefaults(suiteName: "test.byokDeletion.selection.\(UUID().uuidString)")!
+            userDefaults: TestDefaults.suite(named: "test.byokDeletion.selection.\(UUID().uuidString)")!
         )
         let keys = DeletionKeyStore()
         let store = CustomProviderStore(
-            userDefaults: UserDefaults(suiteName: "test.byokDeletion.providers.\(UUID().uuidString)")!,
+            userDefaults: TestDefaults.suite(named: "test.byokDeletion.providers.\(UUID().uuidString)")!,
             selectionStore: selection,
             keyStore: keys
         )
@@ -61,12 +64,28 @@ struct BYOKProvidersViewDeletionTests {
         var viewModels = [fixture.preset.id: viewModel(for: fixture.preset, fixture)]
         #expect(viewModels[fixture.preset.id]?.hasStoredKey == true)
 
-        BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
+        try BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
 
         #expect(fixture.store.customPresets.isEmpty)
         #expect(viewModels[fixture.preset.id] == nil)
         #expect(fixture.keys.deletedAccounts == [fixture.preset.id])
         #expect(try fixture.keys.apiKey(account: fixture.preset.id) == nil)
+    }
+
+    @Test("Le Trousseau refuse la suppression : l'erreur remonte, le fournisseur et son view model restent (la clé n'est pas orpheline)")
+    func keychainFailureKeepsEverythingAndReportsTheError() throws {
+        let fixture = makeFixture()
+        try fixture.keys.save(apiKey: "secret", account: fixture.preset.id)
+        fixture.keys.deleteError = KeychainAPIKeyStoreError.unexpectedStatus(-25293)
+        var viewModels = [fixture.preset.id: viewModel(for: fixture.preset, fixture)]
+
+        #expect(throws: CustomProviderStoreError.keyNotDeleted) {
+            try BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
+        }
+
+        #expect(fixture.store.customPresets == [fixture.preset])
+        #expect(viewModels[fixture.preset.id] != nil)
+        #expect(try fixture.keys.apiKey(account: fixture.preset.id) == "secret")
     }
 
     @Test("Ne touche ni aux autres fournisseurs, ni à leurs clés, ni à leur view model")
@@ -83,7 +102,7 @@ struct BYOKProvidersViewDeletionTests {
             other.id: viewModel(for: other, fixture)
         ]
 
-        BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
+        try BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
 
         #expect(fixture.store.customPresets == [other])
         #expect(viewModels.keys.contains(other.id))
@@ -96,7 +115,7 @@ struct BYOKProvidersViewDeletionTests {
         try fixture.keys.save(apiKey: "secret", account: fixture.preset.id)
         fixture.selection.selection = CloudProviderSelection(providerID: fixture.preset.id, model: "mon-modele")
         let mlx = MLXModelSelectionStore(
-            userDefaults: UserDefaults(suiteName: "test.byokDeletion.mlx.\(UUID().uuidString)")!
+            userDefaults: TestDefaults.suite(named: "test.byokDeletion.mlx.\(UUID().uuidString)")!
         )
         func resolve() throws -> any AIGenerating {
             try ActiveAIProviderResolver.resolve(
@@ -111,20 +130,20 @@ struct BYOKProvidersViewDeletionTests {
         _ = try resolve() // avant : le fournisseur personnalisé est bien résolu
         var viewModels = [fixture.preset.id: viewModel(for: fixture.preset, fixture)]
 
-        BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
+        try BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
 
         #expect(fixture.selection.selection == nil)
         #expect(throws: ActiveAIProviderResolverError.noCloudSelectionStored) { try resolve() }
     }
 
     @Test("Supprimer un fournisseur qui n'est pas actif laisse la sélection en place")
-    func removingInactiveProviderKeepsSelection() {
+    func removingInactiveProviderKeepsSelection() throws {
         let fixture = makeFixture()
         let claude = CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5")
         fixture.selection.selection = claude
         var viewModels: [String: APIKeysViewModel] = [:]
 
-        BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
+        try BYOKProvidersView.removeCustomProvider(fixture.preset, from: fixture.store, viewModels: &viewModels)
 
         #expect(fixture.selection.selection == claude)
     }

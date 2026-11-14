@@ -40,6 +40,25 @@ struct OfflineNoticeView: View {
     /// `true` = réponse sans source en mode Rapide.
     let onRelaunch: @MainActor (Bool) -> Void
 
+    @ViewBuilder
+    private var actionButtons: some View {
+        Button("Relancer ma question", systemImage: "arrow.clockwise") {
+            onRelaunch(false)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(!canRelaunch)
+        .accessibilityIdentifier("chat.offlineRelaunch")
+
+        if reason.offersQuickModeAnswer {
+            Button("Répondre sans source", systemImage: ResponseMode.quick.systemImage) {
+                onRelaunch(true)
+            }
+            .buttonStyle(.glass)
+            .disabled(!canAnswerWithoutSource)
+            .accessibilityIdentifier("chat.offlineAnswerWithoutSource")
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(reason.message, systemImage: "wifi.slash")
@@ -48,23 +67,13 @@ struct OfflineNoticeView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("chat.offlineNotice")
 
+            // Côte à côte quand ils tiennent, empilés sinon : leurs libellés (≈150 pt chacun) ne tiennent
+            // pas sur 362 pt aux tailles d'accessibilité (revue R3-7). Même procédé que
+            // `ChatTranscriptRow` pour ses boutons de médias.
             GlassEffectContainer(spacing: 12) {
-                HStack(spacing: 12) {
-                    Button("Relancer ma question", systemImage: "arrow.clockwise") {
-                        onRelaunch(false)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .disabled(!canRelaunch)
-                    .accessibilityIdentifier("chat.offlineRelaunch")
-
-                    if reason.offersQuickModeAnswer {
-                        Button("Répondre sans source", systemImage: ResponseMode.quick.systemImage) {
-                            onRelaunch(true)
-                        }
-                        .buttonStyle(.glass)
-                        .disabled(!canAnswerWithoutSource)
-                        .accessibilityIdentifier("chat.offlineAnswerWithoutSource")
-                    }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { actionButtons }
+                    VStack(alignment: .leading, spacing: 12) { actionButtons }
                 }
                 .font(.subheadline)
             }

@@ -37,7 +37,7 @@ struct CustomInstanceStoreAutomaticTests {
         let directoryStore = SearXNGDirectoryStore()
         directoryStore.save(SearXNGDirectorySnapshot(instances: directory.map(\.absoluteString)))
         let suite = "CustomInstanceStoreAutomaticTests.\(UUID().uuidString)"
-        let userDefaults = try #require(UserDefaults(suiteName: suite))
+        let userDefaults = try #require(TestDefaults.suite(named: suite))
         userDefaults.removePersistentDomain(forName: suite)
         return CustomInstanceStore(
             defaultInstances: defaults,
@@ -88,7 +88,7 @@ struct CustomInstanceStoreAutomaticTests {
         let directoryStore = SearXNGDirectoryStore()
         directoryStore.save(SearXNGDirectorySnapshot(instances: [F.directoryA.absoluteString]))
         let suite = "CustomInstanceStoreAutomaticTests.\(UUID().uuidString)"
-        let userDefaults = try #require(UserDefaults(suiteName: suite))
+        let userDefaults = try #require(TestDefaults.suite(named: suite))
         userDefaults.removePersistentDomain(forName: suite)
         let make = {
             CustomInstanceStore(defaultInstances: [F.mine], userDefaults: userDefaults, client: RespondingClient(), directory: directoryStore)
@@ -200,7 +200,7 @@ struct DirectoryPersistenceToSectionTests {
     @Test("instantané persisté, relu au lancement : visible dans la section")
     func persistedSnapshotReachesTheSection() throws {
         let suite = "DirectoryPersistenceToSectionTests.\(UUID().uuidString)"
-        let userDefaults = try #require(UserDefaults(suiteName: suite))
+        let userDefaults = try #require(TestDefaults.suite(named: suite))
         defer { userDefaults.removePersistentDomain(forName: suite) }
         let json = #"{"instances":["https://annuaire-un.example","https://annuaire-deux.example"],"nextAttemptAt":900000000}"#
         userDefaults.set(Data(json.utf8), forKey: SearXNGDirectoryStore.defaultsKey)

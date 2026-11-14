@@ -31,7 +31,7 @@ private func isCached(_ url: URL, in cache: URLCache) -> Bool {
 }
 
 private func makeDefaults() throws -> UserDefaults {
-    try #require(UserDefaults(suiteName: "test.privacyCleanup.\(UUID().uuidString)"))
+    try #require(TestDefaults.suite(named: "test.privacyCleanup.\(UUID().uuidString)"))
 }
 
 /// Faux cache Découvrir : compte les `clear()`.
@@ -45,12 +45,42 @@ private final class SpyDiscoverCache: DiscoverContentCaching, @unchecked Sendabl
     func clear() async { lock.withLock { _clearCount += 1 } }
 }
 
-/// Trousseau fixe : la clé doit survivre à « Tout effacer ».
-private struct FixedKeyStore: APIKeyStoring {
-    let key: String
-    func apiKey(account: String) throws -> String? { key }
-    func save(apiKey: String, account: String) throws {}
-    func deleteAPIKey(account: String) throws {}
+/// Trousseau en mémoire qui applique VRAIMENT les suppressions : un test qui
+/// vérifie « la clé survit à Tout effacer » doit pouvoir échouer si
+/// l'effacement la supprimait (un faux qui répond toujours la même clé passait
+/// quoi qu'il arrive).
+private final class DictionaryKeyStore: APIKeyStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var keys: [String: String]
+    private var _deletions: [String] = []
+
+    init(keys: [String: String]) { self.keys = keys }
+
+    var deletions: [String] { lock.withLock { _deletions } }
+
+    func apiKey(account: String) throws -> String? { lock.withLock { keys[account] } }
+    func save(apiKey: String, account: String) throws { lock.withLock { keys[account] = apiKey } }
+    func deleteAPIKey(account: String) throws {
+        lock.withLock {
+            keys[account] = nil
+            _deletions.append(account)
+        }
+    }
+}
+
+/// Étape de suppression qui compte ses appels, et peut échouer.
+@MainActor
+private final class StubDeleter: AllDeleting {
+    struct Failure: Error {}
+    private(set) var callCount = 0
+    private let fails: Bool
+
+    init(fails: Bool = false) { self.fails = fails }
+
+    func deleteAll() throws {
+        callCount += 1
+        if fails { throw Failure() }
+    }
 }
 
 // MARK: - Purge unique du cache HTTP
@@ -74,7 +104,10 @@ struct URLCachePurgerTests {
 
     @Test("Une seule fois par installation : le second lancement ne touche plus au cache")
     func purgesOnlyOnce() async throws {
-        let cache = URLCache(memoryCapacity: 1_000_000, diskCapacity: 1_000_000, directory: makeTemporaryCacheDirectory())
+        // En mémoire seulement : avec un cache disque, `removeAllCachedResponses()` peut finir de vider
+        // le disque APRÈS le retour et emporter l'entrée stockée juste ensuite (échec intermittent
+        // vu une fois sous la charge de la suite complète, 2026-11-13).
+        let cache = URLCache(memoryCapacity: 1_000_000, diskCapacity: 0)
         let defaults = try makeDefaults()
         let purger = URLCachePurger(defaults: defaults, cache: cache)
         await purger.purgeIfNeeded()
@@ -142,12 +175,11 @@ struct DefaultSessionsHaveNoCacheTests {
 @MainActor
 @Suite("LocalDataEraser")
 struct LocalDataEraserTests {
-    private func makeStores(keyStore: any APIKeyStoring = FixedKeyStore(key: "sk-secret")) throws -> TrivaSharedStores {
+    private func makeStores(keyStore: any APIKeyStoring) throws -> TrivaSharedStores {
         let userDefaults = try makeDefaults()
         return TrivaSharedStores(
             userDefaults: userDefaults,
             container: try TrivaModelContainer.makeInMemory(),
-            isHistoryStorageVolatile: false,
             searchInstances: CustomInstanceStore(
                 defaultInstances: [URL(string: "https://searx.example")!],
                 userDefaults: userDefaults
@@ -156,9 +188,14 @@ struct LocalDataEraserTests {
         )
     }
 
-    @Test("Efface conversations, favoris et caches ; garde la clé et le choix du moteur")
+    private func makeDictionaryStores() throws -> (TrivaSharedStores, DictionaryKeyStore) {
+        let keyStore = DictionaryKeyStore(keys: ["openai": "sk-secret", "custom:42": "sk-other"])
+        return (try makeStores(keyStore: keyStore), keyStore)
+    }
+
+    @Test("Efface conversations, favoris et caches par la fabrique RÉELLE ; garde les clés (aucune suppression) et le choix du moteur")
     func erasesDataButKeepsKeysAndEngine() async throws {
-        let stores = try makeStores()
+        let (stores, keyStore) = try makeDictionaryStores()
         stores.engineSettings.selectedOption = .cloudBYOK
         let conversation = try stores.chatHistory.createConversation(firstQuestion: "Question privée")
         try stores.chatHistory.appendUserMessage(to: conversation, text: "Question privée")
@@ -168,27 +205,38 @@ struct LocalDataEraserTests {
         let urlCache = URLCache(memoryCapacity: 1_000_000, diskCapacity: 1_000_000, directory: makeTemporaryCacheDirectory())
         let url = try #require(URL(string: "https://searx.example/search?q=question+privee"))
         try store(url, in: urlCache)
-        let discover = SpyDiscoverCache()
-        let eraser = LocalDataEraser(
-            chatHistory: stores.chatHistory,
-            favorites: stores.favorites,
-            discoverCache: discover,
-            urlCache: urlCache
-        )
 
-        try await eraser.eraseAll()
+        // La fabrique de l'app, avec un cache HTTP jetable (jamais le vrai) ; le cache Découvrir est
+        // celui par défaut des tests (`DiscoverNoCache`), qui ne touche aucun fichier.
+        try await stores.makeLocalDataEraser(urlCache: urlCache).eraseAll()
 
         #expect(try stores.chatHistory.conversations().isEmpty)
         #expect(try stores.favorites.favorites().isEmpty)
         #expect(!isCached(url, in: urlCache))
-        #expect(discover.clearCount == 1)
         #expect(try stores.keyStore.apiKey(account: "openai") == "sk-secret")
+        #expect(try stores.keyStore.apiKey(account: "custom:42") == "sk-other")
+        #expect(keyStore.deletions.isEmpty)
         #expect(stores.engineSettings.selectedOption == .cloudBYOK)
+    }
+
+    @Test("Le cache Découvrir est vidé une fois")
+    func clearsTheDiscoverCache() async throws {
+        let (stores, _) = try makeDictionaryStores()
+        let discover = SpyDiscoverCache()
+
+        try await LocalDataEraser(
+            chatHistory: stores.chatHistory,
+            favorites: stores.favorites,
+            discoverCache: discover,
+            urlCache: URLCache(memoryCapacity: 0, diskCapacity: 0)
+        ).eraseAll()
+
+        #expect(discover.clearCount == 1)
     }
 
     @Test("L'effacement incrémente la révision de l'historique (le chat ouvert se vide)")
     func bumpsHistoryRevision() async throws {
-        let stores = try makeStores()
+        let (stores, _) = try makeDictionaryStores()
         _ = try stores.chatHistory.createConversation(firstQuestion: "Q")
         let before = stores.chatHistory.revision
 
@@ -204,7 +252,7 @@ struct LocalDataEraserTests {
 
     @Test("Sur des données vides, ne plante pas")
     func eraseOnEmptyStoresIsSafe() async throws {
-        let stores = try makeStores()
+        let (stores, _) = try makeDictionaryStores()
         try await LocalDataEraser(
             chatHistory: stores.chatHistory,
             favorites: stores.favorites,
@@ -212,6 +260,111 @@ struct LocalDataEraserTests {
             urlCache: URLCache(memoryCapacity: 0, diskCapacity: 0)
         ).eraseAll()
         #expect(try stores.chatHistory.conversations().isEmpty)
+    }
+
+    // MARK: Échec partiel (R4-3)
+
+    /// Joue l'effacement avec ces deux étapes et renvoie ce qu'il a levé, avec l'état des caches.
+    private func erase(
+        history: StubDeleter,
+        favorites: StubDeleter
+    ) async throws -> (error: LocalDataEraseError?, discover: SpyDiscoverCache, httpCacheEmpty: Bool) {
+        let urlCache = URLCache(memoryCapacity: 1_000_000, diskCapacity: 1_000_000, directory: makeTemporaryCacheDirectory())
+        let url = try #require(URL(string: "https://searx.example/search?q=question+privee"))
+        try store(url, in: urlCache)
+        let discover = SpyDiscoverCache()
+        let eraser = LocalDataEraser(
+            chatHistory: history, favorites: favorites, discoverCache: discover, urlCache: urlCache
+        )
+        do {
+            try await eraser.eraseAll()
+            return (nil, discover, !isCached(url, in: urlCache))
+        } catch {
+            return (error, discover, !isCached(url, in: urlCache))
+        }
+    }
+
+    @Test("Les favoris échouent : .incomplete([favoris]), l'historique est quand même effacé, les deux caches sont vidés")
+    func failingFavoritesStillErasesTheRest() async throws {
+        let history = StubDeleter()
+        let favorites = StubDeleter(fails: true)
+
+        let outcome = try await erase(history: history, favorites: favorites)
+
+        #expect(outcome.error == .incomplete(failedSteps: [.favorites]))
+        #expect(history.callCount == 1)
+        #expect(outcome.discover.clearCount == 1)
+        #expect(outcome.httpCacheEmpty)
+    }
+
+    @Test("L'historique échoue : .incomplete([historique]), les favoris sont effacés, les deux caches sont vidés")
+    func failingHistoryStillErasesTheRest() async throws {
+        let history = StubDeleter(fails: true)
+        let favorites = StubDeleter()
+
+        let outcome = try await erase(history: history, favorites: favorites)
+
+        #expect(outcome.error == .incomplete(failedSteps: [.history]))
+        #expect(favorites.callCount == 1)
+        #expect(outcome.discover.clearCount == 1)
+        #expect(outcome.httpCacheEmpty)
+    }
+
+    @Test("Tout échoue : les deux étapes sont signalées, et le cache HTTP (questions en clair) part quand même")
+    func everythingFailingStillClearsTheCaches() async throws {
+        let outcome = try await erase(history: StubDeleter(fails: true), favorites: StubDeleter(fails: true))
+
+        #expect(outcome.error == .incomplete(failedSteps: [.favorites, .history]))
+        #expect(outcome.discover.clearCount == 1)
+        #expect(outcome.httpCacheEmpty)
+    }
+
+    // MARK: Base inaccessible (R2-2, décision de Ben)
+
+    @Test("Base inaccessible : « Tout effacer » lève .incomplete, jamais un succès ; les caches partent, rien n'est supprimé sur disque")
+    func unavailableStorageIsNeverReportedAsErased() async throws {
+        let storage = TrivaStorage(
+            opener: { throw TrivaModelContainerError.creationFailed("panne simulée") },
+            retryDelaysMilliseconds: [],
+            pause: { _ in }
+        )
+        let userDefaults = try makeDefaults()
+        let stores = TrivaSharedStores(
+            userDefaults: userDefaults,
+            storage: storage,
+            searchInstances: CustomInstanceStore(defaultInstances: [URL(string: "https://searx.example")!], userDefaults: userDefaults),
+            keyStore: DictionaryKeyStore(keys: [:])
+        )
+        let urlCache = URLCache(memoryCapacity: 1_000_000, diskCapacity: 1_000_000, directory: makeTemporaryCacheDirectory())
+        let url = try #require(URL(string: "https://searx.example/search?q=question+privee"))
+        try store(url, in: urlCache)
+
+        var thrown: LocalDataEraseError?
+        do {
+            try await stores.makeLocalDataEraser(urlCache: urlCache).eraseAll()
+        } catch {
+            thrown = error
+        }
+
+        #expect(thrown == .incomplete(failedSteps: [.favorites, .history]))
+        #expect(!isCached(url, in: urlCache))
+    }
+
+    @Test("Le message de l'écran dit ce qui n'a PAS été effacé, et ce qui l'a été")
+    func incompleteMessagesNameWhatRemains() {
+        let both = LocalDataEraseSection.incompleteMessage(failedSteps: [.favorites, .history])
+        let onlyFavorites = LocalDataEraseSection.incompleteMessage(failedSteps: [.favorites])
+        let onlyHistory = LocalDataEraseSection.incompleteMessage(failedSteps: [.history])
+
+        #expect(both.contains("conversations et tes favoris n'ont pas pu être effacés"))
+        #expect(both.contains("Seuls les caches"))
+        #expect(onlyFavorites.contains("favoris n'ont pas pu être effacés"))
+        #expect(onlyFavorites.contains("conversations et les caches de recherche l'ont été"))
+        #expect(onlyHistory.contains("conversations n'ont pas pu être effacées"))
+        #expect(onlyHistory.contains("favoris et les caches de recherche l'ont été"))
+        for message in [both, onlyFavorites, onlyHistory] {
+            #expect(!message.contains("Tout a été effacé"))
+        }
     }
 }
 

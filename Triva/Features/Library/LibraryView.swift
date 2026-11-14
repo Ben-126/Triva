@@ -119,7 +119,8 @@ private struct LibrarySnapshot: Equatable {
 private enum LibraryPhase: Equatable {
     case loading
     case loaded(LibrarySnapshot)
-    case failed(message: String)
+    /// `detail` : ligne sous le message (base inaccessible : dit que la recherche reste possible).
+    case failed(message: String, detail: String? = nil)
 }
 
 /// Tout ce qui doit relancer un chargement : la requête, chaque écriture
@@ -159,7 +160,6 @@ private struct LibraryLoadKey: Equatable {
 ///   neuf, sinon il écrirait dans un objet supprimé.
 struct LibraryView: View {
     @State private var store: ChatHistoryStore
-    private let isStorageVolatile: Bool
     private let onOpenConversation: (@MainActor (UUID) -> Void)?
     private let onConversationDeleted: @MainActor (UUID) -> Void
 
@@ -177,19 +177,15 @@ struct LibraryView: View {
     /// actor : une fois par pause de frappe, pas une fois par caractère.
     private static let searchDebounce: Duration = .milliseconds(250)
 
-    /// Les valeurs par défaut existent pour que `TrivaRootView` compile avant
-    /// l'intégration (elle appelle encore `LibraryView()`). Elles créent une
-    /// instance de store DISTINCTE de celle du chat — voir « Intégration ». Un
-    /// aperçu doit toujours passer un store en mémoire et une valeur explicite
-    /// pour `isStorageVolatile` : les défauts ouvrent la vraie base sur disque.
+    /// Le store est obligatoire : un défaut créerait une instance DISTINCTE de
+    /// celle du chat (voir « Intégration ») et ouvrirait la vraie base. Un
+    /// aperçu passe toujours un store en mémoire.
     init(
-        store: ChatHistoryStore = ChatHistoryStore(container: TrivaModelContainer.shared),
-        isStorageVolatile: Bool = TrivaModelContainer.isUsingVolatileFallback,
+        store: ChatHistoryStore,
         onOpenConversation: (@MainActor (UUID) -> Void)? = nil,
         onConversationDeleted: @escaping @MainActor (UUID) -> Void = { _ in }
     ) {
         _store = State(initialValue: store)
-        self.isStorageVolatile = isStorageVolatile
         self.onOpenConversation = onOpenConversation
         self.onConversationDeleted = onConversationDeleted
     }
@@ -199,10 +195,14 @@ struct LibraryView: View {
             LibraryContentView(
                 phase: phase,
                 query: query,
-                isStorageVolatile: isStorageVolatile,
                 onOpen: onOpenConversation,
                 onRequestDeletion: { pendingDeletion = $0 },
-                onRetry: { retryCount += 1 }
+                // Retente d'abord l'ouverture de la base (sans effet quand elle
+                // est ouverte), puis relit la liste.
+                onRetry: {
+                    store.retryOpeningStorage()
+                    retryCount += 1
+                }
             )
             .navigationTitle("Bibliothèque")
             // Titre en ligne comme Découvrir et Favoris : sans réglage explicite, Bibliothèque
@@ -258,6 +258,8 @@ struct LibraryView: View {
             }
             let sections = LibraryGrouping.sections(for: summaries, now: now, calendar: calendar)
             phase = .loaded(LibrarySnapshot(sections: sections, referenceDate: now))
+        } catch ChatHistoryStoreError.storageUnavailable {
+            phase = .failed(message: TrivaStorage.unavailableTitle, detail: TrivaStorage.unavailableDetail)
         } catch let error as ChatHistoryStoreError {
             phase = .failed(message: error.userFacingMessage)
         } catch {
@@ -347,20 +349,13 @@ struct LibraryView: View {
 private struct LibraryContentView: View {
     let phase: LibraryPhase
     let query: String
-    let isStorageVolatile: Bool
     let onOpen: (@MainActor (UUID) -> Void)?
     let onRequestDeletion: @MainActor (LibraryConversationSummary) -> Void
     let onRetry: @MainActor () -> Void
 
-    private static let volatileNotice =
-        "L'historique ne peut pas être enregistré sur cet appareil. Il sera perdu à la fermeture de Triva."
-
     var body: some View {
         List {
             if let snapshot {
-                if isStorageVolatile, !snapshot.isEmpty {
-                    StorageVolatilityNotice(text: Self.volatileNotice)
-                }
                 ForEach(snapshot.sections) { section in
                     Section {
                         ForEach(section.conversations) { conversation in
@@ -440,9 +435,11 @@ private struct LibraryContentView: View {
             // Lecture locale quasi instantanée : un indicateur ne ferait que
             // clignoter pendant une image.
             EmptyView()
-        case .failed(let message):
+        case .failed(let message, let detail):
             ContentUnavailableView {
                 Label(message, systemImage: "exclamationmark.triangle")
+            } description: {
+                if let detail { Text(verbatim: detail) }
             } actions: {
                 // Seule action de l'écran dans cet état : action principale
                 // (DESIGN.md), comme dans Découvrir et les Favoris.
@@ -454,7 +451,7 @@ private struct LibraryContentView: View {
                 ContentUnavailableView {
                     Label("Aucune conversation", systemImage: "clock")
                 } description: {
-                    Text(verbatim: isStorageVolatile ? Self.volatileNotice : "Tes conversations apparaîtront ici.")
+                    Text("Tes conversations apparaîtront ici.")
                 }
             } else {
                 // Pas `ContentUnavailableView.search` : son texte vient du
@@ -585,14 +582,12 @@ private enum LibraryPreviewData {
 private struct LibraryContentPreview: View {
     let phase: LibraryPhase
     var query = ""
-    var isStorageVolatile = false
 
     var body: some View {
         NavigationStack {
             LibraryContentView(
                 phase: phase,
                 query: query,
-                isStorageVolatile: isStorageVolatile,
                 onOpen: { _ in },
                 onRequestDeletion: { _ in },
                 onRetry: {}
@@ -605,7 +600,6 @@ private struct LibraryContentPreview: View {
 #Preview("Écran complet — store en mémoire") {
     LibraryView(
         store: LibraryPreviewData.seededStore(),
-        isStorageVolatile: false,
         onOpenConversation: { _ in }
     )
 }
@@ -630,7 +624,10 @@ private struct LibraryContentPreview: View {
     LibraryContentPreview(phase: .failed(message: "Impossible de lire l'historique."))
 }
 
-#Preview("Stockage volatil — sombre") {
-    LibraryContentPreview(phase: .loaded(LibraryPreviewData.snapshot(count: 3)), isStorageVolatile: true)
-        .preferredColorScheme(.dark)
+#Preview("Base inaccessible — sombre") {
+    LibraryContentPreview(phase: .failed(
+        message: TrivaStorage.unavailableTitle,
+        detail: TrivaStorage.unavailableDetail
+    ))
+    .preferredColorScheme(.dark)
 }

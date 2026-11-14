@@ -21,7 +21,8 @@ extension SearchOrchestratorTests {
         discussion: Bool = false,
         weather: Bool = false,
         stock: Bool = false,
-        calculation: Bool = false
+        calculation: Bool = false,
+        textTask: Bool = false
     ) -> QueryClassification {
         QueryClassification(
             skipSearch: skip,
@@ -31,7 +32,8 @@ extension SearchOrchestratorTests {
             showWeatherWidget: weather,
             showStockWidget: stock,
             showCalculationWidget: calculation,
-            standaloneFollowUp: "question"
+            standaloneFollowUp: "question",
+            textTask: textTask
         )
     }
 

@@ -37,12 +37,15 @@ struct SearchOrchestratorTests {
         showWeatherWidget: Bool = false,
         showStockWidget: Bool = false,
         showCalculationWidget: Bool = false,
+        textTask: Bool? = nil,
         standaloneFollowUp: String
     ) -> String {
-        """
+        // `textTask` absent du JSON quand il vaut `nil` : un modèle qui ignore ce champ (cas par défaut).
+        let textTaskField = textTask.map { ",\"textTask\":\($0)" } ?? ""
+        return """
         {"classification":{"skipSearch":\(skipSearch),"personalSearch":\(personalSearch),"academicSearch":\(academicSearch),\
         "discussionSearch":\(discussionSearch),"showWeatherWidget":\(showWeatherWidget),"showStockWidget":\(showStockWidget),\
-        "showCalculationWidget":\(showCalculationWidget)},"standaloneFollowUp":"\(standaloneFollowUp)"}
+        "showCalculationWidget":\(showCalculationWidget)\(textTaskField)},"standaloneFollowUp":"\(standaloneFollowUp)"}
         """
     }
 

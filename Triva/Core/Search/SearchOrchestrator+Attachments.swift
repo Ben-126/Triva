@@ -30,6 +30,33 @@ extension SearchOrchestrator {
         return .attachments
     }
 
+    /// Fichiers joints qui comptent comme SOURCES d'une réponse web (mission C1, R1-1, arbitrage
+    /// provisoire de l'agent principal, à confirmer par Ben : option (a)).
+    ///
+    /// Le défaut corrigé : `AttachmentSearchIndex.search` rend toujours les N meilleurs fragments,
+    /// sans seuil de pertinence (`AttachmentStore`). Un PDF sans rapport avec la question donnait donc
+    /// toujours des « sources », et `SearchArtifacts.attachmentSourceCount > 0` désactivait en Fiable
+    /// le refus du hors-sujet (`hasOnlyOffTopicWebSources`) et le contrôle « aucune source fiable »
+    /// (`lacksReliableSources`) : la réponse citait un document sans rapport, ou une source web hors
+    /// sujet, et passait le contrôle de citation.
+    ///
+    /// En Fiable, sur la route web, un fichier joint n'est donc gardé que si ses extraits reprennent
+    /// assez de mots de la question (`LexicalRelevance`, le test déjà appliqué aux sources web de ce mode :
+    /// pas de seuil de score, qu'`AttachmentStore` interdit, ni de nouveau test). Un fichier pertinent
+    /// reste une source fiable, comme avant ; un fichier sans rapport quitte le contexte ET le décompte.
+    /// Même limite connue que `hasOnlyOffTopicWebSources` : un test sur les MOTS, pas sur le sens ; un faux
+    /// rejet reste sûr (« Aucune source fiable » avec le bouton de relance en Rapide ; la route « fichiers
+    /// joints seuls », elle, consulte toujours les fichiers). Hors Fiable : inchangé, tous les fichiers sont gardés.
+    nonisolated static func documentsCountingAsSources(
+        _ documents: [SearXNGSearchResult],
+        query: String,
+        mode: ResponseMode
+    ) -> [SearXNGSearchResult] {
+        guard case .reliable = mode else { return documents }
+        let relevance = LexicalRelevance(query: query)
+        return documents.filter { relevance.matches($0) }
+    }
+
     /// Longueur minimale UTILE d'un extrait de fichier joint : celle d'un
     /// extrait SearXNG (~300 caractères, l'ordre de grandeur que les tests de
     /// pire cas donnent aux résultats web). En dessous, un extrait n'est plus

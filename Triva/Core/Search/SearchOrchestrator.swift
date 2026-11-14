@@ -91,6 +91,8 @@ nonisolated struct SearchOrchestrator: Sendable {
     private let maxHistoryMessageCharacters: Int
     let scrapeRoundTimeout: Duration
     let clock: any Clock<Duration>
+    /// Voir `scrapeAll(onPageCollected:)` : sonde de test, `nil` en production.
+    let onScrapedPageCollected: (@Sendable (ScrapedPage) -> Void)?
     private let widgetExecutor: WidgetExecutor
     let mediaSearcher: any MediaSearching
     let mediaGracePeriod: Duration
@@ -194,8 +196,10 @@ nonisolated struct SearchOrchestrator: Sendable {
         mediaSearcher: (any MediaSearching)? = nil,
         mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod,
         webSearchChain: WebSearchChain? = nil,
-        isOffline: Bool = false
+        isOffline: Bool = false,
+        onScrapedPageCollected: (@Sendable (ScrapedPage) -> Void)? = nil
     ) {
+        self.onScrapedPageCollected = onScrapedPageCollected
         self.failoverManager = failoverManager
         self.aiProvider = aiProvider
         self.webSearchChain = webSearchChain
@@ -472,10 +476,10 @@ nonisolated struct SearchOrchestrator: Sendable {
 
         let widgets: WidgetExecutionReport
         let gathered: GatheredSearch
-        if case .webUnlessWeatherAnswered = route {
+        if let awaitedKind = Self.widgetAwaitedBeforeSearching(route) {
             widgets = await pendingWidgets
-            let weatherAnswered = widgets.outputs.contains { $0.kind == .weather }
-            let fallbackRoute = Self.routeConsultingAttachments(weatherAnswered ? .none : .web(.general), hasAttachments: request.hasAttachments)
+            let answered = widgets.outputs.contains { $0.kind == awaitedKind }
+            let fallbackRoute = Self.routeConsultingAttachments(answered ? .none : .web(.general), hasAttachments: request.hasAttachments)
             gathered = try await gather(route: fallbackRoute, request: request, searchQuery: searchQuery)
         } else {
             gathered = try await gather(route: route, request: request, searchQuery: searchQuery)
@@ -522,9 +526,9 @@ nonisolated struct SearchOrchestrator: Sendable {
     /// les fichiers joints restent sur l'appareil.
     private func gather(route: SearchRoute, request: SearchRequest, searchQuery: String) async throws -> GatheredSearch {
         switch route {
-        case .none, .webUnlessWeatherAnswered:
-            // `.webUnlessWeatherAnswered` est résolue par `runResearch` avant
-            // d'arriver ici ; la traiter comme « aucune recherche » est le repli sûr.
+        case .none, .webUnlessWeatherAnswered, .webUnlessCalculationAnswered:
+            // Les routes « web sauf widget abouti » sont résolues par `runResearch` avant
+            // d'arriver ici ; les traiter comme « aucune recherche » est le repli sûr.
             return .noSearch
         case .attachments:
             let uploads = await Self.uploadsAction(for: request.attachments, maxTotalCharacters: maxAttachmentContextCharacters)
@@ -549,7 +553,7 @@ nonisolated struct SearchOrchestrator: Sendable {
                 mediaKinds: request.media
             )
             return GatheredSearch(
-                documents: try await pendingDocuments,
+                documents: Self.documentsCountingAsSources(try await pendingDocuments, query: searchQuery, mode: responseMode),
                 webSources: research.sources,
                 scrapedPages: research.scrapedPages,
                 media: media,

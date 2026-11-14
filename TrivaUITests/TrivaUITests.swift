@@ -30,17 +30,17 @@ final class TrivaUITests: XCTestCase {
     /// parfois la recherche (`skipSearch`) sur une simple question de fait. Vu dans le journal du
     /// simulateur, réponses « 330 pieds » et « Je ne suis pas sûr. », sans source. Courte : le titre
     /// de la Bibliothèque se coupe vers 55 caractères.
-    private static let question = "Cherche le prix d'un billet pour la tour Eiffel"
+    private static let baseQuestion = "Cherche le prix d'un billet pour la tour Eiffel"
+    private static var question: String { marked(baseQuestion) }
     /// Fragment reconnu dans les libellés : le correcteur du clavier peut retoucher le reste.
     private static let questionFragment = "tour Eiffel"
     /// Question d'une conversation à part (`checkStreamingThenStop`), à la réponse la plus longue
     /// possible. Pas de « Cite » : le classifieur y lit une demande de citations, donc une recherche
     /// académique, hors sujet (constaté, rapport Q1).
-    private static let streamingQuestion = "Explique le fonctionnement d'un moteur à réaction, étape par étape"
-    private static let streamingFragment = "moteur à"
+    private static var streamingQuestion: String { marked("Explique le fonctionnement d'un moteur à réaction, étape par étape") }
     /// Question de `test10b` : une réponse d'un mot, pour un fil qui tient dans la zone visible d'un iPad.
-    static let shortQuestion = "Réponds seulement par le mot OK, sans rien chercher."
-    private static let shortFragment = "seulement par le mot"
+    static var shortQuestion: String { marked("Réponds seulement par le mot OK, sans rien chercher.") }
+
     /// Instances factices semées dans l'annuaire (`test08b`) : le domaine `.example` est réservé,
     /// aucune requête n'atteint jamais un vrai serveur.
     private static let seededInstances = ["annuaire-un.example", "annuaire-deux.example"]
@@ -346,7 +346,7 @@ final class TrivaUITests: XCTestCase {
     private func libraryRow() -> XCUIElement {
         app.descendants(matching: .any)
             .matching(identifier: "library.row")
-            .matching(NSPredicate(format: "label CONTAINS %@", Self.questionFragment))
+            .matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", Self.runMarker, Self.questionFragment))
             .firstMatch
     }
 
@@ -369,7 +369,7 @@ final class TrivaUITests: XCTestCase {
 
         open(.favorites)
         let favorite = elements("favorites.row")
-            .matching(NSPredicate(format: "label CONTAINS %@", Self.questionFragment))
+            .matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", Self.runMarker, Self.questionFragment))
             .firstMatch
         require(favorite, "Le favori est absent de l'écran Favoris.")
         capture("05-2 Favoris")
@@ -480,29 +480,6 @@ final class TrivaUITests: XCTestCase {
         send.tap()
         XCTAssertTrue(waitUntil(send, "label == %@", "Arrêter la génération"), "L'envoi n'a pas démarré de génération.")
         return send
-    }
-
-    /// Supprime par le balayage toutes les conversations de ce test, y compris celles d'un run
-    /// interrompu : la Bibliothèque d'un simulateur ne doit pas se remplir de tests.
-    func deleteConversationsLeftByAnEarlierRun() {
-        open(.library)
-        let rows = elements("library.row").matching(
-            NSPredicate(
-                format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@",
-                Self.questionFragment, Self.streamingFragment, Self.shortFragment
-            )
-        )
-        guard rows.firstMatch.waitForExistence(timeout: 3) else { return }
-        var remaining = rows.count
-        while remaining > 0 {
-            rows.firstMatch.swipeLeft()
-            require(app.buttons["Supprimer"].firstMatch, "Balayage : « Supprimer » absent.").tap()
-            require(app.buttons["Supprimer"].firstMatch, "Confirmation de suppression absente.").tap()
-            remaining -= 1
-            let expected = remaining
-            let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == %d", expected), object: rows)
-            XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: Timeout.screen), .completed, "Suppression sans effet.")
-        }
     }
 
     // MARK: - 6. Mode de réponse

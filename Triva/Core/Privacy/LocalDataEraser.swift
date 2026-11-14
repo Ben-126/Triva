@@ -19,7 +19,25 @@ nonisolated enum LocalDataEraseStep: String, Sendable, Equatable, CaseIterable {
 /// HTTP (les questions en clair) sur le disque.
 nonisolated enum LocalDataEraseError: Error, Sendable, Equatable {
     case incomplete(failedSteps: [LocalDataEraseStep])
+
+    var failedSteps: [LocalDataEraseStep] {
+        switch self {
+        case .incomplete(let steps): steps
+        }
+    }
 }
+
+/// Ce que « Tout effacer » sait vider en base. `ChatHistoryStore` et
+/// `FavoritesStore` s'y conforment ; le protocole existe pour que les tests
+/// fassent échouer UNE étape sans toucher à l'autre (un échec partiel est la
+/// promesse la plus délicate de `LocalDataEraser`).
+@MainActor
+protocol AllDeleting {
+    func deleteAll() throws
+}
+
+extension ChatHistoryStore: AllDeleting {}
+extension FavoritesStore: AllDeleting {}
 
 /// Action « Tout effacer » des Réglages : conversations, favoris et caches
 /// locaux. Le détail de ce qui est effacé — et de ce qui NE l'est PAS — est
@@ -34,6 +52,12 @@ nonisolated enum LocalDataEraseError: Error, Sendable, Equatable {
 ///
 /// Les favoris partent AVANT l'historique : un favori pointe vers une
 /// conversation, on ne laisse pas de lien orphelin si la seconde étape échoue.
+/// Base locale inaccessible (`TrivaStorage` indisponible) : les deux étapes
+/// échouent (`storageUnavailable`), l'effacement est déclaré `incomplete` et
+/// l'écran le dit — jamais « Tout a été effacé » alors que le fichier sur
+/// disque, qu'on ne sait pas ouvrir, est intact. Ce fichier n'est volontairement
+/// pas supprimé d'autorité (question ouverte E1a).
+///
 /// Le chat ouvert n'a rien à faire : `ChatHistoryStore.deleteAll()` incrémente
 /// `revision`, et `TrivaRootCoordinator.historyDidChange()` vide le fil dont la
 /// conversation a disparu (voir son commentaire, qui prévoit déjà ce cas).
@@ -44,14 +68,14 @@ struct LocalDataEraser {
         category: "LocalDataEraser"
     )
 
-    private let chatHistory: ChatHistoryStore
-    private let favorites: FavoritesStore
+    private let chatHistory: any AllDeleting
+    private let favorites: any AllDeleting
     private let discoverCache: any DiscoverContentCaching
     private let urlCache: URLCache
 
     init(
-        chatHistory: ChatHistoryStore,
-        favorites: FavoritesStore,
+        chatHistory: any AllDeleting,
+        favorites: any AllDeleting,
         discoverCache: any DiscoverContentCaching,
         urlCache: URLCache = .shared
     ) {

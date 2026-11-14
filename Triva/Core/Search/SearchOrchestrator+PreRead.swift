@@ -12,8 +12,7 @@ import Foundation
 ///
 /// Pourquoi : le repli cloud de la recherche (`CloudWebSearchProvider`) rend des
 /// sources sans texte — OpenAI ne donne que des URL (`url_citation`,
-/// `action.sources`), Gemini des segments de SA réponse, que l'app n'utilise plus
-/// comme extrait. Le mode Rapide n'ayant pas de planner, rien ne lisait ces
+/// `action.sources`). Le mode Rapide n'ayant pas de planner, rien ne lisait ces
 /// pages : rapport T2, scénario t7, une réponse écrite de tête et citée
 /// [2][3][4] sur des pages jamais lues. Cette lecture leur donne un contenu ;
 /// celles qu'elle ne parvient pas à lire deviennent non citables

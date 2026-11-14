@@ -263,8 +263,17 @@ extension ChatViewModelTests {
         #expect(viewModel.messages.last?.status == .interrupted)
         #expect(viewModel.errorDescription == nil)
         #expect(viewModel.isGenerating == false)
-        try? await Task.sleep(for: .milliseconds(10))
-        #expect(suggestions.histories.isEmpty)
+
+        // Événement plutôt que délai : une seconde question aboutit, ses suggestions sont demandées ; la
+        // question annulée n'a laissé aucune demande dans l'enregistreur.
+        let secondTask = Task { await viewModel.send(query: "seconde question") }
+        await waitUntil("la seconde question atteint le provider") { aiProvider.receivedPrompts.count == 2 }
+        aiProvider.continuation?.yield("Fin.")
+        aiProvider.continuation?.finish()
+        await secondTask.value
+        await waitUntil("suggestions de la seconde question demandées") { suggestions.histories.count >= 1 }
+        #expect(suggestions.histories.count == 1)
+        #expect(suggestions.histories.first?.last { $0.role == .user }?.content == "seconde question")
     }
 
     @Test("Annuler PENDANT la recherche (avant tout textStream) n'est pas une erreur (finding ChatViewModel.swift:166, revue 0.8)")

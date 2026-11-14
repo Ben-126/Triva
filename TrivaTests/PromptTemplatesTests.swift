@@ -559,7 +559,7 @@ struct PromptTemplatesTests {
         }
     }
 
-    @Test("Les marqueurs imposés au modèle sont en texte simple, sans emoji, contrairement au web")
+    @Test("Les marqueurs imposés au modèle sont en texte simple, sans emoji, contrairement à la version web d'origine")
     func mandatedMarkersAreEmojiFree() {
         let markers = [
             PromptTemplates.unsupportedClaimMarker,

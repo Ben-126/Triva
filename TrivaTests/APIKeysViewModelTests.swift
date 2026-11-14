@@ -17,16 +17,21 @@ private final class MockAPIKeyStore: APIKeyStoring, @unchecked Sendable {
     private(set) var saveCallCount = 0
     private(set) var deleteCallCount = 0
     private(set) var lastSavedKey: String?
+    /// Pannes du Trousseau à la demande, `nil` = tout va bien.
+    var saveError: (any Error)?
+    var deleteError: (any Error)?
 
     func apiKey(account: String) throws -> String? { storedKey }
 
     func save(apiKey: String, account: String) throws {
+        if let saveError { throw saveError }
         saveCallCount += 1
         lastSavedKey = apiKey
         storedKey = apiKey
     }
 
     func deleteAPIKey(account: String) throws {
+        if let deleteError { throw deleteError }
         deleteCallCount += 1
         storedKey = nil
     }
@@ -57,7 +62,7 @@ struct APIKeysViewModelTests {
     /// toucher une vraie sélection persistée sur la machine qui exécute les
     /// tests (`deleteStoredKey()` peut l'effacer, voir tests dédiés plus bas).
     private func uniqueSelectionStore() -> CloudProviderSelectionStore {
-        CloudProviderSelectionStore(userDefaults: UserDefaults(suiteName: "test.apiKeysVM.\(UUID().uuidString)")!)
+        CloudProviderSelectionStore(userDefaults: TestDefaults.suite(named: "test.apiKeysVM.\(UUID().uuidString)")!)
     }
 
     @Test("Sauvegarde une clé valide et met à jour l'état")
@@ -164,5 +169,39 @@ struct APIKeysViewModelTests {
         viewModel.deleteStoredKey()
 
         #expect(selectionStore.selection == CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5"))
+    }
+
+    // MARK: - Échec du Trousseau (K5)
+
+    @Test("Le Trousseau refuse la suppression : la clé reste affichée comme enregistrée, la sélection est gardée, l'échec est dit")
+    func failedDeletionIsReportedAndChangesNothing() {
+        let keyStore = MockAPIKeyStore()
+        keyStore.storedKey = "sk-ant-existing"
+        keyStore.deleteError = KeychainAPIKeyStoreError.unexpectedStatus(-25293)
+        let selectionStore = uniqueSelectionStore()
+        let selection = CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5")
+        selectionStore.selection = selection
+        let viewModel = APIKeysViewModel(
+            keyStore: keyStore, validator: MockAPIKeyValidator(), account: "claude", selectionStore: selectionStore
+        )
+
+        viewModel.deleteStoredKey()
+
+        #expect(viewModel.hasStoredKey)
+        #expect(viewModel.state == .failed(APIKeysViewModel.keychainDeleteFailureMessage))
+        #expect(selectionStore.selection == selection)
+        #expect(keyStore.storedKey == "sk-ant-existing")
+    }
+
+    @Test("Une clé valide que le Trousseau refuse d'enregistrer n'est pas présentée comme « invalide »")
+    func keychainSaveFailureIsNotReportedAsAnInvalidKey() async {
+        let keyStore = MockAPIKeyStore()
+        keyStore.saveError = KeychainAPIKeyStoreError.unexpectedStatus(-25293)
+        let viewModel = APIKeysViewModel(keyStore: keyStore, validator: MockAPIKeyValidator(), selectionStore: uniqueSelectionStore())
+
+        await viewModel.save(rawKey: "sk-ant-valid")
+
+        #expect(viewModel.state == .failed(APIKeysViewModel.keychainSaveFailureMessage))
+        #expect(!viewModel.hasStoredKey)
     }
 }

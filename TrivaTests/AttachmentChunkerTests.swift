@@ -459,7 +459,7 @@ struct AttachmentSearchIndexTests {
 
 @Suite("Pièces jointes indexées — présentation")
 struct IndexedAttachmentPresentationTests {
-    @Test("Contenu initial : les trois premiers fragments, séparés comme sur le web")
+    @Test("Contenu initial : les trois premiers fragments, séparés comme dans la version web d'origine")
     func initialContent() {
         let attachment = makeAttachment("a.txt", chunks: ["un", "deux", "trois", "quatre"])
 

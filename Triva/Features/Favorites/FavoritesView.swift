@@ -27,7 +27,8 @@ struct FavoritesSnapshot: Equatable {
 enum FavoritesPhase: Equatable {
     case loading
     case loaded(FavoritesSnapshot)
-    case failed(message: String)
+    /// `detail` : ligne sous le message (base inaccessible : dit que la recherche reste possible).
+    case failed(message: String, detail: String? = nil)
 }
 
 /// Ce qui relance un chargement : requête, écriture réussie, « Réessayer ».
@@ -67,7 +68,6 @@ struct FavoriteRoute: Hashable {
 struct FavoritesView: View {
     @State private var store: FavoritesStore
     @State private var historyStore: ChatHistoryStore
-    private let isStorageVolatile: Bool
     private let onOpenConversation: (@MainActor (UUID) -> Void)?
 
     @State private var query = ""
@@ -82,27 +82,30 @@ struct FavoritesView: View {
     /// normalise toutes les réponses sur le main actor.
     private static let searchDebounce: Duration = .milliseconds(250)
 
-    /// Défauts pour que `TrivaRootView` compile avant l'intégration
-    /// (`FavoritesView()`), avec les réserves de ceux de `LibraryView` :
-    /// instances distinctes de celles du chat, base sur disque. Un aperçu
-    /// passe toujours des stores en mémoire.
+    /// Stores obligatoires, comme ceux de `LibraryView` : un défaut créerait des
+    /// instances distinctes de celles du chat et ouvrirait la vraie base. Un
+    /// aperçu passe toujours des stores en mémoire.
     init(
-        store: FavoritesStore = FavoritesStore(container: TrivaModelContainer.shared),
-        historyStore: ChatHistoryStore = ChatHistoryStore(container: TrivaModelContainer.shared),
-        isStorageVolatile: Bool = TrivaModelContainer.isUsingVolatileFallback,
+        store: FavoritesStore,
+        historyStore: ChatHistoryStore,
         onOpenConversation: (@MainActor (UUID) -> Void)? = nil
     ) {
         _store = State(initialValue: store)
         _historyStore = State(initialValue: historyStore)
-        self.isStorageVolatile = isStorageVolatile
         self.onOpenConversation = onOpenConversation
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             FavoritesContentView(
-                phase: phase, query: query, isStorageVolatile: isStorageVolatile,
-                onRequestRemoval: { pendingRemoval = $0 }, onRetry: { retryCount += 1 }
+                phase: phase, query: query,
+                onRequestRemoval: { pendingRemoval = $0 },
+                // Retente d'abord l'ouverture de la base (sans effet quand elle
+                // est ouverte), puis relit la liste.
+                onRetry: {
+                    store.retryOpeningStorage()
+                    retryCount += 1
+                }
             )
             .navigationTitle("Favoris")
             // Titre en ligne, comme Bibliothèque et Découvrir (finding Q3 n°30).
@@ -165,6 +168,8 @@ struct FavoritesView: View {
                 excerptCache.retainOnly(Set(summaries.map(\.id)))
             }
             phase = .loaded(FavoritesSnapshot(favorites: summaries, referenceDate: now))
+        } catch FavoritesStoreError.storageUnavailable {
+            phase = .failed(message: TrivaStorage.unavailableTitle, detail: TrivaStorage.unavailableDetail)
         } catch {
             phase = .failed(message: (error as? FavoritesStoreError)?.userFacingMessage ?? "Impossible de lire les favoris.")
         }

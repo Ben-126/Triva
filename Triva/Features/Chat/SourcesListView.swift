@@ -32,6 +32,18 @@ nonisolated enum SourcesListPresentation {
         CitationPresentation.displayHost(for: source)
     }
 
+    /// Adresse qu'un toucher sur la source ouvre : une page web (http ou https) seulement. Une instance
+    /// de recherche publique, qu'on ne maîtrise pas, peut renvoyer `facetime://`, `tel://` ou
+    /// `shortcuts://` : un lien vers une autre app n'a rien à faire dans une liste de sources (revue
+    /// R3-3). Plus strict que `CitationPresentation.isAllowedExternalLink`, qui admet aussi `mailto`.
+    /// `nil` : la ligne s'affiche en texte, sans lien.
+    static func openableURL(for source: SearXNGSearchResult) -> URL? {
+        guard let url = URL(string: source.url),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return url
+    }
+
     /// Libellé VoiceOver d'une source web : son numéro (celui des citations), son titre, son
     /// domaine, et « non lue » le cas échéant.
     static func webAccessibilityLabel(number: Int, title: String, domain: String, isUnread: Bool) -> String {
@@ -131,7 +143,7 @@ struct SourcesListView: View {
             }
         }
 
-        if let url = URL(string: source.url), let domain {
+        if let url = SourcesListPresentation.openableURL(for: source), let domain {
             // `.plain` et `.leading`, constatés indispensables à l'écran (QA Q1, iOS 27) : le style
             // automatique d'un `Link` pose l'accent comme couleur de premier plan, et `.primary` /
             // `.secondary`, hiérarchiques, en héritent ; il centre aussi tout texte sur plusieurs lignes.
@@ -145,7 +157,7 @@ struct SourcesListView: View {
                 .accessibilityAddTraits(.isLink)
                 .accessibilityIdentifier("source.link")
         } else {
-            // URL sans hôte lisible (rare, résultat mal formé) : du texte plutôt qu'un lien mort.
+            // URL sans hôte lisible ou hors http(s) : du texte plutôt qu'un lien mort ou une autre app.
             content
         }
     }

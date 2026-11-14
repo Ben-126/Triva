@@ -23,7 +23,7 @@ struct PublicInstanceListNeutralTests {
 
     private func makeDefaults(neutral: Bool) throws -> (UserDefaults, String) {
         let name = "PublicInstanceListNeutralTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: name))
+        let defaults = try #require(TestDefaults.suite(named: name))
         defaults.set(neutral, forKey: PublicInstanceList.uiTestNeutralArgumentKey)
         return (defaults, name)
     }

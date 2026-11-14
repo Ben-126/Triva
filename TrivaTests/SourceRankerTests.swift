@@ -36,7 +36,7 @@ struct SourceRankerFormulaTests {
         )
     }
 
-    @Test("Les poids sont ceux du web et somment à 1")
+    @Test("Les poids sont ceux de la version web d'origine et somment à 1")
     func weightsMatchWeb() {
         #expect(SourceRanker.similarityWeight == 0.7)
         #expect(SourceRanker.positionWeight == 0.3)
@@ -58,7 +58,7 @@ struct SourceRankerFormulaTests {
         #expect(SourceRanker.positionScore(forPosition: -5) == 1.0)
     }
 
-    @Test("Les multiplicateurs et le plancher de similarité sont ceux du web")
+    @Test("Les multiplicateurs et le plancher de similarité sont ceux de la version web d'origine")
     func portedConstantsMatchWeb() {
         #expect(SourceRanker.boostedMultiplier == 1.25)
         #expect(SourceRanker.penalizedMultiplier == 0.4)
@@ -114,7 +114,7 @@ struct SourceRankerDomainTests {
         #expect(!SourceRanker.isTrustedDomain("https://exemple.fr/blog"))
     }
 
-    @Test("Un domaine boosté l'emporte sur un pénalisé, comme la boucle du web")
+    @Test("Un domaine boosté l'emporte sur un pénalisé, comme la boucle de la version web d'origine")
     func boostWinsOverPenalty() {
         // `docs.` est testé avant `quora.com` parce que la version web d'origine retourne dès
         // le premier motif boosté trouvé. Comportement porté tel quel.

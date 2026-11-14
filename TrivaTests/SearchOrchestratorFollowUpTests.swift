@@ -112,7 +112,9 @@ extension SearchOrchestratorStreamingTests {
         let orchestrator = makeStreamingOrchestrator(
             failoverManager: FailoverManager(client: client, instances: [Self.instance]),
             aiProvider: aiProvider,
-            responseMode: .reliable
+            responseMode: .reliable,
+            // Le widget calcul RÉPOND : sans lui, Fiable cherche (mission C1, K2, test ci-dessous).
+            widgets: [StubSearchWidget(kind: .calculation, llmContext: "Résultat : 36", log: WidgetCallLog())]
         )
 
         let streamingAnswer = try await orchestrator.streamAnswer(query: "Combien font 15 % de 240 ?", chatHistory: Self.appleHistory)
@@ -121,10 +123,27 @@ extension SearchOrchestratorStreamingTests {
         #expect(await client.receivedQueries.isEmpty)
         #expect(aiProvider.plannerPromptCount == 0)
         let finalPrompt = try #require(aiProvider.receivedStreamPrompts.first)
-        #expect(!finalPrompt.contains("sources numérotées"))
+        // Le bloc des widgets dit lui-même « ce ne sont pas des sources numérotées » : on cible la consigne de rédaction.
+        #expect(!finalPrompt.contains("en t'appuyant sur les sources numérotées"))
         #expect(!finalPrompt.contains("<contexte>"))
         #expect(!finalPrompt.contains(PromptTemplates.noRelevantInformationAnswer))
         #expect(finalPrompt.hasSuffix("Question de l'utilisateur : Combien font 15 % de 240 ?"))
+    }
+
+    @Test("C1 K2 : en Fiable, un calcul dont le widget ne produit rien cherche sur le web au lieu de répondre de mémoire")
+    func reliableCalculationWithoutWidgetOutputSearches() async throws {
+        let client = StreamingMockSearXNGClient()
+        let classification = SearchOrchestratorTests.classificationJSON(skipSearch: true, showCalculationWidget: true, standaloneFollowUp: "jours avant Noël")
+        let orchestrator = makeStreamingOrchestrator(
+            failoverManager: FailoverManager(client: client, instances: [Self.instance]),
+            aiProvider: StreamingMockAIGenerating(classifyResponse: classification),
+            responseMode: .reliable,
+            widgets: [StubSearchWidget(kind: .calculation, llmContext: nil, log: WidgetCallLog())]
+        )
+
+        _ = try await orchestrator.streamAnswer(query: "Combien de jours avant Noël ?", chatHistory: Self.appleHistory)
+
+        #expect(!(await client.receivedQueries.isEmpty))
     }
 
     @Test("Bug 1 : l'historique du prompt final est borné en nombre ET en longueur par message, selon les réglages de l'init")

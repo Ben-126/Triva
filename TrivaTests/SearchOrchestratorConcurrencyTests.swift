@@ -20,24 +20,21 @@ extension SearchOrchestratorStreamingTests {
     )
     func scrapeRoundDeadlineKeepsFinishedPages() async throws {
         let cancellations = ScrapeLog()
-        let fastPages = ScrapeCounter()
         let client = StreamingMockSearXNGClient(response: SearXNGSearchResponse(results: Self.sevenResults(), suggestions: []))
         let planner = #"{"action":"scrapeURL","urls":["https://1.example","https://2.example"]}"#
         let aiProvider = StreamingMockAIGenerating(plannerResponse: planner)
-        // L'échéance est une porte, pas une durée : elle s'ouvre quand la page rapide est rendue (événement),
-        // quelle que soit la charge de la machine. Sans échéance, la page lente (30 s) serait attendue.
+        // L'échéance est une porte, pas une durée : elle s'ouvre quand la page rapide est PRISE EN COMPTE par
+        // la boucle d'attente de `scrapeAll` (`onScrapedPageCollected`), pas quand son scrape la rend (la tâche
+        // fille ne l'a alors pas encore livrée : l'échéance pouvait passer devant). Aucune attente, aucune durée,
+        // aucune course, quelle que soit la charge de la machine. Sans échéance, la page lente (30 s) serait attendue.
         let deadline = GateClock()
         let orchestrator = makeStreamingOrchestrator(
             failoverManager: FailoverManager(client: client, instances: [Self.instance]),
             aiProvider: aiProvider,
-            scrapeService: SlowScrapeService(slowURLs: ["https://2.example"], cancellations: cancellations, fastPages: fastPages),
-            clock: deadline
+            scrapeService: SlowScrapeService(slowURLs: ["https://2.example"], cancellations: cancellations),
+            clock: deadline,
+            onScrapedPageCollected: { _ in deadline.open() }
         )
-        let driver = Task {
-            while fastPages.value < 1 { try? await Task.sleep(for: .milliseconds(1)) }
-            deadline.open()
-        }
-        defer { driver.cancel() }
 
         _ = try await orchestrator.streamAnswer(query: "requête")
 

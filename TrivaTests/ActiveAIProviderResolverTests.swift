@@ -42,7 +42,7 @@ struct ActiveAIProviderResolverTests {
     }
 
     private func uniqueDefaults(_ label: String) -> UserDefaults {
-        UserDefaults(suiteName: "test.activeAIProviderResolver.\(label).\(UUID().uuidString)")!
+        TestDefaults.suite(named: "test.activeAIProviderResolver.\(label).\(UUID().uuidString)")!
     }
 
     private func makeStores() -> (AIEngineSettingsStore, MLXModelSelectionStore, CloudProviderSelectionStore) {
@@ -418,7 +418,7 @@ struct SearchSessionEngineBindingTests {
     }
 
     private func makeStores(instances: [URL] = [URL(string: "https://searx.example")!]) throws -> TrivaSharedStores {
-        let userDefaults = UserDefaults(suiteName: "test.searchSession.\(UUID().uuidString)")!
+        let userDefaults = TestDefaults.suite(named: "test.searchSession.\(UUID().uuidString)")!
         let container = try TrivaModelContainer.makeInMemory()
         return TrivaSharedStores(
             userDefaults: userDefaults,

@@ -54,8 +54,10 @@ extension SearchArtifacts {
 /// Message ENTIER seulement : tous ses mots doivent appartenir au vocabulaire ci-dessous, et il en
 /// faut au plus `maxWords`. « Bonjour, quelle est la hauteur de la tour Eiffel ? » n'est donc pas
 /// une salutation (c'est une question précédée d'un bonjour), et sa réponse sans recherche porte
-/// la mention. Erreur possible, assumée : un message de politesse hors vocabulaire (« Hola qué
-/// tal ») reçoit la mention, qui reste vraie — aucune recherche n'a eu lieu.
+/// la mention. Erreur possible, assumée : un message de politesse hors vocabulaire reçoit la mention, qui
+/// reste vraie — aucune recherche n'a eu lieu — et, en Fiable, cherche comme une vraie question (sûr).
+/// Espagnol minimal (« Hola qué tal », « Buenos días », « Cómo estás », mission C1, K10) : le vocabulaire
+/// ne contient aucun mot espagnol qui serait aussi un mot plein d'une vraie question française.
 nonisolated enum SmallTalk {
     /// Au-delà, ce n'est plus une formule de politesse mais une phrase.
     static let maxWords = 8
@@ -102,6 +104,7 @@ nonisolated enum SmallTalk {
     pour ta ton tes reponse reponses aide \
     au revoir plus bientot bye goodbye ciao adieu bonne nuit journee soiree weekend fin \
     ca va vas tu comment et toi vous allez quoi de neuf how are you doing good morning evening night \
-    tout le monde tous a the there everyone all triva mon ma cher chere ami amie much very so a la
+    tout le monde tous a the there everyone all triva mon ma cher chere ami amie much very so a la \
+    que tal como estas buenos buenas dias tardes noches
     """.split(whereSeparator: \.isWhitespace).map(String.init))
 }

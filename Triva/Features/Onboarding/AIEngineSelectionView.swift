@@ -171,7 +171,9 @@ struct AIEngineSelectionView: View {
                 }
                 Text(subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    // Encre des légendes sur verre (DESIGN.md) : `.secondary` y mesure 2,88:1, et ce
+                    // sous-titre porte la promesse de confidentialité (revue R3-4).
+                    .foregroundStyle(MessageBubbleView.legendStyle)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }

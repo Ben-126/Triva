@@ -204,6 +204,8 @@ nonisolated struct WebSearchChain: Sendable {
     /// Sources à essayer, dans l'ordre, pour une catégorie.
     func providers(for category: WebSearchCategory) -> [any WebSearchProviding] {
         let searxngStep: [any WebSearchProviding] = searxng.map { [SearXNGWithWebFallbackStep(base: $0)] } ?? []
+        // Jamais de recherche Gemini ici : `CloudWebSearchService` ne la connaît pas (Google impose d'afficher
+        // ses « Search Suggestions » avec sa recherche intégrée), donc `cloudProvider` est nil avec une clé Gemini.
         let cloudStep: [any WebSearchProviding] = cloudProvider.map { [$0] } ?? []
         return keyedProviders + searxngStep + cloudStep + openSourceProviders(category)
     }

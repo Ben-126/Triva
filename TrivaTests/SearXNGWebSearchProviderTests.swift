@@ -53,7 +53,7 @@ struct SearXNGWebSearchProviderTests {
         #expect(options.categories.isEmpty)
     }
 
-    @Test("Catégorie académique : moteurs arxiv, google scholar, pubmed (parité avec le web)")
+    @Test("Catégorie académique : moteurs arxiv, google scholar, pubmed (parité avec la version web d'origine)")
     func academicCategory() {
         let options = SearXNGWebSearchProvider.searxngOptions(for: WebSearchOptions(category: .academic))
 

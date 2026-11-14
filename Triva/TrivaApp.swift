@@ -67,11 +67,10 @@ struct TrivaSharedStores {
     /// (`SearchSession`) — les tests y substituent un faux trousseau d'un bout
     /// à l'autre.
     let keyStore: any APIKeyStoring
-    /// `true` quand la base SwiftData a dû se rabattre sur un stockage en
-    /// mémoire (`TrivaModelContainer.isUsingVolatileFallback`) : la
-    /// Bibliothèque et les Favoris doivent le dire, plutôt que d'afficher une
-    /// liste vide qui ferait croire à un historique vide.
-    let isHistoryStorageVolatile: Bool
+    /// Stockage local partagé par l'historique et les favoris. Indisponible
+    /// (base illisible), il ne se replie plus sur la mémoire : les deux stores
+    /// refusent d'écrire et les écrans le disent (voir `TrivaStorage`).
+    let storage: TrivaStorage
 
     /// Assemble les stores sur UNE source de persistance.
     ///
@@ -97,10 +96,37 @@ struct TrivaSharedStores {
     ///   surtout pas un second store construit sur `UserDefaults.standard` : deux
     ///   stores sur la même clé, chacun avec sa copie en mémoire, écraseraient
     ///   mutuellement leurs écritures.
+    ///
+    /// Forme pratique des tests et des aperçus : un conteneur déjà ouvert, donc
+    /// toujours disponible. `isHistoryStorageVolatile` n'a plus d'effet (le
+    /// repli en mémoire n'existe plus) ; il reste pour ne pas casser les
+    /// appelants existants.
     init(
         userDefaults: UserDefaults,
         container: ModelContainer,
-        isHistoryStorageVolatile: Bool,
+        isHistoryStorageVolatile: Bool = false,
+        searchInstances: CustomInstanceStore,
+        keyStore: any APIKeyStoring,
+        searchReliability: InstanceReliabilityStore = InstanceReliabilityStore(),
+        searchDirectory: SearXNGDirectoryStore = SearXNGDirectoryStore(),
+        discoverCache: any DiscoverContentCaching = DiscoverNoCache()
+    ) {
+        self.init(
+            userDefaults: userDefaults,
+            storage: TrivaStorage(container: container),
+            searchInstances: searchInstances,
+            keyStore: keyStore,
+            searchReliability: searchReliability,
+            searchDirectory: searchDirectory,
+            discoverCache: discoverCache
+        )
+    }
+
+    /// Initialiseur désigné : le même assemblage, sur un `TrivaStorage` (qui
+    /// peut être indisponible).
+    init(
+        userDefaults: UserDefaults,
+        storage: TrivaStorage,
         searchInstances: CustomInstanceStore,
         keyStore: any APIKeyStoring,
         searchReliability: InstanceReliabilityStore = InstanceReliabilityStore(),
@@ -120,21 +146,29 @@ struct TrivaSharedStores {
         self.searchReliability = searchReliability
         self.searchDirectory = searchDirectory
         self.discoverCache = discoverCache
-        self.chatHistory = ChatHistoryStore(container: container)
-        self.favorites = FavoritesStore(container: container)
+        self.chatHistory = ChatHistoryStore(storage: storage)
+        self.favorites = FavoritesStore(storage: storage)
         self.keyStore = keyStore
-        self.isHistoryStorageVolatile = isHistoryStorageVolatile
+        self.storage = storage
     }
 
     /// Action « Tout effacer » des Réglages, branchée sur les MÊMES stores que
     /// le reste de l'app (historique et favoris partagés, cache Découvrir).
-    func makeLocalDataEraser() -> LocalDataEraser {
-        LocalDataEraser(chatHistory: chatHistory, favorites: favorites, discoverCache: discoverCache)
+    ///
+    /// `urlCache` : le cache HTTP partagé de l'app ; les tests passent un cache
+    /// jetable, pour ne jamais vider le vrai.
+    func makeLocalDataEraser(urlCache: URLCache = .shared) -> LocalDataEraser {
+        LocalDataEraser(
+            chatHistory: chatHistory,
+            favorites: favorites,
+            discoverCache: discoverCache,
+            urlCache: urlCache
+        )
     }
 
     /// Les stores réels : `UserDefaults.standard`, base SwiftData sur disque
-    /// (`TrivaModelContainer.shared`, avec son repli en mémoire si le fichier
-    /// est illisible), trousseau réel, liste SearXNG du bundle plus les
+    /// (`TrivaModelContainer.sharedStorage`, indisponible si le fichier est
+    /// illisible, sans repli silencieux en mémoire), trousseau réel, liste SearXNG du bundle plus les
     /// modifications de l'utilisateur, mémoire de fiabilité et annuaire SearXNG
     /// persistés (les instances `.shared`, uniques dans l'app).
     ///
@@ -144,8 +178,7 @@ struct TrivaSharedStores {
     static func live() -> TrivaSharedStores {
         TrivaSharedStores(
             userDefaults: .standard,
-            container: TrivaModelContainer.shared,
-            isHistoryStorageVolatile: TrivaModelContainer.isUsingVolatileFallback,
+            storage: TrivaModelContainer.sharedStorage,
             searchInstances: CustomInstanceStore(),
             keyStore: KeychainAPIKeyStore(),
             searchReliability: .shared,
@@ -186,7 +219,6 @@ struct TrivaSharedStores {
         let stores = TrivaSharedStores(
             userDefaults: userDefaults,
             container: container,
-            isHistoryStorageVolatile: false,
             // Annuaire en mémoire, comme `searchDirectory` ci-dessous : un aperçu
             // ne lit jamais l'annuaire réel de l'appareil.
             searchInstances: CustomInstanceStore(userDefaults: userDefaults, directory: SearXNGDirectoryStore()),

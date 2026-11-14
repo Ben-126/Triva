@@ -27,6 +27,6 @@ struct CloudWebSearchCostNoticeTests {
 
     @Test("Le nombre de services cités reste égal à CloudWebSearchService : un nouveau service force à relire la phrase")
     func coversAllSearchServices() {
-        #expect(CloudWebSearchService.allCases.count == 4)
+        #expect(CloudWebSearchService.allCases.count == 3)
     }
 }

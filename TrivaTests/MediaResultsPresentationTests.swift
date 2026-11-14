@@ -50,7 +50,7 @@ struct MediaResultsPresentationTests {
         #expect(MediaResultsPresentation.gridLayout(totalCount: 0, capacity: 4) == MediaInlineLayout(visibleCount: 0, hiddenCount: 0))
     }
 
-    @Test("Grille : règle du web, 3 images + « +N » au-delà de 4")
+    @Test("Grille : règle de la version web d'origine, 3 images + « +N » au-delà de 4")
     func gridMatchesWebRuleBeyondCapacity() {
         #expect(MediaResultsPresentation.gridLayout(totalCount: 5, capacity: 4) == MediaInlineLayout(visibleCount: 3, hiddenCount: 2))
         #expect(MediaResultsPresentation.gridLayout(totalCount: 10, capacity: 4) == MediaInlineLayout(visibleCount: 3, hiddenCount: 7))

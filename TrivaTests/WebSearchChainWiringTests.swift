@@ -484,7 +484,7 @@ struct SearchSessionWebSearchChainTests {
     private typealias F = WiringFixtures
 
     private func makeStores(cloudKeys: ChainKeyStore = ChainKeyStore()) throws -> TrivaSharedStores {
-        let userDefaults = try #require(UserDefaults(suiteName: "test.webSearchChain.\(UUID().uuidString)"))
+        let userDefaults = try #require(TestDefaults.suite(named: "test.webSearchChain.\(UUID().uuidString)"))
         return TrivaSharedStores(
             userDefaults: userDefaults,
             container: try TrivaModelContainer.makeInMemory(),

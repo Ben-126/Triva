@@ -28,6 +28,11 @@ nonisolated enum ChatHistoryStoreError: Error, Sendable, Equatable {
     /// Une lecture a échoué.
     case fetchFailed(reason: String)
 
+    /// La base locale n'a pas pu être ouverte (`TrivaStorage`) : aucune lecture
+    /// ni écriture n'est tentée, plutôt que d'écrire dans un stockage qui
+    /// disparaîtrait à la fermeture.
+    case storageUnavailable
+
     /// Message court destiné à l'UI : français, factuel, sans détail
     /// technique et sans remplissage (DESIGN.md).
     var userFacingMessage: String {
@@ -36,6 +41,9 @@ nonisolated enum ChatHistoryStoreError: Error, Sendable, Equatable {
             return "Impossible d'enregistrer dans l'historique."
         case .fetchFailed:
             return "Impossible de lire l'historique."
+        case .storageUnavailable:
+            // À VALIDER PAR BEN. Affiché dans le chat quand un échange n'a pas pu être enregistré.
+            return "Tes conversations enregistrées sont inaccessibles : cet échange ne sera pas enregistré."
         }
     }
 
@@ -46,6 +54,8 @@ nonisolated enum ChatHistoryStoreError: Error, Sendable, Equatable {
             return "Échec d'écriture (\(operation)) : \(reason)"
         case .fetchFailed(let reason):
             return "Échec de lecture : \(reason)"
+        case .storageUnavailable:
+            return "Base locale indisponible : lecture et écriture refusées."
         }
     }
 }
@@ -143,19 +153,22 @@ nonisolated enum ChatHistoryStoreError: Error, Sendable, Equatable {
 @Observable
 @MainActor
 final class ChatHistoryStore {
-    /// Conteneur retenu explicitement (et pas seulement via `context`) : il
-    /// doit vivre aussi longtemps que le store, l'agent des Favoris (1.10) a
-    /// besoin d'y accéder pour partager exactement le même store, et les tests
-    /// en dérivent un `ModelContext` neuf pour vérifier ce qui a réellement
-    /// atteint la base.
-    let container: ModelContainer
+    /// Stockage partagé avec `FavoritesStore` (voir `TrivaStorage`) : un
+    /// « Réessayer » réussi rebranche les deux stores d'un coup.
+    let storage: TrivaStorage
 
-    /// Compteur d'écritures réussies. Voir « Signal de changement » ci-dessus.
-    /// `private(set)` : personne d'autre que le store ne décide qu'une écriture
+    /// Conteneur du stockage : les tests en dérivent un `ModelContext` neuf
+    /// pour vérifier ce qui a réellement atteint la base. Quand le stockage est
+    /// indisponible, c'est un conteneur de réserve vide, jamais lu ni écrit.
+    var container: ModelContainer { storage.container }
+
+    /// Compteur d'écritures réussies, plus les ouvertures réussies du stockage
+    /// après un échec. Voir « Signal de changement » ci-dessus. Calculé :
+    /// personne d'autre que le store et le stockage ne décide qu'un changement
     /// a eu lieu.
-    private(set) var revision = 0
+    var revision: Int { writeCount + storage.generation }
 
-    private let context: ModelContext
+    private var writeCount = 0
 
     /// Locale utilisée pour normaliser la recherche (casse et accents).
     /// Injectable pour que les tests ne dépendent pas de la langue de la
@@ -163,12 +176,27 @@ final class ChatHistoryStore {
     /// certaines langues (le `i` turc, notamment).
     private let locale: Locale
 
-    init(container: ModelContainer, locale: Locale = .current) {
-        self.container = container
-        self.context = container.mainContext
-        self.locale = locale
-        self.context.autosaveEnabled = false
+    convenience init(container: ModelContainer, locale: Locale = .current) {
+        self.init(storage: TrivaStorage(container: container), locale: locale)
     }
+
+    init(storage: TrivaStorage, locale: Locale = .current) {
+        self.storage = storage
+        self.locale = locale
+    }
+
+    /// Contexte unique de l'app, ou `storageUnavailable` : toute lecture et
+    /// toute écriture passent par ici, aucune ne peut donc viser le conteneur
+    /// de réserve.
+    private func readyContext() throws -> ModelContext {
+        guard let context = storage.context else { throw ChatHistoryStoreError.storageUnavailable }
+        return context
+    }
+
+    /// Retente l'ouverture de la base (bouton « Réessayer » de l'écran
+    /// d'erreur). `true` si elle est disponible à l'issue.
+    @discardableResult
+    func retryOpeningStorage() -> Bool { storage.retry() }
 
     // MARK: - Création
 
@@ -191,7 +219,7 @@ final class ChatHistoryStore {
     @discardableResult
     func createConversation(title: String, now: Date = .now) throws -> StoredConversation {
         let conversation = StoredConversation(title: title, createdAt: now, updatedAt: now)
-        context.insert(conversation)
+        try readyContext().insert(conversation)
         try save(operation: "création d'une conversation")
         return conversation
     }
@@ -248,6 +276,7 @@ final class ChatHistoryStore {
     /// avec lui (cascade). `nextOrder` utilise `max(order) + 1` : un trou dans
     /// les positions est sans effet.
     func delete(_ message: StoredMessage) throws {
+        let context = try readyContext()
         message.conversation?.updatedAt = .now
         context.delete(message)
         try save(operation: "suppression d'un message")
@@ -261,6 +290,7 @@ final class ChatHistoryStore {
         now: Date,
         save shouldSave: Bool = true
     ) throws -> StoredMessage {
+        let context = try readyContext()
         let message = StoredMessage(
             role: role,
             text: text,
@@ -349,6 +379,7 @@ final class ChatHistoryStore {
             descriptor.fetchLimit = limit
         }
 
+        let context = try readyContext()
         do {
             return try context.fetch(descriptor)
         } catch {
@@ -428,7 +459,7 @@ final class ChatHistoryStore {
     /// Attention au piège documenté en tête de type : la référence passée ici
     /// reste lisible après coup, il faut la relâcher.
     func delete(_ conversation: StoredConversation) throws {
-        context.delete(conversation)
+        try readyContext().delete(conversation)
         try save(operation: "suppression d'une conversation")
     }
 
@@ -443,6 +474,7 @@ final class ChatHistoryStore {
     /// réellement exercé. Les volumes (centaines de conversations) rendent la
     /// différence de coût sans objet.
     func deleteAll() throws {
+        let context = try readyContext()
         for conversation in try conversations() {
             context.delete(conversation)
         }
@@ -452,6 +484,7 @@ final class ChatHistoryStore {
     // MARK: - Sauvegarde
 
     private func save(operation: String) throws {
+        let context = try readyContext()
         do {
             try context.save()
         } catch {
@@ -469,6 +502,6 @@ final class ChatHistoryStore {
         // Après le `save()` seulement : une écriture refusée puis annulée n'est
         // pas un changement, et réveiller les vues pour rien leur ferait
         // afficher un état qui n'existe pas.
-        revision += 1
+        writeCount += 1
     }
 }

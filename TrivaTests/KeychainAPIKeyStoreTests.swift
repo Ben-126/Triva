@@ -17,7 +17,7 @@ import Security
 struct KeychainAPIKeyStoreTests {
     @Test("Round-trip : save() puis apiKey() renvoie la même valeur")
     func saveThenRead() throws {
-        let store = KeychainAPIKeyStore(service: uniqueService())
+        let store = KeychainAPIKeyStore(service: uniqueService(), migrationFlagsSuite: freshFlags())
         defer { try? store.deleteAPIKey(account: "claude") }
 
         try store.save(apiKey: "sk-test-123", account: "claude")
@@ -27,14 +27,14 @@ struct KeychainAPIKeyStoreTests {
 
     @Test("apiKey() renvoie nil quand rien n'est stocké")
     func readWithoutStoredKeyReturnsNil() throws {
-        let store = KeychainAPIKeyStore(service: uniqueService())
+        let store = KeychainAPIKeyStore(service: uniqueService(), migrationFlagsSuite: freshFlags())
 
         #expect(try store.apiKey(account: "claude") == nil)
     }
 
     @Test("readAPIKey() (lecture hors main actor) renvoie la même valeur que apiKey()")
     func offMainReadMatchesSyncRead() async throws {
-        let store = KeychainAPIKeyStore(service: uniqueService())
+        let store = KeychainAPIKeyStore(service: uniqueService(), migrationFlagsSuite: freshFlags())
         defer { try? store.deleteAPIKey(account: "claude") }
 
         #expect(try await store.readAPIKey(account: "claude") == nil)
@@ -45,7 +45,7 @@ struct KeychainAPIKeyStoreTests {
 
     @Test("save() écrase une clé existante pour le même compte")
     func saveOverwritesExistingKey() throws {
-        let store = KeychainAPIKeyStore(service: uniqueService())
+        let store = KeychainAPIKeyStore(service: uniqueService(), migrationFlagsSuite: freshFlags())
         defer { try? store.deleteAPIKey(account: "claude") }
 
         try store.save(apiKey: "sk-old", account: "claude")
@@ -56,7 +56,7 @@ struct KeychainAPIKeyStoreTests {
 
     @Test("deleteAPIKey() supprime la clé stockée")
     func deleteRemovesKey() throws {
-        let store = KeychainAPIKeyStore(service: uniqueService())
+        let store = KeychainAPIKeyStore(service: uniqueService(), migrationFlagsSuite: freshFlags())
 
         try store.save(apiKey: "sk-test", account: "claude")
         try store.deleteAPIKey(account: "claude")
@@ -66,7 +66,7 @@ struct KeychainAPIKeyStoreTests {
 
     @Test("deleteAPIKey() ne lève pas d'erreur si rien n'est stocké")
     func deleteWithoutStoredKeyDoesNotThrow() throws {
-        let store = KeychainAPIKeyStore(service: uniqueService())
+        let store = KeychainAPIKeyStore(service: uniqueService(), migrationFlagsSuite: freshFlags())
 
         try store.deleteAPIKey(account: "claude")
     }
@@ -89,7 +89,7 @@ struct KeychainAPIKeyStoreTests {
         #expect(try readLegacy(service: service, account: "claude") == "sk-legacy")
     }
 
-    @Test("Mac : une clé supprimée dans Triva ne renaît pas depuis l'ancien trousseau, qui n'est pas touché", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
+    @Test("Mac : une clé supprimée dans Triva ne renaît pas depuis l'ancien trousseau, ET la copie héritée est supprimée aussi (R2-1)", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
     func deletedKeyDoesNotComeBack() throws {
         let service = uniqueService()
         let flags = freshFlags()
@@ -101,11 +101,12 @@ struct KeychainAPIKeyStoreTests {
         try store.deleteAPIKey(account: "claude")
 
         #expect(try store.apiKey(account: "claude") == nil)
-        #expect(try readLegacy(service: service, account: "claude") == "sk-legacy")
+        #expect(try readProtected(service: service, account: "claude") == nil)
+        #expect(try readLegacy(service: service, account: "claude") == nil)
     }
 
-    @Test("Mac : une clé enregistrée dans Triva l'emporte sur l'ancienne, sans la modifier", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
-    func savedKeyShadowsLegacy() throws {
+    @Test("Mac : remplacer une clé supprime aussi l'ancienne copie héritée (R2-1)", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
+    func replacingAKeyRemovesTheLegacyCopy() throws {
         let service = uniqueService()
         let flags = freshFlags()
         defer { removeLegacy(service: service, account: "claude") }
@@ -116,7 +117,7 @@ struct KeychainAPIKeyStoreTests {
         try store.save(apiKey: "sk-new", account: "claude")
 
         #expect(try store.apiKey(account: "claude") == "sk-new")
-        #expect(try readLegacy(service: service, account: "claude") == "sk-legacy")
+        #expect(try readLegacy(service: service, account: "claude") == nil)
     }
 
     @Test("Mac : migrateLegacyKeys() copie tous les comptes du service, hors du fil principal", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
@@ -153,11 +154,6 @@ struct KeychainAPIKeyStoreTests {
     }
 
     // MARK: Aides : accès direct aux deux trousseaux, hors du code testé
-
-    /// Suite `UserDefaults` neuve par test pour les drapeaux de migration (jamais la standard).
-    private func freshFlags() -> String {
-        "triva.tests.keychainFlags.\(UUID().uuidString)"
-    }
 
     private func legacyQuery(service: String, account: String) -> [String: Any] {
         [
@@ -201,6 +197,15 @@ struct KeychainAPIKeyStoreTests {
         return String(data: data, encoding: .utf8)
     }
 #endif
+
+    /// Suite `UserDefaults` neuve par test pour les drapeaux de migration (jamais la standard : sur
+    /// Mac, `save` et `deleteAPIKey` y posent un drapeau par compte, dans les préférences réelles
+    /// de l'app). Retenue pour être supprimée en fin de run (`TestDefaults`).
+    private func freshFlags() -> String {
+        let name = "triva.tests.keychainFlags.\(UUID().uuidString)"
+        TestDefaults.track(suiteName: name)
+        return name
+    }
 
     private func uniqueService() -> String {
         "com.benpodrojsky.Triva.tests.\(UUID().uuidString)"

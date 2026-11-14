@@ -32,15 +32,23 @@ extension ChatViewModelTests {
     func noSuggestionsWithoutACompletedAnswer() async {
         let failing = MockStreamingAIGenerating(chunks: ["partiel"], midStreamFailure: MockError.midStreamFailure)
         let empty = MockStreamingAIGenerating(chunks: [])
-        for aiProvider in [failing, empty] {
+        for brokenProvider in [failing, empty] {
             let suggestions = SuggestionsRecorder(result: ["Suggestion"])
-            let viewModel = makeViewModel(resolveProvider: { aiProvider }, suggestions: suggestions)
+            let healthyProvider = MockStreamingAIGenerating(chunks: ["Réponse aboutie."])
+            var providers: [any AIGenerating] = [brokenProvider, healthyProvider]
+            let viewModel = makeViewModel(resolveProvider: { providers.removeFirst() }, suggestions: suggestions)
 
-            await viewModel.send(query: "requête")
-            try? await Task.sleep(for: .milliseconds(10))
+            await viewModel.send(query: "question qui échoue")
+            // Attente sur un ÉVÉNEMENT, pas sur un délai : une seconde question aboutie demande ses
+            // suggestions (`suggestionsTask`, lancée après le retour de `send`). Quand elles sont arrivées,
+            // une demande tardive de la première question serait déjà dans l'enregistreur.
+            await viewModel.send(query: "question qui aboutit")
+            await waitUntil("suggestions de la seconde question demandées") { suggestions.histories.count >= 1 }
+            await waitUntil("suggestions de la seconde question affichées") { viewModel.messages.last?.suggestions == ["Suggestion"] }
 
-            #expect(suggestions.histories.isEmpty)
-            #expect(viewModel.messages.last?.suggestions.isEmpty == true)
+            #expect(suggestions.histories.count == 1)
+            #expect(suggestions.histories.first?.last { $0.role == .user }?.content == "question qui aboutit")
+            #expect(viewModel.messages.first { $0.role == .assistant }?.suggestions.isEmpty == true)
         }
     }
 
@@ -74,7 +82,11 @@ extension ChatViewModelTests {
 
         await viewModel.send(query: "requête")
         await waitUntil("le service réel a interrogé le provider") { aiProvider.failedSuggestionCalls == 1 }
-        try? await Task.sleep(for: .milliseconds(10))
+        // Événement plutôt que délai : la question suivante annule `suggestionsTask` et en lance une autre ;
+        // quand la seconde a interrogé le provider à son tour, la première est terminée (ou annulée), et
+        // une erreur qu'elle aurait fini par poser serait déjà visible.
+        await viewModel.send(query: "autre requête")
+        await waitUntil("le service réel a interrogé le provider pour la 2e question") { aiProvider.failedSuggestionCalls == 2 }
 
         #expect(viewModel.errorDescription == nil)
         #expect(viewModel.messages.last?.status == .completed)

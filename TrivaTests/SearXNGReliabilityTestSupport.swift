@@ -124,7 +124,7 @@ nonisolated final class ScriptedProber: InstanceProbing, Sendable {
 /// `UserDefaults` isolé, à supprimer en fin de test.
 func makeIsolatedDefaults() -> (defaults: UserDefaults, cleanup: @Sendable () -> Void) {
     let name = "SearXNGReliabilityTests-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: name)!
+    let defaults = TestDefaults.suite(named: name)!
     nonisolated(unsafe) let captured = defaults
     return (defaults, { captured.removePersistentDomain(forName: name) })
 }

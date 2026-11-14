@@ -7,6 +7,22 @@
 
 import Foundation
 
+/// Échec de suppression d'un fournisseur personnalisé : sa clé n'a pas pu être
+/// retirée du Trousseau. Le fournisseur est alors CONSERVÉ : le retirer quand
+/// même laisserait une clé orpheline dans le Trousseau, sans plus aucun moyen
+/// de l'atteindre depuis l'app.
+nonisolated enum CustomProviderStoreError: Error, Sendable, Equatable {
+    case keyNotDeleted
+
+    /// Message court pour l'écran. **À VALIDER PAR BEN.**
+    var userFacingMessage: String {
+        switch self {
+        case .keyNotDeleted:
+            "La clé n'a pas pu être supprimée du Trousseau, le fournisseur est conservé. Réessaie."
+        }
+    }
+}
+
 /// Persiste les fournisseurs BYOK "personnalisés" créés par l'utilisateur
 /// (0.6 élargi, en complément du catalogue générique `CloudProviderCatalog`)
 /// — uniquement les métadonnées non sensibles (nom, URL de base, modèle). La
@@ -53,10 +69,18 @@ final class CustomProviderStore {
     /// (compte Keychain = `id`, voir `OpenAICompatibleProvider.init(preset:)`)
     /// est aussi supprimée, sinon elle resterait dans le Keychain sans plus
     /// aucun moyen de l'atteindre depuis l'app.
-    func remove(id: String) {
+    ///
+    /// La clé part EN PREMIER : si le Trousseau refuse, rien d'autre ne change
+    /// (fournisseur et sélection conservés) et `CustomProviderStoreError` remonte
+    /// jusqu'à l'écran, qui peut proposer de réessayer.
+    func remove(id: String) throws {
+        do {
+            try keyStore.deleteAPIKey(account: id)
+        } catch {
+            throw CustomProviderStoreError.keyNotDeleted
+        }
         customPresets.removeAll { $0.id == id }
         persist()
-        try? keyStore.deleteAPIKey(account: id)
 
         if selectionStore.selection?.providerID == id {
             selectionStore.selection = nil

@@ -392,7 +392,6 @@ private struct TrivaRootShell: View {
         case .library:
             LibraryView(
                 store: stores.chatHistory,
-                isStorageVolatile: stores.isHistoryStorageVolatile,
                 onOpenConversation: { coordinator.openConversation(id: $0) },
                 onConversationDeleted: { coordinator.conversationWasDeleted(id: $0) }
             )
@@ -400,7 +399,6 @@ private struct TrivaRootShell: View {
             FavoritesView(
                 store: stores.favorites,
                 historyStore: stores.chatHistory,
-                isStorageVolatile: stores.isHistoryStorageVolatile,
                 onOpenConversation: { coordinator.openConversation(id: $0) }
             )
         case .settings:

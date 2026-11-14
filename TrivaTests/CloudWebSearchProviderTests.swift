@@ -165,37 +165,6 @@ private enum CloudSearchFixtures {
         """
     }
 
-    /// `POST …/v1beta/models/{model}:generateContent` avec `tools: [{ "google_search": {} }]`.
-    /// Le chunk d'index 1 n'est pas un lien web (contexte de récupération) : les indices doivent
-    /// rester alignés.
-    static let gemini = """
-    {
-      "candidates": [
-        {
-          "content": { "role": "model", "parts": [ { "text": "Le PSG a gagné la finale." } ] },
-          "finishReason": "STOP",
-          "groundingMetadata": {
-            "webSearchQueries": ["finale ligue des champions 2026"],
-            "searchEntryPoint": { "renderedContent": "<div>…</div>" },
-            "groundingChunks": [
-              { "web": { "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQ-aaa", "title": "lemonde.fr" } },
-              { "retrievedContext": { "uri": "gs://bucket/doc.pdf", "title": "Document interne" } },
-              { "web": { "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQ-bbb", "title": "bbc.com" } }
-            ],
-            "groundingSupports": [
-              { "segment": { "startIndex": 0, "endIndex": 24, "text": "Le PSG a gagné la finale." }, "groundingChunkIndices": [0, 2] },
-              { "segment": { "startIndex": 25, "endIndex": 60, "text": "Score de 3 à 1." }, "groundingChunkIndices": [2] }
-            ]
-          }
-        }
-      ],
-      "usageMetadata": { "promptTokenCount": 20, "candidatesTokenCount": 12 }
-    }
-    """
-
-    static let geminiWithoutGrounding = """
-    { "candidates": [ { "content": { "role": "model", "parts": [ { "text": "Bonjour." } ] }, "finishReason": "STOP" } ] }
-    """
 }
 
 // MARK: - Aides
@@ -227,7 +196,6 @@ private func fixture(for service: CloudWebSearchService) -> String {
     case .perplexity: CloudSearchFixtures.perplexity
     case .openAI: CloudSearchFixtures.openAI
     case .anthropic: CloudSearchFixtures.anthropic
-    case .gemini: CloudSearchFixtures.gemini
     }
 }
 
@@ -235,7 +203,7 @@ private func fixture(for service: CloudWebSearchService) -> String {
 
 @Suite("CloudWebSearchProvider — fournisseurs supportés")
 struct CloudWebSearchSupportTests {
-    @Test("Les quatre fournisseurs documentés sont supportés", arguments: ["perplexity", "openai", "claude", "gemini"])
+    @Test("Les trois fournisseurs documentés sont supportés (Gemini volontairement absent)", arguments: ["perplexity", "openai", "claude"])
     func supportedProviders(providerID: String) {
         #expect(CloudWebSearchProvider.isSupported(providerID: providerID))
     }
@@ -249,6 +217,13 @@ struct CloudWebSearchSupportTests {
         #expect(CloudWebSearchService(providerID: providerID) == nil)
     }
 
+    @Test("Gemini n'a plus de recherche cloud : Google impose ses Search Suggestions avec google_search")
+    func geminiIsNotSupported() {
+        #expect(!CloudWebSearchProvider.isSupported(providerID: "gemini"))
+        #expect(CloudWebSearchService(providerID: "gemini") == nil)
+        #expect(CloudWebSearchService(rawValue: "gemini") == nil)
+    }
+
     /// Les constantes sont recopiées (les sources sont isolées au main actor) : ce test empêche
     /// qu'elles dérivent.
     @MainActor
@@ -256,7 +231,7 @@ struct CloudWebSearchSupportTests {
     func identifiersMatchTheirSources() {
         #expect(CloudWebSearchService.anthropic.rawValue == CloudProviderSelectionResolver.claudeProviderID)
         let catalogIDs = Set(CloudProviderCatalog.presets.map(\.id))
-        for service in [CloudWebSearchService.perplexity, .openAI, .gemini] {
+        for service in [CloudWebSearchService.perplexity, .openAI] {
             #expect(catalogIDs.contains(service.rawValue))
         }
     }
@@ -266,7 +241,6 @@ struct CloudWebSearchSupportTests {
         #expect(CloudWebSearchService.perplexity.defaultModel == nil)
         #expect(CloudWebSearchService.openAI.defaultModel == "gpt-6-luna")
         #expect(CloudWebSearchService.anthropic.defaultModel == "claude-haiku-5-5")
-        #expect(CloudWebSearchService.gemini.defaultModel == "gemini-3.5-flash-lite")
     }
 
     @Test("Le provider s'annonce comme recherche du fournisseur IA")
@@ -328,7 +302,7 @@ struct CloudWebSearchFactoryTests {
 
     @Test("Fournisseur supporté sans clé enregistrée : pas de provider")
     func missingKey() throws {
-        let selection = CloudProviderSelection(providerID: "gemini", model: "gemini-2.5-flash")
+        let selection = CloudProviderSelection(providerID: "perplexity", model: "sonar")
         #expect(try CloudWebSearchProvider.make(for: selection, keyStore: stored) == nil)
     }
 
@@ -562,77 +536,6 @@ struct CloudWebSearchAnthropicTests {
         let (provider, _) = cloudProvider(.anthropic, status: 400, body: body)
         let error = await byokThrownError { _ = try await provider.search(query: "x", options: WebSearchOptions()) }
         #expect(error as? WebSearchError == .unavailable)
-    }
-}
-
-// MARK: - Gemini
-
-@Suite("CloudWebSearchProvider — Gemini (ancrage Google Search)")
-struct CloudWebSearchGeminiTests {
-    /// Mission A1 : les segments des `groundingSupports` sont le texte de la RÉPONSE de Gemini,
-    /// jamais un extrait de la page ; la fixture en contient, aucun ne doit ressortir.
-    @Test("Sources = groundingChunks[].web, chunk non web sauté ; aucun extrait tiré du texte du modèle")
-    func parsesGroundingMetadata() async throws {
-        let (provider, _) = cloudProvider(.gemini, body: CloudSearchFixtures.gemini)
-        let response = try await provider.search(query: "finale ligue des champions", options: WebSearchOptions())
-
-        #expect(response.results.count == 2)
-        #expect(response.results[0].url == "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQ-aaa")
-        #expect(response.results[0].title == "lemonde.fr")
-        #expect(response.results[1].title == "bbc.com")
-        #expect(response.results.allSatisfy { $0.content == nil })
-    }
-
-    @Test("Forme de la requête : generateContent, outil google_search, clé en en-tête")
-    func requestShape() async throws {
-        let (provider, requester) = cloudProvider(.gemini, body: CloudSearchFixtures.gemini)
-        _ = try await provider.search(query: "finale", options: WebSearchOptions())
-
-        let request = try #require(requester.requests.first)
-        #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString
-            == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
-        #expect(request.value(forHTTPHeaderField: "x-goog-api-key") == cloudSearchSecret)
-        #expect(request.url?.query == nil)
-
-        let body = requestBody(request)
-        let tools = try #require(body["tools"] as? [[String: Any]])
-        #expect(tools.count == 1)
-        #expect(tools[0]["google_search"] is [String: Any])
-        let config = try #require(body["generationConfig"] as? [String: Any])
-        #expect(config["maxOutputTokens"] as? Int == CloudWebSearchProvider.maxOutputTokens)
-        let contents = try #require(body["contents"] as? [[String: Any]])
-        #expect(contents.first?["role"] as? String == "user")
-    }
-
-    @Test("Le modèle personnalisé figure dans l'URL")
-    func customModelInURL() async throws {
-        let (provider, requester) = cloudProvider(.gemini, body: CloudSearchFixtures.gemini, model: "gemini-3.5-flash-lite")
-        _ = try await provider.search(query: "finale", options: WebSearchOptions())
-        #expect(requester.requests.first?.url?.path == "/v1beta/models/gemini-3.5-flash-lite:generateContent")
-    }
-
-    @Test("Le modèle n'a pas cherché (pas de groundingMetadata) : réponse vide valide")
-    func noGrounding() async throws {
-        let (provider, _) = cloudProvider(.gemini, body: CloudSearchFixtures.geminiWithoutGrounding)
-        let response = try await provider.search(query: "bonjour", options: WebSearchOptions())
-        #expect(response.results.isEmpty)
-    }
-
-    @Test("Clé invalide : Gemini répond 400 (API_KEY_INVALID), pas 401")
-    func invalidKeyIsBadRequest() async {
-        let body = #"{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com"}]}}"#
-        let (provider, _) = cloudProvider(.gemini, status: 400, body: body)
-        let error = await byokThrownError { _ = try await provider.search(query: "x", options: WebSearchOptions()) }
-        #expect(error as? WebSearchError == .unauthorized)
-    }
-
-    @Test("Un autre 400 Gemini est une requête mal formée, pas une clé refusée")
-    func otherBadRequest() async {
-        let body = #"{"error":{"code":400,"message":"Search as a tool is not enabled for this model","status":"INVALID_ARGUMENT"}}"#
-        let (provider, _) = cloudProvider(.gemini, status: 400, body: body)
-        let error = await byokThrownError { _ = try await provider.search(query: "x", options: WebSearchOptions()) }
-        #expect(error as? WebSearchError == .invalidResponse)
     }
 }
 

@@ -32,10 +32,26 @@ enum ChatViewModelError: Error, Sendable, Equatable {
 ///
 /// ## Annulation
 /// L'échange tourne dans une `Task` interne reliée à l'appelant par
-/// `withTaskCancellationHandler` : le Stop de `ChatView` (annulation de sa
-/// `sendTask`) et `startNewConversation()` aboutissent au même
+/// `withTaskCancellationHandler` : `stop()` (le bouton Stop de `ChatView`) et
+/// `startNewConversation()` aboutissent au même
 /// `Task.isCancelled`, vérifié dans LES DEUX `catch` — une annulation n'est
-/// jamais un échec ni une réponse vide. Le jeton `activeExchangeID` empêche un
+/// jamais un échec ni une réponse vide.
+///
+/// ## Réponse qui continue en arrière-plan (mission C5, décision R3-2 de Ben)
+/// Ouvrir une autre conversation (Bibliothèque, favori) n'annule plus la génération en cours : elle
+/// passe en arrière-plan (`ChatViewModel+Background.swift`), finit, et écrit sa réponse dans SA
+/// conversation de l'historique. Une seule génération à la fois ; une question envoyée ailleurs
+/// pendant ce temps l'arrête (réponse partielle gardée), comme Stop.
+///
+/// ## La génération appartient au modèle, pas à la vue
+/// `startSend(query:)` (et `startRetryInQuickMode`, `startRetryAfterOffline`)
+/// lance l'échange dans une `Task` GARDÉE ICI (`sendTask`). `ChatView` est
+/// démontée à chaque bascule de classe de taille (iPhone Duo ouvert ou fermé,
+/// Split View, Stage Manager) et à chaque changement de destination : si la
+/// `Task` était à elle, ce démontage coupait la réponse en plein milieu
+/// (revue R3-1). Seuls Stop, « Nouvelle conversation », une conversation
+/// rouverte et la fin de la session (`SearchSession.deinit`, changement de
+/// moteur ou fenêtre fermée) l'annulent. Le jeton `activeExchangeID` empêche un
 /// échange remplacé, qui finit de se dérouler, de toucher l'état du suivant.
 ///
 /// Extensions, pour garder ce fichier sous les 800 lignes :
@@ -109,13 +125,18 @@ final class ChatViewModel {
     private let makeOrchestrator: @MainActor (OrchestratorInputs) -> SearchOrchestrator
     private let generateSuggestions: @MainActor (any AIGenerating, [ClassifierChatMessage]) async -> [String]
     let makeMediaSearcher: @MainActor (FailoverManager) -> any MediaSearching
-    private let historyStore: ChatHistoryStore?
+    let historyStore: ChatHistoryStore?
     let favoritesStore: FavoritesStore?
     let now: @MainActor () -> Date
 
     @ObservationIgnored var activeExchangeID: UUID?
-    @ObservationIgnored private var generationTask: Task<Void, Never>?
-    @ObservationIgnored private var suggestionsTask: Task<Void, Never>?
+    /// Génération passée en arrière-plan par l'ouverture d'une autre conversation (`ChatViewModel+Background`).
+    @ObservationIgnored var backgroundExchange: BackgroundExchange?
+    @ObservationIgnored var generationTask: Task<Void, Never>?
+    /// `Task` de l'envoi en cours lancé par `startSend` et consorts : voir « La génération appartient
+    /// au modèle ». L'annuler annule `generationTask` via `runExchange`.
+    @ObservationIgnored var sendTask: Task<Void, Never>?
+    @ObservationIgnored var suggestionsTask: Task<Void, Never>?
     @ObservationIgnored var mediaTasks: [MediaRequest: Task<Void, Never>] = [:]
     @ObservationIgnored var favoritesCache: (revision: Int, ids: Set<UUID>)?
 
@@ -193,7 +214,7 @@ final class ChatViewModel {
 
     /// Ce que l'échange a produit, tenu HORS du fil : `startNewConversation()`
     /// peut retirer le message, la réponse partielle doit quand même être persistée.
-    private struct AnswerDraft {
+    struct AnswerDraft {
         var text = ""
         var sources: [SearXNGSearchResult] = []
         /// Mentions sur les sources, persistées avec la réponse (mission E1a).
@@ -234,6 +255,42 @@ final class ChatViewModel {
         ))
     }
 
+    /// Envoi lancé par l'écran : l'échange tourne dans une `Task` gardée par le modèle, donc il survit
+    /// au démontage de la vue. `Task.immediate` : `send` ajoute la question et la réponse en cours
+    /// (donc `isGenerating`) AVANT son premier `await`, dans la même transaction que le brouillon vidé
+    /// par l'appelant. Avec un `Task {}` ordinaire, le corps ne partait qu'au tour suivant : une image
+    /// où le brouillon est vide et la génération pas encore lancée, le bouton d'envoi (verre
+    /// proéminent) clignotait et SwiftUI signalait « glassEffect() tried to update multiple times per
+    /// frame » à chaque envoi par toucher (mesuré : 4 sur 4 avec `Task {}`, 0 sur 4 sans).
+    func startSend(query: String) {
+        sendTask = Task.immediate { await self.send(query: query) }
+    }
+
+    /// Suggestion touchée : envoyée comme une nouvelle question, arrêtée par `stop()` comme un envoi tapé.
+    func startSuggestion(_ suggestion: String) {
+        guard !isGenerating else { return }
+        sendTask = Task { await self.send(query: suggestion) }
+    }
+
+    /// Voir `retryInQuickMode(messageID:)`.
+    func startRetryInQuickMode(messageID: UUID) {
+        guard !isGenerating else { return }
+        sendTask = Task { await self.retryInQuickMode(messageID: messageID) }
+    }
+
+    /// Voir `retryAfterOffline(quickMode:)`.
+    func startRetryAfterOffline(quickMode: Bool) {
+        guard !isGenerating else { return }
+        sendTask = Task { await self.retryAfterOffline(quickMode: quickMode) }
+    }
+
+    /// Bouton Stop : arrête l'échange en cours. La réponse partielle est conservée, marquée interrompue.
+    func stop() {
+        sendTask?.cancel()
+        generationTask?.cancel()
+        cancelBackgroundGeneration()
+    }
+
     /// Le bouton « Relancer en mode Rapide » n'a de sens que sur la DERNIÈRE
     /// réponse du fil, restée `.noReliableSources`, hors génération : une
     /// réponse plus ancienne serait écrite en FIN de conversation
@@ -267,6 +324,8 @@ final class ChatViewModel {
     }
 
     func runExchange(_ exchange: Exchange) async {
+        // Une seule génération à la fois : une question envoyée ici arrête celle restée en arrière-plan.
+        cancelBackgroundGeneration()
         let exchangeID = UUID()
         activeExchangeID = exchangeID
         isGenerating = true
@@ -285,7 +344,10 @@ final class ChatViewModel {
         } onCancel: {
             task.cancel()
         }
-        guard activeExchangeID == exchangeID else { return }
+        guard activeExchangeID == exchangeID else {
+            backgroundExchangeDidEnd(exchangeID: exchangeID)
+            return
+        }
         activeExchangeID = nil
         generationTask = nil
         isGenerating = false
@@ -300,6 +362,11 @@ final class ChatViewModel {
         if case .blocked(let reason)? = offlinePlan {
             blockOffline(exchange, exchangeID: exchangeID, reason: reason)
             return
+        }
+        // Hors connexion avec un modèle local : aucune recherche n'aura lieu, « Recherche des sources… »
+        // serait faux pendant toute la résolution du modèle (revue R3-6).
+        if offlinePlan == .answerWithoutSearch {
+            updateMessage(id: exchange.answerID) { $0.generationStage = .writing }
         }
         do {
             let provider = try await resolveProvider()
@@ -498,12 +565,14 @@ final class ChatViewModel {
     /// qui reste dans la Bibliothèque), vide le fil et les fichiers joints.
     /// `isGenerating` repasse à `false` sans attendre la fin de l'échange annulé.
     func startNewConversation() {
+        sendTask?.cancel()
         generationTask?.cancel()
         suggestionsTask?.cancel()
         for task in mediaTasks.values {
             task.cancel()
         }
         generationTask = nil
+        sendTask = nil
         suggestionsTask = nil
         mediaTasks = [:]
         activeExchangeID = nil
@@ -528,6 +597,8 @@ final class ChatViewModel {
     @discardableResult
     func loadConversation(id: UUID) -> Bool {
         if id == currentConversationID { return true }
+        // Sa génération tourne encore en arrière-plan : on la retrouve en direct, pas depuis l'historique.
+        if reattachBackgroundGeneration(conversationID: id) { return true }
         guard let historyStore else { return false }
         let restored: [Message]
         do {
@@ -540,6 +611,7 @@ final class ChatViewModel {
             reportPersistenceFailure(error)
             return false
         }
+        moveGenerationToBackground()
         startNewConversation()
         messages = restored
         currentConversationID = id
@@ -550,6 +622,7 @@ final class ChatViewModel {
     /// supprimée -> le chat repart à neuf. Après « tout effacer » :
     /// `startNewConversation()`.
     func conversationWasDeleted(id: UUID) {
+        if backgroundExchange?.conversationID == id { cancelBackgroundGeneration() }
         guard id == currentConversationID else { return }
         startNewConversation()
     }
@@ -607,61 +680,6 @@ final class ChatViewModel {
         return try store.createConversation(firstQuestion: firstQuestion, now: now())
     }
 
-    /// Points 2 et 3 : réponse écrite AU PLUS UNE FOIS, en fin d'échange
-    /// QUELLE QU'EN SOIT LA CAUSE (succès, erreur, annulation), texte partiel
-    /// compris, jamais vide ; dans la conversation capturée à l'envoi.
-    private func persistAnswer(_ answer: AnswerDraft, exchange: Exchange) {
-        guard let historyStore, let conversationID = exchange.conversationID,
-              !answer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        do {
-            // Supprimée pendant la génération : rien à compléter.
-            guard let conversation = try historyStore.conversation(with: conversationID) else { return }
-            let stored = try historyStore.appendAssistantMessage(
-                to: conversation, text: answer.text, sources: answer.sources, notes: answer.notes, now: now()
-            )
-            let storedID = stored.id
-            updateMessage(id: exchange.answerID) { message in
-                message.storedMessageID = storedID
-                message.storedConversationID = conversationID
-            }
-        } catch {
-            reportPersistenceFailure(error)
-        }
-    }
-
-    /// Décision de Ben (2026-10-30) : l'état « Aucune source fiable » est
-    /// persisté, pour qu'une conversation relue montre le message fixe et,
-    /// sur la dernière réponse, le bouton de relance.
-    private func persistNoReliableSources(exchange: Exchange) {
-        guard let historyStore, let conversationID = exchange.conversationID else { return }
-        do {
-            guard let conversation = try historyStore.conversation(with: conversationID) else { return }
-            let stored = try historyStore.appendNoReliableSourcesMessage(
-                to: conversation, text: Self.noReliableSourcesMessage, now: now()
-            )
-            let storedID = stored.id
-            updateMessage(id: exchange.answerID) { message in
-                message.storedMessageID = storedID
-                message.storedConversationID = conversationID
-            }
-        } catch {
-            reportPersistenceFailure(error)
-        }
-    }
-
-    /// Relance : la réponse « Aucune source fiable » persistée est remplacée
-    /// par la nouvelle, pas laissée devant elle dans la conversation relue.
-    private func deleteStoredMessage(id storedID: UUID?, conversationID: UUID?) {
-        guard let historyStore, let storedID, let conversationID else { return }
-        do {
-            guard let conversation = try historyStore.conversation(with: conversationID),
-                  let stored = conversation.messages.first(where: { $0.id == storedID }) else { return }
-            try historyStore.delete(stored)
-        } catch {
-            reportPersistenceFailure(error)
-        }
-    }
-
     func reportPersistenceFailure(_ error: any Error) {
         persistenceErrorDescription = Self.userFacingMessage(for: error)
     }
@@ -687,9 +705,22 @@ final class ChatViewModel {
         messages[..<index].last { $0.role == .user }?.text
     }
 
+    /// Un message du fil affiché ; à défaut, celui d'une génération passée en arrière-plan. Jamais
+    /// d'écriture dans le fil affiché pour un message d'une autre conversation : les identifiants
+    /// de réponse sont uniques, un message absent du fil est simplement ignoré.
     func updateMessage(id: UUID, _ update: (inout Message) -> Void) {
-        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = messages.firstIndex(where: { $0.id == id }) else {
+            backgroundExchange?.update(id: id, update)
+            return
+        }
         update(&messages[index])
+    }
+
+    /// Remplace le fil affiché (`ChatViewModel+Background`, `messages` étant `private(set)` ici).
+    func displayThread(_ thread: [Message], conversationID: UUID, isGenerating generating: Bool) {
+        messages = thread
+        currentConversationID = conversationID
+        isGenerating = generating
     }
 
     /// Historique du classifieur ET du prompt final (bug 1) : les tours

@@ -12,7 +12,7 @@ import Foundation
 @MainActor
 @Suite("ResponseMode")
 struct ResponseModeTests {
-    @Test("Exactement 3 cas — le mode debate du web est hors périmètre V1")
+    @Test("Exactement 3 cas — le mode debate de la version web d'origine est hors périmètre V1")
     func exactlyThreeCases() {
         #expect(ResponseMode.allCases.count == 3)
         #expect(ResponseMode.allCases == [.quick, .deep, .reliable])
@@ -108,7 +108,7 @@ struct ResponseModeSettingsStoreTests {
     /// `UserDefaults` isolé par test, même principe que
     /// `MLXModelSelectionStoreTests.uniqueDefaults()`.
     private func uniqueDefaults() -> UserDefaults {
-        UserDefaults(suiteName: "test.responseModeSettingsStore.\(UUID().uuidString)")!
+        TestDefaults.suite(named: "test.responseModeSettingsStore.\(UUID().uuidString)")!
     }
 
     @Test(".quick par défaut sans donnée stockée (décision de Ben)")

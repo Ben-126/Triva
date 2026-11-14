@@ -228,7 +228,7 @@ struct VideoSearchServiceTests {
         #expect(mapped[0].title == "Une vidéo")
     }
 
-    @Test("Mappe un résultat valide même sans iframe_src (divergence assumée vs le web)")
+    @Test("Mappe un résultat valide même sans iframe_src (divergence assumée avec la version web d'origine)")
     func mapsValidResultWithoutEmbed() {
         let mapped = VideoSearchService.filterAndMap([searxngResult(iframeSrc: nil)], maxResults: 10)
 

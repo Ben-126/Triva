@@ -13,7 +13,7 @@ import Testing
 /// `UserDefaults` isolé par test, même principe que
 /// `ResponseModeSettingsStoreTests.uniqueDefaults()`.
 private func uniqueSelectorDefaults() throws -> UserDefaults {
-    try #require(UserDefaults(suiteName: "test.responseModeSelector.\(UUID().uuidString)"))
+    try #require(TestDefaults.suite(named: "test.responseModeSelector.\(UUID().uuidString)"))
 }
 
 /// `@MainActor` : `ResponseModeSelectorPresentation`, `ResponseModeSelector` et
@@ -80,7 +80,7 @@ struct ResponseModeSelectorTests {
     /// Même remarque que ci-dessus. Contrôle positif d'abord, avec une valeur
     /// différente du défaut : prouve que la clé est bien celle que lit le
     /// store, sinon le repli serait testé à vide.
-    @Test("Valeur mémorisée inconnue (ancien « debate » du web) : retour à Rapide")
+    @Test("Valeur mémorisée inconnue (ancien « debate » de la version web d'origine) : retour à Rapide")
     func unknownStoredValueFallsBackToQuick() throws {
         let defaults = try uniqueSelectorDefaults()
         let storageKey = "chat.responseMode.selected"

@@ -13,12 +13,12 @@ private let french = Locale(identifier: "fr_FR")
 private let english = Locale(identifier: "en_US")
 
 /// Un article récent par flux de la langue : de quoi remplir chaque sujet.
-private func everyFeedAnswers(delay: Duration? = nil) -> StubFeedFetcher {
+private func everyFeedAnswers(delay: Duration? = nil, sourceDelays: [String: Duration] = [:]) -> StubFeedFetcher {
     var behaviors: [String: StubFeedBehavior] = [:]
     for source in DiscoverFeedCatalog.allSources {
         behaviors[source.id] = .items([feedItem(source.id, hoursAgo: 3)])
     }
-    return StubFeedFetcher(behaviors, delay: delay)
+    return StubFeedFetcher(behaviors, delay: delay, sourceDelays: sourceDelays)
 }
 
 @MainActor
@@ -135,10 +135,26 @@ struct DiscoverServiceProgressTests {
 
     @Test("les sections du résultat suivent l'ordre du catalogue, pas celui des réponses")
     func sectionsKeepCatalogOrder() async {
-        let content = await makeService(fetcher: everyFeedAnswers(delay: .milliseconds(5)))
-            .fetchTrending(locale: english)
+        // Le PREMIER sujet du catalogue répond en dernier : chaque sujet attend d'autant moins qu'il est
+        // loin dans le catalogue. Avec un même délai pour tous, les flux arrivent dans l'ordre du
+        // catalogue, et un retour à l'ordre d'arrivée passerait inaperçu (revue R4-7).
+        let plan = makeService(fetcher: StubFeedFetcher()).plannedFeeds(language: .english)
+        let topics = DiscoverTopicCatalog.all.map(\.topic)
+        var sourceDelays: [String: Duration] = [:]
+        for feed in plan {
+            let rank = topics.firstIndex(of: feed.topic) ?? 0
+            sourceDelays[feed.source.id] = .milliseconds(20 * (topics.count - rank))
+        }
+        var arrival: [DiscoverTopic] = []
 
-        #expect(content.sections.map(\.topic) == DiscoverTopicCatalog.all.map(\.topic))
+        let content = await makeService(
+            fetcher: everyFeedAnswers(sourceDelays: sourceDelays),
+            maxConcurrentFeeds: plan.count
+        ).fetchTrending(locale: english, onTopicFinished: { topic, _ in arrival.append(topic) })
+
+        // La condition du test : l'arrivée est bien l'INVERSE du catalogue.
+        #expect(arrival == topics.reversed())
+        #expect(content.sections.map(\.topic) == topics)
     }
 }
 

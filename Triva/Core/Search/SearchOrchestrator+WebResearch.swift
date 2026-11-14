@@ -131,7 +131,7 @@ extension SearchOrchestrator {
             sources: sources,
             scrapedPages: pages,
             webSourceKind: seeded.sourceKind,
-            webSearchReport: seeded.report
+            webSearchReport: Self.report(seeded.report, rejudgedOn: sources, query: searchQuery, hasChain: webSearchChain != nil)
         )
     }
 
@@ -219,7 +219,9 @@ extension SearchOrchestrator {
             guard !urls.isEmpty else { break }
             attemptedKeys.formUnion(urls.map { Self.urlKey($0) })
 
-            let pages = await Self.scrapeAll(urls, using: scrapeService, timeout: scrapeRoundTimeout, clock: roundClock)
+            let pages = await Self.scrapeAll(
+                urls, using: scrapeService, timeout: scrapeRoundTimeout, clock: roundClock, onPageCollected: onScrapedPageCollected
+            )
             try Task.checkCancellation()
             harvest.pages.append(contentsOf: pages)
         }

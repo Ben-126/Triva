@@ -53,7 +53,10 @@ struct CardTitleRow<Trailing: View>: View {
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .glassEffect(.regular.tint(.accentColor.opacity(0.15)), in: .capsule)
+            // Fond plein teinté, PAS de verre : la carte qui porte cette ligne est déjà en verre, et du
+            // verre sur du verre dégrade rendu et lisibilité (DESIGN.md ; revue R3-8). 0,15 est
+            // l'opacité de fond de badge prévue par la DA.
+            .background(Color.accentColor.opacity(0.15), in: .capsule)
     }
 }
 

@@ -50,7 +50,7 @@ private func makeWiringStores(
     directory: [URL] = [],
     reliability: InstanceReliabilityStore = InstanceReliabilityStore()
 ) throws -> TrivaSharedStores {
-    let userDefaults = try #require(UserDefaults(suiteName: "test.searxngWiring.\(UUID().uuidString)"))
+    let userDefaults = try #require(TestDefaults.suite(named: "test.searxngWiring.\(UUID().uuidString)"))
     overrides.save(to: userDefaults)
     let directoryStore = SearXNGDirectoryStore()
     if !directory.isEmpty {

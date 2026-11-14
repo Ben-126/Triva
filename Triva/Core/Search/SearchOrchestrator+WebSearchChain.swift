@@ -56,4 +56,28 @@ extension SearchOrchestrator {
         let second = try await fallback.searchWeb(query: query, failoverManager: failoverManager)
         return SeededWebSearch(output: .searchResults(second.response.results), sourceKind: second.source, report: second.report)
     }
+
+    /// Mission C1, R1-2 : le verdict de pertinence de la chaîne porte sur la réponse BRUTE du moteur
+    /// (un seul résultat pertinent suffit à la retenir), mais ce que l'utilisateur voit et ce que le
+    /// modèle cite, ce sont les sources CLASSÉES (plancher de score, top N, alternance des langues).
+    /// Le classement peut écarter justement l'unique résultat pertinent : toutes les sources restantes
+    /// sont hors sujet, et ni le refus du mode Fiable ni le rappel hors-sujet ne se déclenchaient.
+    ///
+    /// Rejuge donc les sources classées avec le MÊME test (`LexicalRelevance`, mêmes mots vides, même
+    /// exigence de 2 mots). Ne fait que DÉGRADER un verdict favorable : un constat déjà négatif, une
+    /// liste vide ou sans aucun extrait (rien à juger, comme dans `LexicalRelevance.assess`) sont rendus tels quels.
+    /// Seulement avec une chaîne de repli, seule à juger : sans elle `matchesQuestion` reste vrai
+    /// (« rien n'est jugé »), comme documenté dans `SearchArtifacts+ReliableMode`.
+    nonisolated static func report(
+        _ report: WebSearchChainReport,
+        rejudgedOn rankedSources: [SearXNGSearchResult],
+        query: String,
+        hasChain: Bool
+    ) -> WebSearchChainReport {
+        guard hasChain, report.matchesQuestion, !rankedSources.isEmpty else { return report }
+        guard case .offTopic = LexicalRelevance(query: query).assess(rankedSources) else { return report }
+        var rejudged = report
+        rejudged.matchesQuestion = false
+        return rejudged
+    }
 }

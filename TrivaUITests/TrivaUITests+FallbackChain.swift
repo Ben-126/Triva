@@ -29,7 +29,7 @@ extension TrivaUITests {
         }
         step("La réponse vient des sources ouvertes") {
             open(.search)
-            _ = sendQuestion("Cherche la hauteur de la tour Eiffel")
+            _ = sendQuestion(Self.marked("Cherche la hauteur de la tour Eiffel"))
             waitForAnswerEnd()
             scrollKeyboardAway()
             capture("10-2 Réponse sans SearXNG")

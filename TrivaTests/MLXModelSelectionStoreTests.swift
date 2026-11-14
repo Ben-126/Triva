@@ -15,7 +15,7 @@ struct MLXModelSelectionStoreTests {
     /// `UserDefaults` isolé par test, même principe que
     /// `CloudProviderSelectionStoreTests.uniqueDefaults()`.
     private func uniqueDefaults() -> UserDefaults {
-        UserDefaults(suiteName: "test.mlxModelSelectionStore.\(UUID().uuidString)")!
+        TestDefaults.suite(named: "test.mlxModelSelectionStore.\(UUID().uuidString)")!
     }
 
     @Test("nil sans donnée stockée")

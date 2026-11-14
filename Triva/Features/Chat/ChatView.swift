@@ -121,6 +121,13 @@ nonisolated enum ChatScrollFollowing {
         return new.scrollableHeight > old.scrollableHeight
     }
 
+    /// `onAppear` ne recentre sur le début de la dernière réponse que pour une conversation que la vue
+    /// n'a pas encore positionnée (ouverture depuis la Bibliothèque ou un favori). Un simple retour sur
+    /// l'onglet Recherche garde la position de lecture.
+    static func shouldPositionOnAppear(current: UUID?, lastPositioned: UUID?) -> Bool {
+        current != lastPositioned
+    }
+
     static func allowsProgrammaticScroll(during phase: ScrollPhase) -> Bool {
         switch phase {
         case .idle, .animating:
@@ -182,17 +189,12 @@ struct ChatView: View {
     /// planter — repli sur `localDraft`.
     @Environment(SearchDraft.self) private var sessionDraft: SearchDraft?
     @State private var localDraft = ""
-    /// `Task` de la génération en cours, créée par `send()` — jamais une
-    /// `Task {}` perdue (le handle serait alors immédiatement jeté) : gardée
-    /// ici pour pouvoir l'annuler explicitement dans `.onDisappear`. Sans
-    /// cela, quitter cet écran pendant une génération (ex. changement de
-    /// moteur IA depuis `ContentView`) laisserait le flux tourner
-    /// indéfiniment en arrière-plan, invisible et impossible à arrêter —
-    /// alors que `ChatViewModel.send(query:)` réagit correctement à
-    /// l'annulation de cette `Task` (voir son commentaire de tête). Les
-    /// suggestions touchées et la relance en mode Rapide passent par elle
-    /// aussi : le bouton Stop les arrête de la même façon.
-    @State private var sendTask: Task<Void, Never>?
+    // La `Task` de la génération n'est PAS ici : `ChatViewModel.startSend` la garde (voir « La
+    // génération appartient au modèle »). Cette vue est démontée à chaque bascule de classe de taille
+    // et à chaque changement de destination ; une génération liée à elle s'arrêtait à chaque fois.
+    /// Dernière conversation dont le début de réponse a été montré (`showLastAnswerStart`), pour ne
+    /// recentrer qu'à l'OUVERTURE d'une autre conversation et pas à chaque retour sur l'onglet.
+    @State private var lastPositionedConversationID: UUID?
     /// Le fil suit-il le bas de la liste ? Voir `ChatScrollFollowing`.
     @State private var isPinnedToBottom = true
     /// Dernière phase de défilement connue, lue par l'observateur de
@@ -270,9 +272,6 @@ struct ChatView: View {
                 .help("Nouvelle conversation")
                 #endif
             }
-        }
-        .onDisappear {
-            sendTask?.cancel()
         }
     }
 
@@ -376,7 +375,16 @@ struct ChatView: View {
             // sources et pas sur la réponse (QA Q1, pt 14). L'ancrage par défaut en bas reste
             // pour le premier rendu, avant que la réponse ne soit posée.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
-            .onAppear { showLastAnswerStart(proxy: proxy) }
+            // Seulement quand la conversation affichée a changé depuis le dernier positionnement : `onAppear`
+            // se rejoue à chaque retour sur l'onglet, et ramenait au début de la réponse un lecteur
+            // descendu jusqu'aux sources (revue R3-5).
+            .onAppear {
+                guard ChatScrollFollowing.shouldPositionOnAppear(
+                    current: viewModel.currentConversationID,
+                    lastPositioned: lastPositionedConversationID
+                ) else { return }
+                showLastAnswerStart(proxy: proxy)
+            }
             // Sur iPhone, le clavier cache la barre d'onglets, et Retour ENVOIE dès qu'un brouillon
             // existe : sans ces gestes, impossible de quitter l'écran sans envoyer ni tout effacer,
             // ou de lire la réponse (constaté à l'écran, QA Q1). Un fil vide ne défile pas, d'où le
@@ -430,6 +438,7 @@ struct ChatView: View {
                 // si l'utilisateur avait remonté pour relire. Une conversation rouverte (aucune
                 // génération en cours) s'ouvre au début de sa dernière réponse.
                 if viewModel.isGenerating || viewModel.messages.isEmpty {
+                    lastPositionedConversationID = viewModel.currentConversationID
                     setPinned(true)
                     scrollToBottom(proxy: proxy)
                 } else {
@@ -482,6 +491,7 @@ struct ChatView: View {
     /// Conversation rouverte, rien en cours : début de la dernière réponse en haut de l'écran,
     /// suivi du bas coupé (sinon le premier changement de géométrie ramènerait aux sources).
     private func showLastAnswerStart(proxy: ScrollViewProxy) {
+        lastPositionedConversationID = viewModel.currentConversationID
         guard !viewModel.isGenerating,
               let last = viewModel.messages.last(where: { $0.role == .assistant }) else { return }
         setPinned(false)
@@ -519,7 +529,7 @@ struct ChatView: View {
             isSendDisabled: isSendDisabled,
             contentMaxWidth: contentMaxWidth,
             onSend: send,
-            onStop: { sendTask?.cancel() },
+            onStop: { viewModel.stop() },
             engineAccessory: engineAccessory
         )
     }
@@ -534,21 +544,14 @@ struct ChatView: View {
         } else {
             localDraft = ""
         }
-        // `Task.immediate` : `send` ajoute la question et la réponse en cours (donc `isGenerating`)
-        // AVANT son premier `await`, dans la même transaction que le brouillon vidé ci-dessus.
-        // Avec un `Task {}` ordinaire, le corps ne partait qu'au tour suivant : une image où le
-        // brouillon est vide et la génération pas encore lancée, le bouton d'envoi (verre
-        // proéminent) passait « inactif » puis « actif » en une image, et SwiftUI signalait
-        // « glassEffect() tried to update multiple times per frame » à chaque envoi par toucher
-        // (mesuré : 4 sur 4 avec `Task {}`, 0 sur 4 sans ce clignotement).
-        sendTask = Task.immediate { await viewModel.send(query: query) }
+        // `Task.immediate` dans `startSend` (pourquoi : son commentaire).
+        viewModel.startSend(query: query)
     }
 
-    /// Suggestion touchée : envoyée comme une nouvelle question, dans
-    /// `sendTask` (le bouton Stop l'arrête comme un envoi tapé).
+    /// Suggestion touchée : envoyée comme une nouvelle question (le bouton Stop l'arrête comme un
+    /// envoi tapé).
     private func sendSuggestion(_ suggestion: String) {
-        guard !viewModel.isGenerating else { return }
-        sendTask = Task { await viewModel.send(query: suggestion) }
+        viewModel.startSuggestion(suggestion)
     }
 
     /// Décision (c) : même question, en mode Rapide, à la place de la réponse
@@ -557,15 +560,15 @@ struct ChatView: View {
     private func retryInQuickMode(messageID: UUID) {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
-        sendTask = Task { await viewModel.retryInQuickMode(messageID: messageID) }
+        viewModel.startRetryInQuickMode(messageID: messageID)
     }
 
-    /// Envoi bloqué hors connexion (tâche 1.16) : même question, relancée dans `sendTask` (le bouton
-    /// Stop l'arrête comme un envoi tapé).
+    /// Envoi bloqué hors connexion (tâche 1.16) : même question, relancée (le bouton Stop l'arrête
+    /// comme un envoi tapé).
     private func relaunchAfterOffline(quickMode: Bool) {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
-        sendTask = Task { await viewModel.retryAfterOffline(quickMode: quickMode) }
+        viewModel.startRetryAfterOffline(quickMode: quickMode)
     }
 
     /// Le brouillon en cours est gardé : il servira de première question.

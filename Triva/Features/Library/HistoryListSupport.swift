@@ -59,29 +59,6 @@ enum HistoryListLayout {
     static let rowInsets = EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20)
 }
 
-/// Bandeau en tête de liste quand la base locale est inutilisable et que l'app
-/// s'est rabattue sur un conteneur en mémoire
-/// (`TrivaModelContainer.isUsingVolatileFallback`). C'est une exigence écrite
-/// sur ce conteneur : « ton historique est vide » et « ton historique ne peut
-/// pas être enregistré » ne veulent pas dire la même chose.
-///
-/// Texte statique : ni verre ni carte (DESIGN.md), une ligne de liste sobre.
-struct StorageVolatilityNotice: View {
-    let text: String
-
-    var body: some View {
-        Label {
-            Text(verbatim: text)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle")
-        }
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .listRowInsets(HistoryListLayout.rowInsets)
-        .listRowSeparator(.hidden)
-    }
-}
-
 /// Label de section de DESIGN.md (« ESSAIE ») : sections de la Bibliothèque,
 /// « Sources » du détail d'un favori. En `.caption2` (11 pt à la taille par
 /// défaut) plutôt qu'en taille fixe : il suit le Dynamic Type, comme le

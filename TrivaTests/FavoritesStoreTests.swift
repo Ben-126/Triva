@@ -489,7 +489,7 @@ struct FavoritesListingTests {
         #expect(try stores.favorites.favorites().count == 5)
     }
 
-    @Test("Au-delà de 100 favoris, aucun n'est supprimé (pas de plafond comme sur le web)")
+    @Test("Au-delà de 100 favoris, aucun n'est supprimé (pas de plafond comme dans la version web d'origine)")
     func noSilentCap() throws {
         let stores = try Stores()
         for index in 0..<101 {

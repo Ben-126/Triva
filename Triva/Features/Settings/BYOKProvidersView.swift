@@ -37,6 +37,8 @@ struct BYOKProvidersView: View {
     @State private var viewModels: [String: APIKeysViewModel] = [:]
     /// Fournisseur « Personnalisé » dont la suppression attend confirmation (nil = aucune).
     @State private var pendingDeletion: CloudProviderPreset?
+    /// Suppression refusée par le Trousseau (nil = aucune alerte).
+    @State private var deletionErrorMessage: String?
 
     /// Plus de valeurs par défaut : chacune créait un store de plus, invisible
     /// du reste de l'app (le bug ci-dessus en est la forme exacte). Les deux
@@ -114,6 +116,17 @@ struct BYOKProvidersView: View {
                 Button("Annuler", role: .cancel) {}
             } message: { preset in
                 Text(Self.deletionMessage(isActive: Self.isActive(preset, selection: selectionStore.selection)))
+            }
+            .alert(
+                "Suppression impossible",
+                isPresented: Binding(
+                    get: { deletionErrorMessage != nil },
+                    set: { if !$0 { deletionErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deletionErrorMessage ?? "")
             }
             .onAppear(perform: ensureViewModels)
             .onChange(of: customStore.customPresets) { _, _ in ensureViewModels() }
@@ -233,18 +246,25 @@ struct BYOKProvidersView: View {
     }
 
     private func confirmDeletion(of preset: CloudProviderPreset) {
-        Self.removeCustomProvider(preset, from: customStore, viewModels: &viewModels)
+        do {
+            try Self.removeCustomProvider(preset, from: customStore, viewModels: &viewModels)
+        } catch {
+            deletionErrorMessage = (error as? CustomProviderStoreError)?.userFacingMessage
+                ?? CustomProviderStoreError.keyNotDeleted.userFacingMessage
+        }
     }
 
     /// Retire le fournisseur (clé Keychain et sélection active comprises, voir
     /// `CustomProviderStore.remove(id:)`) et oublie son `APIKeysViewModel`. Statique pour que les
-    /// tests vérifient le branchement sans interface.
+    /// tests vérifient le branchement sans interface. Si le Trousseau refuse de
+    /// supprimer la clé, l'erreur remonte et RIEN n'est oublié : le fournisseur
+    /// reste dans la liste, avec son `APIKeysViewModel`.
     static func removeCustomProvider(
         _ preset: CloudProviderPreset,
         from store: CustomProviderStore,
         viewModels: inout [String: APIKeysViewModel]
-    ) {
-        store.remove(id: preset.id)
+    ) throws {
+        try store.remove(id: preset.id)
         viewModels[preset.id] = nil
     }
 

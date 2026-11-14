@@ -184,7 +184,11 @@ struct WebSearchChainRetryTests {
         let task = Task { try await chain.search(query: "q", options: WebSearchOptions()) }
         // La pause de 10 minutes ne se termine que par l'annulation : on attend que la première passe
         // soit finie (les deux sources interrogées) avant d'annuler, sans durée réelle en jeu.
-        while wikipedia.callCount < 1 || marginalia.callCount < 1 { try? await Task.sleep(for: .milliseconds(5)) }
+        // Attente BORNÉE (mission C1, R4-6) : si la première passe cessait d'interroger une source, l'ancienne boucle
+        // sans plafond bloquait tout le run ; ici le délai dépassé enregistre un échec, puis l'annulation libère la pause.
+        await ChainFixtures.waitUntil("première passe : Wikipédia et Marginalia interrogés") {
+            wikipedia.callCount >= 1 && marginalia.callCount >= 1
+        }
         task.cancel()
 
         await #expect(throws: CancellationError.self) { try await task.value }

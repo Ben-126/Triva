@@ -146,7 +146,7 @@ struct AppleIntelligenceModelCoordinatorTests {
     }
 
     private static func preferenceStore() -> AppleIntelligenceModelPreference {
-        AppleIntelligenceModelPreference(userDefaults: UserDefaults(suiteName: "test.appleModel.\(UUID().uuidString)")!)
+        AppleIntelligenceModelPreference(userDefaults: TestDefaults.suite(named: "test.appleModel.\(UUID().uuidString)")!)
     }
 
     private func makeCoordinator(
@@ -298,7 +298,7 @@ struct AppleIntelligenceModelCoordinatorTests {
 
     @Test("Valeur illisible dans les préférences : défaut, sans plantage")
     func unreadablePreference() {
-        let defaults = UserDefaults(suiteName: "test.appleModel.\(UUID().uuidString)")!
+        let defaults = TestDefaults.suite(named: "test.appleModel.\(UUID().uuidString)")!
         defaults.set("autreChose", forKey: AppleIntelligenceModelPreference.storageKey)
         #expect(AppleIntelligenceModelPreference(userDefaults: defaults).read() == nil)
     }
@@ -324,7 +324,7 @@ struct AppleIntelligenceModelCoordinatorTests {
 @Suite("SearchSession — cloud privé d'Apple")
 struct SearchSessionPrivateCloudTests {
     private func makeStores() throws -> TrivaSharedStores {
-        let userDefaults = UserDefaults(suiteName: "test.searchSession.pcc.\(UUID().uuidString)")!
+        let userDefaults = TestDefaults.suite(named: "test.searchSession.pcc.\(UUID().uuidString)")!
         return TrivaSharedStores(
             userDefaults: userDefaults,
             container: try TrivaModelContainer.makeInMemory(),
@@ -343,7 +343,7 @@ struct SearchSessionPrivateCloudTests {
     private func coordinator(_ status: PrivateCloudStatus) -> AppleIntelligenceModelCoordinator {
         AppleIntelligenceModelCoordinator(
             probe: FixedPrivateCloudProbe(status: status),
-            preferenceStore: AppleIntelligenceModelPreference(userDefaults: UserDefaults(suiteName: "test.appleModel.\(UUID().uuidString)")!),
+            preferenceStore: AppleIntelligenceModelPreference(userDefaults: TestDefaults.suite(named: "test.appleModel.\(UUID().uuidString)")!),
             makePrivateCloudProvider: { StubGenerating(chunks: ["cloud"]) }
         )
     }

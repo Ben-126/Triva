@@ -21,7 +21,6 @@ nonisolated enum CloudWebSearchService: String, Sendable, Equatable, CaseIterabl
     case perplexity
     case openAI = "openai"
     case anthropic = "claude"
-    case gemini
 
     init?(providerID: String) {
         self.init(rawValue: providerID)
@@ -37,7 +36,6 @@ nonisolated enum CloudWebSearchService: String, Sendable, Equatable, CaseIterabl
         case .perplexity: nil
         case .openAI: "gpt-6-luna"
         case .anthropic: "claude-haiku-5-5"
-        case .gemini: "gemini-3.5-flash-lite"
         }
     }
 }
@@ -61,15 +59,13 @@ nonisolated enum CloudWebSearchService: String, Sendable, Equatable, CaseIterabl
 ///   baisse un peu la facture, c'est l'outil qui en fait l'essentiel ;
 /// - Anthropic : 10 $ / 1 000 recherches + jetons de claude-haiku-5-5 (résultats comptés en
 ///   entrée, à partir de 0,10 $ / M) ; une recherche en échec n'est pas facturée ;
-/// - Gemini : gemini-3.5-flash-lite, 5 000 requêtes par mois gratuites (partagées entre les modèles
-///   Gemini 3 et suivants), puis 14 $ / 1 000 requêtes, plafond par défaut de 1 500 par jour sur
-///   les offres payantes ; le contenu retrouvé n'est pas facturé en jetons d'entrée.
-///   Tarifs Gemini et Anthropic lus dans la documentation, NON essayés en réel (pas de clé).
+/// - Gemini : NON utilisé, voir « GEMINI » plus bas.
+///   Tarifs Anthropic lus dans la documentation, NON essayés en réel (pas de clé).
 ///
 /// Ces coûts sont signalés à l'utilisateur dans les Réglages (« Clés de recherche ») : voir
 /// `CloudWebSearchCostNotice`.
 ///
-/// Sources officielles consultées le 2026-10-28 (OpenAI, Anthropic et Gemini relues le 2026-11-10) :
+/// Sources officielles consultées le 2026-10-28 (OpenAI et Anthropic relues le 2026-11-10) :
 /// - Perplexity : https://docs.perplexity.ai/api-reference/search-post.md (endpoint, champs,
 ///   réponse `results[]`), https://docs.perplexity.ai/docs/getting-started/pricing.md ;
 ///   https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview.md ;
@@ -79,9 +75,6 @@ nonisolated enum CloudWebSearchService: String, Sendable, Equatable, CaseIterabl
 ///   (forme de `action.sources`), https://developers.openai.com/api/docs/pricing ;
 /// - Anthropic : https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool
 ///   (outil `web_search_20250305`, blocs `web_search_tool_result`, erreurs dans un 200) ;
-/// - Gemini : https://ai.google.dev/gemini-api/docs/google-search,
-///   https://ai.google.dev/api/generate-content (`GroundingMetadata`),
-///   https://ai.google.dev/gemini-api/docs/pricing.
 ///
 /// ÉCARTS ASSUMÉS avec la mission d'origine :
 /// - PERPLEXITY n'utilise pas les modèles Sonar. La doc officielle indique « Sonar Chat
@@ -94,15 +87,12 @@ nonisolated enum CloudWebSearchService: String, Sendable, Equatable, CaseIterabl
 ///   Pas de snippet dans `web_search_result` : on utilise `cited_text` (≤150 caractères) des
 ///   citations du texte quand le modèle en produit, sinon `content` reste `nil` (la page est de
 ///   toute façon récupérée ensuite par le scraping).
-/// - GEMINI : les `uri` de `groundingChunks` sont, d'après le comportement connu de l'API (NON
-///   confirmé par la doc consultée le 2026-10-28), des liens de redirection Google
-///   (`vertexaisearch.cloud.google.com/grounding-api-redirect/…`) et le `title` est le nom de
-///   domaine. Triva ne les résout PAS (ce serait une requête de plus par
-///   source, hors de son contrôle) : ils restent ouvrables et scrapables, mais l'hôte affiché est
-///   celui de Google. Voir `risks` du rapport.
+/// - GEMINI : volontairement ABSENT (décision de Ben, 2026-11-13). Google impose d'afficher ses
+///   « Search Suggestions » sans les modifier dès qu'on utilise sa recherche intégrée (outil
+///   `google_search`, sources `vertexaisearch`), ce que Triva ne fait pas. Gemini reste un moteur de
+///   RÉPONSE comme OpenAI ou Claude, alimenté par la recherche de Triva (SearXNG, Brave, Tavily).
 ///
-/// CLÉ JAMAIS DIVULGUÉE : la clé n'existe qu'en en-tête (`Authorization`, `x-api-key`,
-/// `x-goog-api-key`), jamais dans une URL ; elle est portée par `SearchSecret` (affichage masqué).
+/// CLÉ JAMAIS DIVULGUÉE : la clé n'existe qu'en en-tête (`Authorization`, `x-api-key`), jamais dans une URL ; elle est portée par `SearchSecret` (affichage masqué).
 /// Seul un `WebSearchError` à message fixe sort d'ici : ni corps de réponse ni message du
 /// fournisseur n'est relayé (un serveur malveillant pourrait y glisser la clé).
 ///
@@ -115,8 +105,8 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
     /// (`BYOKSearchHTTP.timeout`) : ici un modèle de langage lance la recherche puis résume.
     static let requestTimeout: TimeInterval = 30
     /// Plafond de sortie (jetons) : la phrase demandée est courte, les sources sont dans les
-    /// métadonnées, pas dans le texte. Large pour Anthropic/Gemini : leurs modèles actuels
-    /// (claude-haiku-5-5 à réflexion adaptative, gemini-3.5-flash-lite) comptent la RÉFLEXION dans
+    /// métadonnées, pas dans le texte. Large pour Anthropic : son modèle actuel
+    /// (claude-haiku-5-5 à réflexion adaptative) compte la RÉFLEXION dans
     /// ce plafond, et un plafond trop bas couperait la génération avant l'appel à l'outil de
     /// recherche. Un plafond n'est facturé que s'il est consommé : le relever ne coûte rien de plus
     /// quand le modèle reste bref. (Passé de 256 à 1 024 le 2026-11-10 avec le changement de modèle ;
@@ -132,6 +122,7 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
 
     let kind: WebSearchSourceKind = .cloudProviderWebSearch
     let service: CloudWebSearchService
+
     let model: String?
 
     private let apiKey: SearchSecret
@@ -209,7 +200,7 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
         return try Self.parse(data, service: service, maxResults: options.maxResults)
     }
 
-    /// Prompt commun aux trois fournisseurs à modèle : court, et il interdit la rédaction longue.
+    /// Prompt commun aux deux fournisseurs à modèle (OpenAI, Anthropic) : court, et il interdit la rédaction longue.
     static func prompt(for query: String) -> String {
         "Recherche sur le web puis réponds en une seule phrase très courte. Question : \(query)"
     }
@@ -221,7 +212,6 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
         case .perplexity: try perplexityRequest(query: query, options: options)
         case .openAI: try openAIRequest(query: query)
         case .anthropic: try anthropicRequest(query: query)
-        case .gemini: try geminiRequest(query: query)
         }
     }
 
@@ -273,24 +263,6 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
         return request
     }
 
-    private func geminiRequest(query: String) throws -> URLRequest {
-        let modelID = model ?? CloudWebSearchService.gemini.defaultModel ?? ""
-        let body: [String: Any] = [
-            "contents": [["role": "user", "parts": [["text": Self.prompt(for: query)]]]],
-            "tools": [["google_search": [String: Any]()]],
-            "generationConfig": ["maxOutputTokens": Self.maxOutputTokens, "temperature": 0],
-        ]
-        var request = try makeRequest(
-            host: "generativelanguage.googleapis.com",
-            path: "/v1beta/models/\(modelID):generateContent",
-            body: body
-        )
-        // En-tête plutôt que `?key=` : la clé ne figure jamais dans une URL (journaux système,
-        // description d'une `URLError`). Même choix que `CloudModelListService`.
-        request.setValue(apiKey.value, forHTTPHeaderField: "x-goog-api-key")
-        return request
-    }
-
     private func makeRequest(host: String, path: String, body: [String: Any]) throws -> URLRequest {
         let url = try BYOKSearchHTTP.makeURL(host: host, path: path, queryItems: [])
         guard JSONSerialization.isValidJSONObject(body),
@@ -314,7 +286,6 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
         case .perplexity: raw = try CloudWebSearchParsers.perplexity(data)
         case .openAI: raw = try CloudWebSearchParsers.openAI(data)
         case .anthropic: raw = try CloudWebSearchParsers.anthropic(data)
-        case .gemini: raw = try CloudWebSearchParsers.gemini(data)
         }
         let results = CloudWebSearchSources.deduplicated(raw, limit: max(1, maxResults))
         return SearXNGSearchResponse(results: results, suggestions: [])
@@ -329,9 +300,6 @@ nonisolated enum CloudWebSearchErrors {
     static func classify(status: Int, body: Data, service: CloudWebSearchService) -> WebSearchError {
         let text = String(decoding: body, as: UTF8.self)
         switch (service, status) {
-        case (.gemini, 400) where text.contains("API_KEY_INVALID"):
-            // Gemini répond 400 (et non 401) à une clé invalide ou expirée.
-            return .unauthorized
         case (.anthropic, 400) where mentionsDisabledWebSearch(text):
             // Organisation dont l'administrateur a désactivé la recherche web (Console Claude) :
             // 400 `invalid_request_error`. Ce n'est ni la clé ni notre requête : source indisponible.
@@ -587,44 +555,5 @@ nonisolated enum CloudWebSearchParsers {
         }
         if results.isEmpty, let firstError { throw firstError }
         return results
-    }
-
-    // MARK: Gemini — POST …/models/{model}:generateContent
-
-    nonisolated private struct GeminiResponse: Decodable {
-        nonisolated struct Candidate: Decodable {
-            nonisolated struct Metadata: Decodable {
-                nonisolated struct Chunk: Decodable {
-                    nonisolated struct Web: Decodable {
-                        let uri: String?
-                        let title: String?
-                    }
-                    let web: Web?
-                }
-                // `groundingSupports` n'est plus décodé (mission A1) : son texte est celui du
-                // modèle, jamais un extrait de page (voir `gemini(_:)`).
-                let groundingChunks: [Chunk]?
-            }
-            let groundingMetadata: Metadata?
-        }
-        let candidates: [Candidate]?
-    }
-
-    /// Sources = `groundingChunks[].web`, SANS extrait. Mission A1 (décision de Ben du 2026-11-10 :
-    /// jamais le message du modèle comme extrait) : le texte des `groundingSupports`, utilisé jusque-là
-    /// comme extrait, est un segment de la RÉPONSE DE GEMINI (la phrase que ce site a servi à
-    /// justifier), pas un passage de la page. Présenté au rédacteur comme « Extrait », il lui faisait
-    /// citer une page pour une phrase qu'elle ne contient peut-être pas ; le rapport T2 (mesure #20) a
-    /// montré ce que vaut un texte de modèle pris pour une source : un tarif inventé sur un garage
-    /// inventé. Sans extrait, la page est lue par l'orchestrateur (`SearchOrchestrator+PreRead.swift`),
-    /// ou reste non citable si elle ne peut pas l'être. Les chunks non web (contexte de récupération)
-    /// sont sautés.
-    static func gemini(_ data: Data) throws -> [SearXNGSearchResult] {
-        let decoded = try BYOKSearchHTTP.decode(GeminiResponse.self, from: data)
-        guard let metadata = decoded.candidates?.first?.groundingMetadata else { return [] }
-        return (metadata.groundingChunks ?? []).compactMap { chunk in
-            guard let web = chunk.web else { return nil }
-            return result(title: web.title, url: web.uri, content: nil)
-        }
     }
 }

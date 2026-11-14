@@ -398,6 +398,19 @@ struct WebSearchChainAssemblyTests {
         #expect(!unsupported.kinds(for: .general).contains(.cloudProviderWebSearch))
     }
 
+    @Test("Gemini : jamais de recherche cloud (Google impose ses Search Suggestions), même moteur cloud, clé Gemini et recherche cloud demandée")
+    func geminiNeverGetsACloudSearchStep() throws {
+        let selection = CloudProviderSelection(providerID: "gemini", model: "gemini-3.5-flash-lite")
+        let keys = ChainKeyStore(items: ["gemini": "clé-gemini-de-test"])
+
+        let chain = assemble(engine: .cloudBYOK, cloudSelection: selection, cloudKeys: keys)
+
+        #expect(!chain.kinds(for: .general).contains(.cloudProviderWebSearch))
+        #expect(try CloudWebSearchProvider.make(for: selection, keyStore: keys) == nil)
+        #expect(!CloudWebSearchProvider.isSupported(providerID: "gemini"))
+        #expect(CloudWebSearchService(providerID: "gemini") == nil)
+    }
+
     @Test("Clés de recherche : Brave puis Tavily en tête ; une seule clé, une seule source")
     func searchKeysComeFirstInPreferenceOrder() {
         let both = assemble(engine: .appleIntelligence, searchKeys: ChainFixtures.searchKeys(brave: "b", tavily: "t"))

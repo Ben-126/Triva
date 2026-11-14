@@ -12,7 +12,7 @@ import Foundation
 ///
 /// CE QUI CHANGE quand `SearchOrchestrator.isOffline` est vrai :
 /// - AUCUNE recherche web (ni SearXNG, ni la chaîne de repli, ni les sources ouvertes) : la route
-///   `.web` / `.webUnlessWeatherAnswered` devient `.none`. Les FICHIERS JOINTS restent consultés : ils
+///   `.web` / `.webUnlessWeatherAnswered` / `.webUnlessCalculationAnswered` devient `.none`. Les FICHIERS JOINTS restent consultés : ils
 ///   sont sur l'appareil, leurs extraits sont de vraies sources citables.
 /// - le widget météo n'est pas lancé : il n'aurait que réseau à offrir. La question de météo est
 ///   signalée (`SearchArtifacts.offlineWeatherSkipped`) et `ChatViewModel` répond par un message fixe.
@@ -27,10 +27,21 @@ extension SearchOrchestrator {
     nonisolated static func routeAvailable(_ route: SearchRoute, isOffline: Bool, hasAttachments: Bool) -> SearchRoute {
         guard isOffline else { return route }
         switch route {
-        case .web, .webUnlessWeatherAnswered:
+        case .web, .webUnlessWeatherAnswered, .webUnlessCalculationAnswered:
             return routeConsultingAttachments(.none, hasAttachments: hasAttachments)
         case .none, .attachments:
             return route
+        }
+    }
+
+    /// Widget dont la réponse dispense d'une recherche web, pour les routes « web sauf widget abouti »
+    /// (météo, calcul en Fiable) : `runResearch` l'attend D'ABORD, et ne cherche que s'il n'a rien produit.
+    /// `nil` pour toute autre route (le widget tourne alors en parallèle de la recherche).
+    nonisolated static func widgetAwaitedBeforeSearching(_ route: SearchRoute) -> SearchWidgetKind? {
+        switch route {
+        case .webUnlessWeatherAnswered: .weather
+        case .webUnlessCalculationAnswered: .calculation
+        case .none, .attachments, .web: nil
         }
     }
 

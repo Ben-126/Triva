@@ -34,7 +34,8 @@ extension SearchOrchestrator {
         widgets: [any SearchWidget]? = nil,
         mediaSearcher: (any MediaSearching)? = nil,
         mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod,
-        webSearchChain: WebSearchChain? = nil
+        webSearchChain: WebSearchChain? = nil,
+        onScrapedPageCollected: (@Sendable (ScrapedPage) -> Void)? = nil
     ) {
         let configuration = SearchPipelineConfiguration(
             promptComplexity: writerComplexity,
@@ -58,7 +59,8 @@ extension SearchOrchestrator {
             widgets: widgets,
             mediaSearcher: mediaSearcher,
             mediaGracePeriod: mediaGracePeriod,
-            webSearchChain: webSearchChain
+            webSearchChain: webSearchChain,
+            onScrapedPageCollected: onScrapedPageCollected
         )
     }
 }

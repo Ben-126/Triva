@@ -53,13 +53,20 @@ nonisolated private enum KeychainScope: Sendable {
 /// apparaître une invite d'autorisation qui, lue sur le fil principal, gèle l'écran. Le trousseau
 /// protégé (le même que sur iOS) est rattaché à l'identifiant d'app et à l'équipe, sans invite.
 ///
-/// MIGRATION, sans jamais rien supprimer de l'ancien trousseau : au premier accès à un compte, si le
-/// trousseau protégé ne l'a pas, la clé est COPIÉE depuis l'ancien. L'ancienne entrée reste en place
-/// (règle de Ben : on ne supprime jamais une clé), donc un retour à une version antérieure retrouve
-/// la sienne. Un drapeau par compte (`UserDefaults`) retient que le compte est traité : sans lui, une
-/// clé supprimée dans Triva renaîtrait au prochain accès depuis l'ancien trousseau. Le drapeau est
-/// posé par une copie réussie, par une recherche qui ne trouve rien, par `save` et par `deleteAPIKey`.
-/// `migrateLegacyKeys()` copie toutes les clés d'un coup au lancement, hors du fil principal.
+/// MIGRATION, sans rien supprimer de l'ancien trousseau : au premier accès à un compte, si le
+/// trousseau protégé ne l'a pas, la clé est COPIÉE depuis l'ancien. La migration elle-même laisse
+/// l'ancienne entrée en place (règle de Ben : jamais de suppression de clé de son propre chef), donc
+/// un retour à une version antérieure retrouve la sienne. Un drapeau par compte (`UserDefaults`)
+/// retient que le compte est traité : sans lui, une clé supprimée dans Triva renaîtrait au prochain
+/// accès depuis l'ancien trousseau. Le drapeau est posé par une copie réussie, par une recherche qui
+/// ne trouve rien, par `save` et par `deleteAPIKey`. `migrateLegacyKeys()` copie toutes les clés d'un
+/// coup au lancement, hors du fil principal.
+///
+/// SUPPRESSION DEMANDÉE PAR L'UTILISATEUR (revue R2-1) : quand il supprime ou remplace une clé, c'est
+/// une demande explicite, et la copie héritée est supprimée AUSSI. Sinon une clé qu'il croit effacée
+/// (peut-être compromise, révoquée chez le fournisseur) resterait dans `login.keychain`. Seul le
+/// retour à une version antérieure est perdu pour ce compte, ce qui est voulu. Sans trousseau protégé
+/// (cas actuel : aucun droit d'équipe), la clé n'a qu'une entrée, supprimée par le chemin normal.
 ///
 /// DISPONIBILITÉ : le trousseau protégé exige un identifiant d'équipe dans les droits du binaire
 /// (`application-identifier` ou `keychain-access-groups`), que seul un profil de provisionnement
@@ -119,12 +126,30 @@ struct KeychainAPIKeyStore: APIKeyStoring {
     func save(apiKey: String, account: String) throws {
         let data = Data(apiKey.utf8)
         try Self.write(data, service: service, account: account, scope: Self.activeScope)
+        // La clé remplacée ne doit pas survivre dans l'ancien trousseau. Au mieux : la nouvelle clé est
+        // enregistrée, un échec ici ne doit pas faire croire à l'inverse (elle ne serait de toute façon
+        // jamais relue, le drapeau ci-dessous l'écarte).
+        // MAC SEULEMENT (VE2c) : sur iOS/iPadOS, la requête `.legacy` (sans
+        // `kSecUseDataProtectionKeychain`) désigne LE MÊME trousseau que `.primary` : cette ligne y
+        // effaçait la clé qu'on venait d'enregistrer (mesuré : round-trip rouge sur simulateur iOS).
+        #if os(macOS)
+        if Self.activeScope == .primary {
+            try? Self.remove(service: service, account: account, scope: .legacy)
+        }
+        #endif
         Self.markHandled(service: service, account: account, flags: migrationFlagsSuite)
     }
 
+    /// Supprime la clé des deux trousseaux (le protégé et, sur Mac, l'ancien). Une erreur est levée
+    /// sans poser le drapeau : la clé encore présente quelque part reste lisible, et l'écran le dit.
     func deleteAPIKey(account: String) throws {
         try Self.remove(service: service, account: account, scope: Self.activeScope)
-        // L'ancienne entrée, elle, reste (jamais de suppression) : le drapeau l'empêche de renaître.
+        // Mac seulement : sur iOS, `.legacy` est le même trousseau (voir `save`).
+        #if os(macOS)
+        if Self.activeScope == .primary {
+            try Self.remove(service: service, account: account, scope: .legacy)
+        }
+        #endif
         Self.markHandled(service: service, account: account, flags: migrationFlagsSuite)
     }
 

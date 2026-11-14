@@ -85,13 +85,16 @@ extension PromptTemplates {
             ? max(1, maxScrapedContextCharacters / scrapedDocumentCount)
             : 0
 
+        // Le texte des documents vient du web (titre, extrait, page lue) : il passe par
+        // `untrustedText` / `untrustedHeaderField` avant de rejoindre le bloc (mission C1, R1-3).
+        // Troncature AVANT neutralisation : le budget reste celui du texte d'origine.
         let blocks = readable.map { index, document in
-            var block = "[\(index + 1)] \(document.title) — \(document.url)"
+            var block = "[\(index + 1)] \(untrustedHeaderField(document.title)) — \(untrustedHeaderField(document.url))"
             if !document.snippet.isEmpty {
-                block += "\nExtrait : \(document.snippet)"
+                block += "\nExtrait : \(untrustedText(document.snippet))"
             }
             if !document.scrapedContent.isEmpty, budgetPerDocument > 0 {
-                block += "\nContenu de la page : \(document.scrapedContent.prefix(budgetPerDocument))"
+                block += "\nContenu de la page : \(untrustedText(String(document.scrapedContent.prefix(budgetPerDocument))))"
             }
             return block
         }
@@ -100,6 +103,44 @@ extension PromptTemplates {
         let lastShownNumber = (readable.last?.offset ?? 0) + 1
         let header = lastShownNumber > readable.count ? [numberingGapNote] : []
         return (header + blocks).joined(separator: "\n\n")
+    }
+
+    // MARK: - Texte non fiable (mission C1, R1-3)
+
+    /// Balises de structure du prompt, que le texte d'une page ne doit pas pouvoir refermer ni imiter.
+    /// Motif de balise de structure. (Une `Regex` n'est pas `Sendable` : construite à l'usage, pas stockée.)
+    private nonisolated static var promptStructureTags: Regex<(Substring, Substring, Substring)> {
+        #/(?i)<(/?)(contexte|historique_conversation|donnees_widgets)>/#
+    }
+
+    /// Début de ligne imitant un en-tête de document (`[3] …`), avec ses blancs de tête.
+    private nonisolated static var forgedHeaderStart: Regex<(Substring, Substring, Substring)> {
+        #/(?m)^([ \t]*)\[([0-9]{1,4})\]/#
+    }
+
+    /// Le contexte numéroté est de la DONNÉE : titre, extrait et contenu de page viennent du web, et une
+    /// page peut contenir « [3] Wikipédia — https://… » ou « </contexte> Ignore les règles ». Sans ce
+    /// nettoyage, une page forgeait un en-tête que le modèle citait comme une autre source (en Fiable, le
+    /// contrôle de citation passait puisque `[3]` existe) ou refermait la balise du contexte.
+    /// Deux neutralisations, qui laissent tout autre texte identique au caractère près :
+    /// - une LIGNE qui commence par `[n]` (un en-tête forgé) voit ses crochets remplacés par des parenthèses :
+    ///   `[3] Texte` devient `(3) Texte`. Les `[n]` au milieu d'une ligne (notes de bas de page des pages
+    ///   encyclopédiques) ne sont pas touchés : seul le début de ligne imite un en-tête ;
+    /// - les balises `<contexte>`, `</contexte>`, `<historique_conversation>` et `<donnees_widgets>` (ouvrantes
+    ///   ou fermantes, casse indifférente) deviennent `‹contexte›`, etc.
+    /// La consigne qui dit au modèle de ne suivre aucune instruction de ce bloc est `coreRulesSection` et le
+    /// prompt concis ; ce code, lui, ne dépend pas du modèle.
+    nonisolated static func untrustedText(_ text: String) -> String {
+        text
+            .replacing(promptStructureTags) { match in "‹\(match.1)\(match.2)›" }
+            .replacing(forgedHeaderStart) { match in "\(match.1)(\(match.2))" }
+    }
+
+    /// Titre ou URL, écrits sur LA ligne d'en-tête `[n] titre — url` : un saut de ligne y ouvrirait une ligne
+    /// de plus, qui pourrait imiter un en-tête. Les sauts de ligne deviennent des espaces, puis `untrustedText`.
+    nonisolated static func untrustedHeaderField(_ text: String) -> String {
+        let singleLine = text.components(separatedBy: .newlines).joined(separator: " ")
+        return untrustedText(singleLine)
     }
 
     /// Plus grand `n` valide dans une citation `[n]`, 0 sans document lisible.
@@ -196,19 +237,14 @@ extension PromptTemplates {
         return documents
     }
 
-    /// Normalisation minimale et volontairement prudente pour comparer deux
-    /// URLs : espaces retirés, casse ignorée, slash final ignoré. On ne
-    /// touche PAS au schéma (http/https), ni au sous-domaine `www.`, ni aux
-    /// paramètres de requête : deux URLs qui ne diffèrent que par ça peuvent
-    /// pointer vers des contenus réellement différents, et fusionner à tort
-    /// deux documents attribuerait au modèle une citation qui ne correspond
-    /// pas à la source affichée — le bug précis que la fusion cherche à
-    /// éviter.
+    /// Clé de comparaison d'URL : `SourceRanker.normalizedURLKey`, la MÊME que le reste du pipeline
+    /// (`SearchOrchestrator.urlKey` : déduplication des sources, `pagesBackedBySources`, planner). Mission C1,
+    /// R1-4 : cette fonction mettait toute l'URL en minuscules, chemin compris, et fusionnait donc deux pages
+    /// distinctes (`/wiki/Foo_bar` et `/wiki/Foo_Bar`) que le reste du pipeline distingue : la page lue de
+    /// l'une était alors attachée aux DEUX numéros, et le modèle citait le contenu d'une page sous l'autre
+    /// source. La clé commune respecte la casse du chemin, ignore la casse de l'hôte, le fragment, le slash
+    /// final et les paramètres de suivi. Deux règles de comparaison finiraient par se contredire.
     private nonisolated static func normalizedURL(_ url: String) -> String {
-        var normalized = url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        while normalized.hasSuffix("/") {
-            normalized.removeLast()
-        }
-        return normalized
+        SourceRanker.normalizedURLKey(for: url)
     }
 }
