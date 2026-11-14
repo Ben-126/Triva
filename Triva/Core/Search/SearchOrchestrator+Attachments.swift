@@ -40,21 +40,31 @@ extension SearchOrchestrator {
     /// (`lacksReliableSources`) : la réponse citait un document sans rapport, ou une source web hors
     /// sujet, et passait le contrôle de citation.
     ///
-    /// En Fiable, sur la route web, un fichier joint n'est donc gardé que si ses extraits reprennent
-    /// assez de mots de la question (`LexicalRelevance`, le test déjà appliqué aux sources web de ce mode :
-    /// pas de seuil de score, qu'`AttachmentStore` interdit, ni de nouveau test). Un fichier pertinent
-    /// reste une source fiable, comme avant ; un fichier sans rapport quitte le contexte ET le décompte.
-    /// Même limite connue que `hasOnlyOffTopicWebSources` : un test sur les MOTS, pas sur le sens ; un faux
-    /// rejet reste sûr (« Aucune source fiable » avec le bouton de relance en Rapide ; la route « fichiers
-    /// joints seuls », elle, consulte toujours les fichiers). Hors Fiable : inchangé, tous les fichiers sont gardés.
-    nonisolated static func documentsCountingAsSources(
+    /// En Fiable, sur la route web, un fichier joint n'est donc gardé que s'il est pertinent : ses extraits
+    /// reprennent assez de mots de la question (`LexicalRelevance`, le test déjà appliqué aux sources web de
+    /// ce mode) OU parlent de la même chose par le SENS (`SemanticRelevance`, décision de Ben du 2026-11-14 :
+    /// « automobile à batterie » répond à « voiture électrique »). Pas de seuil de score de phrase,
+    /// qu'`AttachmentStore` interdit. Un fichier pertinent reste une source fiable, comme avant ; un fichier sans
+    /// rapport quitte le contexte ET le décompte. Un faux rejet reste sûr (« Aucune source fiable » avec le
+    /// bouton de relance en Rapide ; la route « fichiers joints seuls », elle, consulte toujours les
+    /// fichiers) ; le seuil du sens est donc réglé contre le faux ACCORD. Hors Fiable : inchangé, tous les
+    /// fichiers sont gardés.
+    ///
+    /// `@concurrent` : le rapprochement par le sens parcourt les mots de chaque extrait, hors du main actor.
+    @concurrent
+    static func documentsCountingAsSources(
         _ documents: [SearXNGSearchResult],
         query: String,
-        mode: ResponseMode
-    ) -> [SearXNGSearchResult] {
+        mode: ResponseMode,
+        matcher: any SemanticWordMatching = SystemSemanticWordMatcher.shared
+    ) async -> [SearXNGSearchResult] {
         guard case .reliable = mode else { return documents }
-        let relevance = LexicalRelevance(query: query)
-        return documents.filter { relevance.matches($0) }
+        let relevance = SemanticRelevance(query: query, matcher: matcher)
+        var kept: [SearXNGSearchResult] = []
+        for document in documents {
+            if await relevance.matches(document) { kept.append(document) }
+        }
+        return kept
     }
 
     /// Longueur minimale UTILE d'un extrait de fichier joint : celle d'un

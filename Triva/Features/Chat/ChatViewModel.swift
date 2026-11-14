@@ -384,7 +384,13 @@ final class ChatViewModel {
                 query: exchange.question,
                 chatHistory: exchange.history,
                 attachments: exchange.attachments,
-                media: []
+                media: [],
+                onSearchStarted: { [weak self] in
+                    self?.updateMessage(id: exchange.answerID) { message in
+                        // Jamais en arrière depuis « Rédaction… » (hors connexion avec un fichier joint).
+                        if message.generationStage == .analyzing { message.generationStage = .searching }
+                    }
+                }
             )
             let artifacts = streamingAnswer.artifacts
             if let reason = artifacts.offlineBlockReason {

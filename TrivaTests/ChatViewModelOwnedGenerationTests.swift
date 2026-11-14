@@ -89,11 +89,11 @@ extension ChatViewModelTests {
 
     // MARK: - Étape affichée hors connexion (R3-6)
 
-    @Test("Hors connexion avec un modèle local : « Rédaction… » dès le départ, jamais « Recherche des sources… »")
+    @Test("Hors connexion avec un modèle local : « Rédaction… » dès le départ, jamais « Recherche des sources… » ; en ligne, « Réflexion… » tant que rien n'est cherché")
     func offlineLocalModelNeverAnnouncesASearch() async {
         let cases: [(plan: OfflinePlan?, expected: GenerationStage)] = [
             (.answerWithoutSearch, .writing),
-            (nil, .searching),
+            (nil, .analyzing),
         ]
         for testCase in cases {
             let resolutions = ResolutionCounter()

@@ -157,12 +157,20 @@ struct TrivaSharedStores {
     ///
     /// `urlCache` : le cache HTTP partagé de l'app ; les tests passent un cache
     /// jetable, pour ne jamais vider le vrai.
-    func makeLocalDataEraser(urlCache: URLCache = .shared) -> LocalDataEraser {
+    ///
+    /// `beforeErase` : l'app y arrête la génération du chat et attend sa fin
+    /// avant l'effacement (voir `LocalDataEraser`).
+    func makeLocalDataEraser(
+        urlCache: URLCache = .shared,
+        beforeErase: (@MainActor () async -> Void)? = nil
+    ) -> LocalDataEraser {
         LocalDataEraser(
             chatHistory: chatHistory,
             favorites: favorites,
             discoverCache: discoverCache,
-            urlCache: urlCache
+            urlCache: urlCache,
+            storage: storage,
+            beforeErase: beforeErase
         )
     }
 

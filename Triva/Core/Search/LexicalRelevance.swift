@@ -75,9 +75,20 @@ nonisolated struct LexicalRelevance: Sendable, Equatable {
     /// Mots pleins de la question, normalisés, sans doublon, dans l'ordre d'apparition.
     let terms: [String]
 
+    /// Pour chaque mot plein normalisé de `terms`, le mot tel qu'écrit dans la question (minuscules,
+    /// accents gardés) : c'est lui, et non la forme normalisée, que connaît un modèle de mots
+    /// (`SemanticRelevance`).
+    let surfaceForms: [String: String]
+
     init(query: String) {
         var seen = Set<String>()
         terms = Self.tokens(of: query).filter { !Self.stopWords.contains($0) && seen.insert($0).inserted }
+        var surfaces: [String: String] = [:]
+        for word in query.components(separatedBy: CharacterSet.alphanumerics.inverted) {
+            guard let token = Self.tokens(of: word).first, terms.contains(token), surfaces[token] == nil else { continue }
+            surfaces[token] = word.lowercased()
+        }
+        surfaceForms = surfaces
     }
 
     /// Mots à retrouver dans UN même résultat.
@@ -85,10 +96,15 @@ nonisolated struct LexicalRelevance: Sendable, Equatable {
 
     /// Nombre de mots de la question repris par ce résultat (titre, extrait, URL).
     func matchCount(in result: SearXNGSearchResult) -> Int {
+        matchedTerms(in: result).count
+    }
+
+    /// Mots de la question repris par ce résultat (titre, extrait, URL), dans l'ordre de `terms`.
+    func matchedTerms(in result: SearXNGSearchResult) -> [String] {
         let words = Self.tokens(of: [result.title, result.content ?? "", result.url].joined(separator: " "))
         let exact = Set(words)
         let long = exact.filter { $0.count >= Self.minimumPrefixLength }
-        return terms.filter { term in Self.isMatched(term, exact: exact, long: long) }.count
+        return terms.filter { term in Self.isMatched(term, exact: exact, long: long) }
     }
 
     /// Ce résultat parle-t-il de la question ?

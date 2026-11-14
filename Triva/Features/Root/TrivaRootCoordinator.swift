@@ -183,8 +183,9 @@ final class TrivaRootCoordinator {
     /// dernière question, sous des messages affichés qui ne seraient plus
     /// enregistrés nulle part.
     ///
-    /// Seule une absence CONSTATÉE vide le fil. Une lecture qui échoue
-    /// (base momentanément illisible) ne prouve rien : vider le fil sur une
+    /// Seule une absence CONSTATÉE vide le fil. Base INDISPONIBLE (`storageUnavailable`) : cas de la
+    /// réouverture ratée après « Tout effacer », la base est vide sur disque, le fil est vidé aussi. Une
+    /// autre lecture qui échoue (base momentanément illisible) ne prouve rien : vider le fil sur une
     /// erreur passagère ferait perdre ce que l'utilisateur est en train de
     /// lire. L'erreur est journalisée, et le prochain envoi la remontera dans
     /// le chat s'il échoue à son tour (`persistenceErrorDescription`).
@@ -194,6 +195,13 @@ final class TrivaRootCoordinator {
         let stillExists: Bool
         do {
             stillExists = try session.stores.chatHistory.conversation(with: conversationID) != nil
+        } catch ChatHistoryStoreError.storageUnavailable {
+            // Base indisponible (réouverture échouée après « Tout effacer » : la base est vide sur disque) :
+            // le fil affiché n'existe plus nulle part et rien ne pourra le réenregistrer. On le vide ; l'écran
+            // d'erreur de base, déjà existant, dit pourquoi.
+            Self.logger.error("Base indisponible, fil vidé")
+            chatViewModel.conversationWasDeleted(id: conversationID)
+            return
         } catch {
             Self.logger.error("Historique illisible, fil conservé : \(String(describing: error), privacy: .private)")
             return

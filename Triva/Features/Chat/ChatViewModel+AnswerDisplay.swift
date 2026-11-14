@@ -11,16 +11,20 @@ import Foundation
 /// (QA Q3, finding 31, décision de Ben du 2026-11-11 : « rien ne dit si l'app cherche ou
 /// rédige, alors que c'est le moment où on attend le plus »).
 ///
-/// Deux étapes seulement, celles que le ViewModel CONNAÎT : avant les artefacts (classification,
-/// recherche, lecture des pages, tout dans `SearchOrchestrator.streamAnswer`), puis après
-/// (rédaction). « Lecture des pages… », demandée aussi, supposerait un signal d'étape de
+/// Trois étapes, celles que le ViewModel CONNAÎT : l'analyse de la question (classification, avant
+/// toute recherche : « Réflexion… »), la recherche (annoncée par `SearchOrchestrator.streamAnswer`
+/// seulement quand Triva cherche vraiment : jamais pour une salutation), puis la rédaction. « Lecture des pages… », demandée aussi, supposerait un signal d'étape de
 /// l'orchestrateur, qui n'en émet aucun : non fait, plutôt qu'un libellé deviné.
 nonisolated enum GenerationStage: Sendable, Equatable {
+    /// Question en cours d'analyse, rien n'est encore cherché. Même mot que l'en-tête de la boîte de
+    /// raisonnement (`ThinkBoxPresentation`), décision de Ben du 2026-11-14.
+    case analyzing
     case searching
     case writing
 
     var statusText: String {
         switch self {
+        case .analyzing: "Réflexion…"
         case .searching: "Recherche des sources…"
         case .writing: "Rédaction…"
         }

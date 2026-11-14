@@ -105,7 +105,7 @@ extension ChatViewModel {
         /// (décision de Ben, mission C1). Persisté (mission E2b) : un message relu les masque aussi.
         var searXNGUnreachable = false
         /// Étape affichée près de l'indicateur de génération (finding 31). Voir `GenerationStage`.
-        var generationStage: GenerationStage = .searching
+        var generationStage: GenerationStage = .analyzing
         /// Seule la dernière réponse terminée en porte.
         var suggestions: [String] = []
         var attachedFiles: [AttachedFile] = []

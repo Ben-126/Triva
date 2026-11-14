@@ -53,10 +53,12 @@ nonisolated private enum KeychainScope: Sendable {
 /// apparaître une invite d'autorisation qui, lue sur le fil principal, gèle l'écran. Le trousseau
 /// protégé (le même que sur iOS) est rattaché à l'identifiant d'app et à l'équipe, sans invite.
 ///
-/// MIGRATION, sans rien supprimer de l'ancien trousseau : au premier accès à un compte, si le
-/// trousseau protégé ne l'a pas, la clé est COPIÉE depuis l'ancien. La migration elle-même laisse
-/// l'ancienne entrée en place (règle de Ben : jamais de suppression de clé de son propre chef), donc
-/// un retour à une version antérieure retrouve la sienne. Un drapeau par compte (`UserDefaults`)
+/// MIGRATION : au premier accès à un compte, si le trousseau protégé ne l'a pas, la clé est COPIÉE
+/// depuis l'ancien, puis l'ancienne entrée est SUPPRIMÉE (décision de Ben du 2026-11-14, mission C6 :
+/// une clé ne doit pas rester en double dans `login.keychain` une fois migrée). La suppression n'a
+/// lieu qu'après avoir RELU la copie dans le trousseau protégé et constaté qu'elle est identique : en
+/// cas de doute (écriture ou relecture en échec), l'ancienne entrée reste, et la clé reste lisible.
+/// Seul le retour à une version antérieure perd alors la clé de ce compte. Un drapeau par compte (`UserDefaults`)
 /// retient que le compte est traité : sans lui, une clé supprimée dans Triva renaîtrait au prochain
 /// accès depuis l'ancien trousseau. Le drapeau est posé par une copie réussie, par une recherche qui
 /// ne trouve rien, par `save` et par `deleteAPIKey`. `migrateLegacyKeys()` copie toutes les clés d'un
@@ -180,6 +182,11 @@ struct KeychainAPIKeyStore: APIKeyStoring {
             // prochaine lecture réessaiera (le drapeau n'est posé qu'après une copie réussie).
             guard (try? write(Data(legacyKey.utf8), service: service, account: account, scope: .primary)) != nil else {
                 return legacyKey
+            }
+            // Suppression de l'ancienne entrée SEULEMENT si la copie est relue à l'identique. Au mieux :
+            // un échec ici laisse un doublon inoffensif (le drapeau ci-dessous l'écarte des lectures).
+            if (try? copyAPIKey(service: service, account: account, scope: .primary)) == legacyKey {
+                try? remove(service: service, account: account, scope: .legacy)
             }
         }
         markHandled(service: service, account: account, flags: flags)

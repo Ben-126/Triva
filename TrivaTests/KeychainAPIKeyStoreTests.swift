@@ -74,8 +74,8 @@ struct KeychainAPIKeyStoreTests {
 #if os(macOS)
     // MARK: - Migration de l'ancien trousseau Mac vers le trousseau protégé (mission C2)
 
-    @Test("Mac : une clé de l'ancien trousseau est copiée dans le trousseau protégé, l'ancienne reste", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
-    func legacyKeyIsCopiedAndKept() throws {
+    @Test("Mac : une clé de l'ancien trousseau est copiée dans le trousseau protégé, puis l'ancienne est supprimée (C6)", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
+    func legacyKeyIsCopiedThenRemoved() throws {
         let service = uniqueService()
         let flags = freshFlags()
         defer { removeLegacy(service: service, account: "claude") }
@@ -84,9 +84,11 @@ struct KeychainAPIKeyStoreTests {
         defer { try? store.deleteAPIKey(account: "claude") }
 
         #expect(try store.apiKey(account: "claude") == "sk-legacy")
-        // Copiée dans le trousseau protégé, et l'ancienne entrée n'a pas été supprimée.
+        // Copiée dans le trousseau protégé (relue), puis l'ancienne entrée est supprimée.
         #expect(try readProtected(service: service, account: "claude") == "sk-legacy")
-        #expect(try readLegacy(service: service, account: "claude") == "sk-legacy")
+        #expect(try readLegacy(service: service, account: "claude") == nil)
+        // La clé reste lisible après la suppression de l'ancienne copie.
+        #expect(try store.apiKey(account: "claude") == "sk-legacy")
     }
 
     @Test("Mac : une clé supprimée dans Triva ne renaît pas depuis l'ancien trousseau, ET la copie héritée est supprimée aussi (R2-1)", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))
@@ -141,7 +143,8 @@ struct KeychainAPIKeyStoreTests {
         #expect(failed.isEmpty)
         #expect(try readProtected(service: service, account: "openai") == "sk-openai")
         #expect(try readProtected(service: service, account: "groq") == "sk-groq")
-        #expect(try readLegacy(service: service, account: "openai") == "sk-openai")
+        #expect(try readLegacy(service: service, account: "openai") == nil)
+        #expect(try readLegacy(service: service, account: "groq") == nil)
     }
 
     @Test("Mac : sans ancienne clé, la lecture renvoie nil et ne crée rien", .enabled(if: KeychainAPIKeyStore.isProtectedKeychainAvailable))

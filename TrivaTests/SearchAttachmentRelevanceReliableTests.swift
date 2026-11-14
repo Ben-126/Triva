@@ -39,27 +39,27 @@ struct SearchAttachmentRelevanceReliableTests {
     // MARK: Fonction pure
 
     @Test("Fiable : seul le fichier qui reprend des mots de la question est gardé")
-    func reliableKeepsOnlyRelevantDocuments() {
+    func reliableKeepsOnlyRelevantDocuments() async {
         let relevant = Self.document(title: "tour.txt", content: "La tour Eiffel mesure 330 mètres de hauteur.")
         let unrelated = Self.document(title: "impots.pdf", content: "Déclaration de revenus et barème de l'impôt.")
 
-        let kept = SearchOrchestrator.documentsCountingAsSources([unrelated, relevant], query: Self.question, mode: .reliable)
+        let kept = await SearchOrchestrator.documentsCountingAsSources([unrelated, relevant], query: Self.question, mode: .reliable)
 
         #expect(kept == [relevant])
     }
 
     @Test("Rapide et Approfondie : tous les fichiers sont gardés, comme avant", arguments: [ResponseMode.quick, .deep])
-    func otherModesKeepEveryDocument(mode: ResponseMode) {
+    func otherModesKeepEveryDocument(mode: ResponseMode) async {
         let unrelated = Self.document(title: "impots.pdf", content: "Déclaration de revenus et barème de l'impôt.")
 
-        #expect(SearchOrchestrator.documentsCountingAsSources([unrelated], query: Self.question, mode: mode) == [unrelated])
+        #expect(await SearchOrchestrator.documentsCountingAsSources([unrelated], query: Self.question, mode: mode) == [unrelated])
     }
 
     @Test("Question sans mot plein (« Et toi ? ») : rien à juger, les fichiers sont gardés")
-    func questionWithoutFullWordsKeepsDocuments() {
+    func questionWithoutFullWordsKeepsDocuments() async {
         let document = Self.document(title: "a.txt", content: "texte")
 
-        #expect(SearchOrchestrator.documentsCountingAsSources([document], query: "Et toi ?", mode: .reliable) == [document])
+        #expect(await SearchOrchestrator.documentsCountingAsSources([document], query: "Et toi ?", mode: .reliable) == [document])
     }
 
     // MARK: Pipeline

@@ -415,7 +415,9 @@ private struct TrivaRootShell: View {
                 cloudSelectionStore: stores.cloudSelection,
                 customProviderStore: stores.customProviders,
                 instanceStore: stores.searchInstances,
-                localDataEraser: stores.makeLocalDataEraser(),
+                localDataEraser: stores.makeLocalDataEraser(beforeErase: { [coordinator] in
+                    await coordinator.session.chatViewModel?.stopAndWait()
+                }),
                 navigationPath: $coordinator.settingsPath
             )
         }

@@ -84,12 +84,18 @@ final class TrivaStorage {
 
     private var opened: ModelContainer?
     private let opener: (@MainActor () throws -> ModelContainer)?
+    private let retryDelaysMilliseconds: [Int]
+    private let pause: @MainActor (Int) -> Void
+    private let dataDeleter: @MainActor (ModelContainer) throws -> Void
 
     /// Stockage déjà ouvert : tests, aperçus, et les `init(container:)` des
     /// stores. Ne peut pas être indisponible, donc `retry()` n'a rien à faire.
     init(container: ModelContainer) {
         self.state = .ready
         self.opener = nil
+        self.retryDelaysMilliseconds = []
+        self.pause = { _ in }
+        self.dataDeleter = { try $0.deleteAllData() }
         adopt(container)
     }
 
@@ -101,13 +107,24 @@ final class TrivaStorage {
     /// - Parameters:
     ///   - pause: attente entre deux essais (millisecondes), injectable pour
     ///     que les tests n'attendent rien.
+    ///   - dataDeleter: effacement complet du conteneur ; `deleteAllData()` en
+    ///     production, remplaçable par les tests pour simuler son échec.
     init(
         opener: @escaping @MainActor () throws -> ModelContainer,
         retryDelaysMilliseconds: [Int] = TrivaStorage.defaultRetryDelaysMilliseconds,
-        pause: @MainActor (Int) -> Void = { Thread.sleep(forTimeInterval: Double($0) / 1000) }
+        pause: @escaping @MainActor (Int) -> Void = { Thread.sleep(forTimeInterval: Double($0) / 1000) },
+        dataDeleter: @escaping @MainActor (ModelContainer) throws -> Void = { try $0.deleteAllData() }
     ) {
         self.opener = opener
+        self.dataDeleter = dataDeleter
+        self.retryDelaysMilliseconds = retryDelaysMilliseconds
+        self.pause = pause
         self.state = .unavailable(reason: "")
+        openWithRetries()
+    }
+
+    /// `retryDelaysMilliseconds.count + 1` essais d'ouverture, séparés par les pauses.
+    private func openWithRetries() {
         for attempt in 0...retryDelaysMilliseconds.count {
             if attemptOpening() { return }
             if attempt < retryDelaysMilliseconds.count {
@@ -135,6 +152,64 @@ final class TrivaStorage {
             generation += 1
         }
         return isAvailable
+    }
+
+    // MARK: - Effacement complet
+
+    /// Pourquoi `eraseAllData()` n'a pas (ou pas entièrement) abouti.
+    enum EraseError: Error, Equatable, Sendable {
+        /// Conteneur injecté (tests, aperçus) : il n'y a pas d'ouvreur pour
+        /// recréer une base neuve ; l'appelant efface objet par objet.
+        case reopeningNotSupported
+        /// Base déjà indisponible : il n'y a rien à effacer proprement.
+        case storageUnavailable
+        /// `ModelContainer.deleteAllData()` a échoué. La base a été rouverte
+        /// (si possible) et peut contenir encore des données.
+        case deleteFailed(String)
+    }
+
+    /// Efface TOUTE la base d'un coup par `ModelContainer.deleteAllData()`
+    /// (décision de Ben, 2026-11-14), puis recrée un conteneur neuf sur le
+    /// disque et rebranche dessus tous les consommateurs.
+    ///
+    /// ## Pourquoi recréer le conteneur
+    /// Mesuré (banc `DeleteAllDataBenchTests`, mission C2) : `deleteAllData()`
+    /// efface immédiatement et complètement (aucune trace dans `.store`, `-wal`,
+    /// `-shm`), mais le conteneur qui a servi ne sait plus identifier son
+    /// magasin : toute écriture ultérieure plante (« Failed to identify a store
+    /// that can hold instances of … »). On le relâche donc AVANT d'en ouvrir un
+    /// neuf avec le même ouvreur (mêmes réessais qu'au lancement).
+    ///
+    /// ## Rebranchement
+    /// `ChatHistoryStore` et `FavoritesStore` relisent `context` à chaque
+    /// opération (ils n'en gardent aucun) : ils passent seuls sur le nouveau
+    /// conteneur. `generation` est incrémenté, donc leur `revision` aussi, ce
+    /// qui recharge Bibliothèque, Favoris et vide le fil ouvert. À l'appelant
+    /// d'avoir arrêté toute génération en cours avant (`ChatViewModel.stopAndWait`).
+    ///
+    /// ## Échecs
+    /// - `deleteAllData()` échoue : la base est quand même rouverte, `deleteFailed`
+    ///   est levée, l'appelant retombe sur la suppression objet par objet.
+    /// - la réouverture échoue après un effacement réussi : la base est vide
+    ///   sur disque, `state` vaut `.unavailable` (les écrans le disent, avec
+    ///   « Réessayer »), et `eraseAllData()` ne lève RIEN : les données SONT
+    ///   effacées, déclarer l'inverse serait faux.
+    func eraseAllData() throws(EraseError) {
+        guard opener != nil else { throw .reopeningNotSupported }
+        guard let current = opened else { throw .storageUnavailable }
+        var deletionError: String?
+        do {
+            try dataDeleter(current)
+        } catch {
+            Self.logger.error("deleteAllData a échoué : \(String(describing: error), privacy: .private)")
+            deletionError = String(describing: error)
+        }
+        // Relâché avant la réouverture : le conteneur d'avant n'est plus utilisable.
+        opened = nil
+        state = .unavailable(reason: "réouverture après effacement")
+        openWithRetries()
+        generation += 1
+        if let deletionError { throw .deleteFailed(deletionError) }
     }
 
     private func attemptOpening() -> Bool {

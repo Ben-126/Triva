@@ -83,3 +83,33 @@ extension ChatViewModel {
         return copy
     }
 }
+
+extension ChatViewModel {
+    /// Arrête toute génération (affichée ou en arrière-plan) ET attend qu'elle
+    /// ait fini d'écrire, pour « Tout effacer » : une génération annulée
+    /// persiste sa réponse partielle (`persistAnswer`), qui ne doit pas arriver
+    /// pendant ou après l'effacement. Attente bornée (`timeout`) : une tâche
+    /// qui ne réagit pas à l'annulation ne doit pas bloquer l'effacement.
+    func stopAndWait(timeout: Duration = .seconds(5)) async {
+        let tasks = [sendTask, generationTask, backgroundExchange?.sendTask, backgroundExchange?.generationTask]
+            .compactMap { $0 }
+        stop()
+        guard !tasks.isEmpty else { return }
+        let finished = CompletionFlag()
+        let waiter = Task { @MainActor in
+            for task in tasks { await task.value }
+            finished.isSet = true
+        }
+        let deadline = ContinuousClock.now + timeout
+        while !finished.isSet && ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        if !finished.isSet { waiter.cancel() }
+    }
+}
+
+/// Drapeau partagé entre `stopAndWait` et sa tâche d'attente (main actor).
+@MainActor
+private final class CompletionFlag {
+    var isSet = false
+}

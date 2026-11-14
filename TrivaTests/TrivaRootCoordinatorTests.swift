@@ -155,6 +155,40 @@ struct TrivaRootCoordinatorTests {
         #expect(coordinator.session.chatViewModel?.messages.isEmpty == true)
     }
 
+    @Test("« Tout effacer » dont la réouverture de la base échoue : le fil est vidé aussi (base indisponible)")
+    func reopeningFailureAfterEraseClearsTheThread() throws {
+        let userDefaults = try #require(TestDefaults.suite(named: "test.rootCoordinator.\(UUID().uuidString)"))
+        var openings = 0
+        let storage = TrivaStorage(
+            opener: {
+                openings += 1
+                if openings > 1 { throw TrivaModelContainerError.creationFailed("panne simulée") }
+                return try TrivaModelContainer.makeInMemory()
+            },
+            retryDelaysMilliseconds: [],
+            pause: { _ in },
+            dataDeleter: { _ in }
+        )
+        let stores = TrivaSharedStores(
+            userDefaults: userDefaults,
+            storage: storage,
+            searchInstances: CustomInstanceStore(defaultInstances: [URL(string: "https://searx.example")!], userDefaults: userDefaults),
+            keyStore: CoordinatorTestKeyStore(storedKey: "sk-test")
+        )
+        let id = try saveConversation(in: stores)
+        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: stores)
+        coordinator.openConversation(id: id)
+        #expect(coordinator.session.chatViewModel?.messages.count == 2)
+
+        try storage.eraseAllData()
+        #expect(!storage.isAvailable)
+        coordinator.historyDidChange()
+
+        let chat = try #require(coordinator.session.chatViewModel)
+        #expect(chat.messages.isEmpty)
+        #expect(chat.currentConversationID == nil)
+    }
+
     @Test("Historique modifié ailleurs, conversation toujours là : le fil ne bouge pas")
     func unrelatedHistoryChangesKeepTheThread() throws {
         let stores = try makeStores()

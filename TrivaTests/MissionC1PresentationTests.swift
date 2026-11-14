@@ -190,9 +190,10 @@ struct MissionC1PresentationTests {
         #expect(!message.searXNGUnreachable)
     }
 
-    @Test("Ligne d'état de la génération : recherche, puis rédaction")
+    @Test("Ligne d'état de la génération : réflexion, recherche, puis rédaction")
     func generationStageTexts() {
-        #expect(ChatViewModel.Message(role: .assistant, isStreaming: true).generationStage == .searching)
+        #expect(ChatViewModel.Message(role: .assistant, isStreaming: true).generationStage == .analyzing)
+        #expect(GenerationStage.analyzing.statusText == "Réflexion…")
         #expect(GenerationStage.searching.statusText == "Recherche des sources…")
         #expect(GenerationStage.writing.statusText == "Rédaction…")
     }

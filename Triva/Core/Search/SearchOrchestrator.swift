@@ -283,14 +283,23 @@ nonisolated struct SearchOrchestrator: Sendable {
     /// AVANT d'itérer `textStream`) ; seule la génération finale est déléguée
     /// à `aiProvider.streamGenerate(prompt:)` — exigence isolée au main actor
     /// (protocole non annoté), d'où le `await` depuis ce point `@concurrent`.
+    ///
+    /// `onSearchStarted` : appelé UNE fois, quand la classification est finie ET
+    /// que la question va réellement chercher des sources (web ou fichiers
+    /// joints) — jamais pour une salutation ou un calcul pur. Sert au libellé
+    /// d'attente de l'écran (« Réflexion… » puis « Recherche des sources… »).
     @concurrent
     func streamAnswer(
         query: String,
         chatHistory: [ClassifierChatMessage] = [],
         attachments: AttachmentSearchIndex? = nil,
-        media: MediaSearchKinds = []
+        media: MediaSearchKinds = [],
+        onSearchStarted: (@MainActor @Sendable () -> Void)? = nil
     ) async throws -> StreamingAnswer {
-        let request = SearchRequest(query: query, chatHistory: chatHistory, attachments: attachments, media: media)
+        let request = SearchRequest(
+            query: query, chatHistory: chatHistory, attachments: attachments, media: media,
+            onSearchStarted: onSearchStarted
+        )
         let prepared = try await prepareFinalPrompt(request)
         // Décision (c) de Ben : rien de citable en mode Fiable -> on ne génère
         // RIEN (pas de requête cloud lancée puis annulée). Critère partagé avec
@@ -337,6 +346,7 @@ nonisolated struct SearchOrchestrator: Sendable {
         let chatHistory: [ClassifierChatMessage]
         let attachments: AttachmentSearchIndex?
         let media: MediaSearchKinds
+        var onSearchStarted: (@MainActor @Sendable () -> Void)?
 
         var hasAttachments: Bool {
             attachments.map { !$0.attachments.isEmpty } ?? false
@@ -480,8 +490,10 @@ nonisolated struct SearchOrchestrator: Sendable {
             widgets = await pendingWidgets
             let answered = widgets.outputs.contains { $0.kind == awaitedKind }
             let fallbackRoute = Self.routeConsultingAttachments(answered ? .none : .web(.general), hasAttachments: request.hasAttachments)
+            await Self.announceSearch(of: fallbackRoute, for: request)
             gathered = try await gather(route: fallbackRoute, request: request, searchQuery: searchQuery)
         } else {
+            await Self.announceSearch(of: route, for: request)
             gathered = try await gather(route: route, request: request, searchQuery: searchQuery)
             widgets = await pendingWidgets
         }
@@ -498,6 +510,14 @@ nonisolated struct SearchOrchestrator: Sendable {
             webSearchReport: gathered.webSearchReport,
             offlineWeatherSkipped: isOffline && classification.showWeatherWidget
         )
+    }
+
+    /// Dit à l'écran que Triva cherche vraiment (route autre que `.none`), une
+    /// fois la classification terminée.
+    private static func announceSearch(of route: SearchRoute, for request: SearchRequest) async {
+        // `case .none = route` et non `route == .none` : voir `routeConsultingAttachments`.
+        if case .none = route { return }
+        await request.onSearchStarted?()
     }
 
     /// Ce qu'une route a rassemblé. Les fichiers joints (`documents`) restent
@@ -553,7 +573,7 @@ nonisolated struct SearchOrchestrator: Sendable {
                 mediaKinds: request.media
             )
             return GatheredSearch(
-                documents: Self.documentsCountingAsSources(try await pendingDocuments, query: searchQuery, mode: responseMode),
+                documents: await Self.documentsCountingAsSources(try await pendingDocuments, query: searchQuery, mode: responseMode),
                 webSources: research.sources,
                 scrapedPages: research.scrapedPages,
                 media: media,
