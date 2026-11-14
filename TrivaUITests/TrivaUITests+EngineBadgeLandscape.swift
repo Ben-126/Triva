@@ -65,6 +65,32 @@ extension TrivaUITests {
         #endif
     }
 
+    /// Mission AX3 : en PORTRAIT, texte AX3, conversation vide, clavier ouvert, l'en-tête moteur
+    /// (badge sur 3 lignes, légende, « Changer de moteur ») remplissait la zone visible : la barre de
+    /// saisie et l'envoi disparaissaient derrière le clavier (constaté sur iPhone 18 Pro).
+    @objc func testAX3_portraitConversationVideClavierOuvert_saisieEtEnvoiAccessibles() throws {
+        #if os(iOS)
+        launchToSearch(extraArguments: Self.accessibility3)
+        requireChatReady()
+        XCUIDevice.shared.orientation = .portrait
+        let input = require(element("chat.input"), "Barre de saisie absente en portrait AX3.")
+        let keyboard = openKeyboard(on: input)
+        input.typeText("a")
+        let send = element("chat.send")
+        require(send, "Bouton d'envoi absent.")
+        capture("AX3 portrait conversation vide, clavier ouvert")
+        XCTAssertTrue(element("chat.input").isHittable, "Saisie non touchable : \(element("chat.input").frame)")
+        XCTAssertTrue(send.isHittable, "Envoi non touchable : \(send.frame)")
+        // Le cadre XCUI du clavier commence SOUS la barre de suggestions (44 pt), que le clavier dessine
+        // pourtant par-dessus l'app : on la retire du haut utile (mesuré, iPhone 18 Pro).
+        let quickTypeBar: CGFloat = 44
+        XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY - quickTypeBar, "Envoi sous le clavier : \(send.frame) / \(keyboard.frame)")
+        XCTAssertLessThanOrEqual(input.frame.maxY, keyboard.frame.minY - quickTypeBar, "Saisie sous le clavier : \(input.frame) / \(keyboard.frame)")
+        #else
+        throw XCTSkip("iPhone seulement.")
+        #endif
+    }
+
     /// Banc de mesure, pas une assertion : rejoue l'envoi qui déclenchait l'avertissement
     /// « glassEffect() tried to update multiple times per frame », à lire dans le journal du simulateur
     /// (`log stream --predicate 'eventMessage CONTAINS "multiple times per frame"'`). Avant le correctif

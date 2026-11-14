@@ -100,7 +100,10 @@ struct MissionC1PresentationTests {
 
     @Test("Écran vide : replié seulement quand il ne reste presque rien")
     func emptyScreenCollapsesOnlyWhenTiny() {
-        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 400, hasMessages: false, needsSetup: false, isAccessibilitySize: true))
+        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 400, hasMessages: false, needsSetup: false, isAccessibilitySize: false))
+        // Texte AX : l'en-tête déplié chasserait la barre de saisie sous le clavier (mission AX3).
+        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 440, hasMessages: false, needsSetup: false, isAccessibilitySize: true))
+        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 700, hasMessages: false, needsSetup: false, isAccessibilitySize: true))
         #expect(EngineHeaderLayout.isCollapsed(availableHeight: 300, hasMessages: false, needsSetup: false, isAccessibilitySize: false))
     }
 

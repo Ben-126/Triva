@@ -126,6 +126,14 @@ struct ChatComposerView: View {
     private var bar: some View {
         if stacksField {
             VStack(spacing: 12) {
+                // Portrait AX3 clavier ouvert (mission AX3) : la rangée moteur a quitté l'en-tête,
+                // elle prend ici sa propre ligne, faute de largeur à côté des boutons du bas.
+                if engineAccessory != nil {
+                    HStack(spacing: 12) {
+                        engineControls
+                        Spacer(minLength: 0)
+                    }
+                }
                 field
                 HStack(spacing: 12) {
                     secondaryActions

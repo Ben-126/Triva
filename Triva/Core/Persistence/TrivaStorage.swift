@@ -95,7 +95,7 @@ final class TrivaStorage {
         self.opener = nil
         self.retryDelaysMilliseconds = []
         self.pause = { _ in }
-        self.dataDeleter = { try $0.deleteAllData() }
+        self.dataDeleter = { $0.deleteAllData() }
         adopt(container)
     }
 
@@ -113,7 +113,7 @@ final class TrivaStorage {
         opener: @escaping @MainActor () throws -> ModelContainer,
         retryDelaysMilliseconds: [Int] = TrivaStorage.defaultRetryDelaysMilliseconds,
         pause: @escaping @MainActor (Int) -> Void = { Thread.sleep(forTimeInterval: Double($0) / 1000) },
-        dataDeleter: @escaping @MainActor (ModelContainer) throws -> Void = { try $0.deleteAllData() }
+        dataDeleter: @escaping @MainActor (ModelContainer) throws -> Void = { $0.deleteAllData() }
     ) {
         self.opener = opener
         self.dataDeleter = dataDeleter

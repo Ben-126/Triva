@@ -42,9 +42,20 @@ struct EngineBadgeIconOnlyTests {
         #expect(!iconOnly(height: Self.keyboardClosedHeight))
     }
 
-    @Test("Portrait (hauteur non compacte) : le badge garde son texte")
-    func portrait() {
-        #expect(!iconOnly(compact: false))
+    @Test("Portrait, clavier fermé (700 pt) : le badge garde son texte")
+    func portraitKeyboardClosed() {
+        #expect(!iconOnly(compact: false, height: 700))
+    }
+
+    @Test("Portrait, AX3, clavier ouvert (440 pt, mission AX3) : icône seule")
+    func portraitAX3KeyboardOpen() {
+        #expect(iconOnly(compact: false, height: 440))
+    }
+
+    @Test("Portrait, sous AX3 ou grande hauteur (iPad, Mac) : le badge garde son texte")
+    func portraitOtherCases() {
+        #expect(!iconOnly(compact: false, size: .accessibility2, height: 440))
+        #expect(!iconOnly(compact: false, height: 900))
     }
 
     @Test("Sous AX3 (AX1, AX2, tailles normales) : le badge garde son texte",

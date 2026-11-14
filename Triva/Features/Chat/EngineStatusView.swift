@@ -344,6 +344,12 @@ nonisolated enum EngineHeaderLayout {
     /// pour la barre de saisie et les exemples (Duo plié, clavier ouvert).
     static let emptyScreenMinimumHeight: CGFloat = 360
 
+    /// Texte AX1 ou plus, écran vide : l'en-tête déplié (badge sur 2 ou 3 lignes, légende, « Changer
+    /// de moteur » sur 2 lignes) prend plus de 300 pt et chasse la barre de saisie sous le clavier
+    /// (constaté à AX3, iPhone 18 Pro, portrait : environ 440 pt offerts clavier ouvert, 700 fermé).
+    /// 600 pt tombe entre les deux : clavier fermé, l'en-tête reste déplié.
+    static let emptyScreenAccessibilityMinimumHeight: CGFloat = 600
+
     /// En dessous, la hauteur n'est pas une vraie mesure : c'est un état transitoire de la
     /// première mise en page (constaté à la console, iPhone 18 Pro : 24 pt puis 12 pt, avant les
     /// 623 pt réels). La traiter comme réelle repliait l'en-tête une image, puis le redéployait
@@ -358,8 +364,13 @@ nonisolated enum EngineHeaderLayout {
     /// des deux côtés pour un écran un peu plus ou moins haut.
     static let keyboardOpenMaximumHeight: CGFloat = 180
 
-    /// Badge réduit à son icône (décision de Ben, mission E2c) : SEULEMENT en hauteur compacte
-    /// (iPhone en paysage), à AX3 ou plus, clavier ouvert. À ce réglage la barre de saisie
+    /// Même repère en hauteur NON compacte (iPhone en portrait, AX3 ou plus) : environ 440 pt
+    /// clavier ouvert, 700 pt clavier fermé (mesuré sur iPhone 18 Pro) ; iPad et Mac offrent bien
+    /// plus, ils ne passent jamais sous ce seuil.
+    static let keyboardOpenPortraitMaximumHeight: CGFloat = 520
+
+    /// Badge réduit à son icône (décision de Ben, mission E2c ; étendu au portrait, mission AX3) :
+    /// à AX3 ou plus, clavier ouvert, en hauteur compacte (iPhone en paysage) comme en portrait. À ce réglage la barre de saisie
     /// débordait d'environ 33 pt et le bouton d'envoi passait sous le clavier. Partout ailleurs
     /// (AX1, AX2, portrait, Mac, iPad, clavier fermé) le badge garde son texte.
     /// Clavier ouvert déduit de la hauteur MESURÉE, comme le repli de l'en-tête (jamais du modèle
@@ -369,10 +380,10 @@ nonisolated enum EngineHeaderLayout {
         dynamicTypeSize: DynamicTypeSize,
         availableHeight: CGFloat
     ) -> Bool {
-        isVerticallyCompact
-            && dynamicTypeSize >= .accessibility3
+        let maximumHeight = isVerticallyCompact ? keyboardOpenMaximumHeight : keyboardOpenPortraitMaximumHeight
+        return dynamicTypeSize >= .accessibility3
             && availableHeight >= minimumMeasuredHeight
-            && availableHeight < keyboardOpenMaximumHeight
+            && availableHeight < maximumHeight
     }
 
     /// - Parameters:
@@ -393,7 +404,7 @@ nonisolated enum EngineHeaderLayout {
         if hasMessages {
             return isAccessibilitySize || availableHeight < conversationMinimumHeight
         }
-        return availableHeight < emptyScreenMinimumHeight
+        return availableHeight < (isAccessibilitySize ? emptyScreenAccessibilityMinimumHeight : emptyScreenMinimumHeight)
     }
 }
 
