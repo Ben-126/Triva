@@ -184,6 +184,10 @@ struct FavoriteDetailContentView: View {
                     AnswerNoteLine(answer: answer)
                     // Même avertissement « généré par IA » que sous la réponse du chat (mission C3).
                     AIDisclaimerLine()
+                    // Copier / Partager (mission C5) : même texte marqué que dans le chat.
+                    if let shareText = AnswerShareText.text(tldr: segments.tldr, body: segments.body, sources: content.sources) {
+                        AnswerActionsRow(text: shareText)
+                    }
                 }
                 if !content.sources.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {

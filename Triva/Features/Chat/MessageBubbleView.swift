@@ -595,9 +595,20 @@ private struct AnswerBubble: View {
                 }
             }
 
-            if canToggleFavorite {
-                FavoriteButton(isFavorite: isFavorite, action: onToggleFavorite)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+            // Copier / Partager (mission C5) : texte marqué « généré par IA », réponse terminée seulement.
+            let shareText = AnswerShareText.isOffered(state: answer.state, hasText: segments.tldr != nil || !segments.body.isEmpty)
+                ? AnswerShareText.text(tldr: segments.tldr, body: segments.body, sources: message.sources)
+                : nil
+            if canToggleFavorite || shareText != nil {
+                HStack(spacing: 0) {
+                    if let shareText {
+                        AnswerActionsRow(text: shareText)
+                    }
+                    Spacer(minLength: 0)
+                    if canToggleFavorite {
+                        FavoriteButton(isFavorite: isFavorite, action: onToggleFavorite)
+                    }
+                }
             }
         }
         .padding(16)

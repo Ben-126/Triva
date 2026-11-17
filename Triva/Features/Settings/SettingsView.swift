@@ -189,7 +189,12 @@ struct SettingsView: View {
         } header: {
             Text("Clé API personnelle")
         } footer: {
-            Text("Ces réglages ne servent qu'avec le moteur «\u{00A0}Clé API personnelle\u{00A0}».")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Ces réglages ne servent qu'avec le moteur «\u{00A0}Clé API personnelle\u{00A0}».")
+                // Mention validée par Ben (`PaidKeyNotice`), la même qu'à l'accueil.
+                Text(PaidKeyNotice.text)
+                    .accessibilityIdentifier("legal.paidKeyNotice")
+            }
         }
     }
 

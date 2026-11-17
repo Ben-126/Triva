@@ -69,6 +69,7 @@ struct CloudProviderModelPickerView: View {
                     Text(CloudWebSearchCostNotice.sentence)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    PaidKeyNoticeText()
                 }
             }
             .frame(maxWidth: contentMaxWidth, alignment: .leading)

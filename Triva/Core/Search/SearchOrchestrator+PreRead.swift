@@ -62,7 +62,20 @@ extension SearchOrchestrator {
             .filter { seenKeys.insert(urlKey($0)).inserted }
     }
 
-    /// Lit `sourcesWithoutExcerpt(sources)` en UN tour de scrape (`scrapeAll` :
+    /// Sources à lire sans LLM : celles sans extrait, plus celles que l'UTILISATEUR a fait lire
+    /// (« Lire cette page », mission C5, `UserReadPages`) : sa page doit entrer dans le contexte à la
+    /// place du simple extrait du moteur, sans dépendre du bon vouloir du planner. Servie depuis la
+    /// mémoire par `ScrapeService` : aucune requête réseau. Une fois chacune, dans l'ordre des sources.
+    nonisolated static func urlsToPreRead(_ sources: [SearXNGSearchResult]) -> [String] {
+        let withoutExcerpt = sourcesWithoutExcerpt(sources)
+        var seenKeys = Set(withoutExcerpt.map(urlKey))
+        let userRead = sources.map(\.url).filter { url in
+            UserReadPages.page(for: url) != nil && seenKeys.insert(urlKey(url)).inserted
+        }
+        return withoutExcerpt + userRead
+    }
+
+    /// Lit `urlsToPreRead(sources)` en UN tour de scrape (`scrapeAll` :
     /// parallèle, échéance globale, pages rendues dans l'ordre, échec = page en
     /// échec, jamais d'erreur), puis vérifie l'annulation (Stop) : `scrapeAll` ne
     /// lève jamais. Aucune source sans extrait : aucun appel, l'horloge n'est pas
@@ -80,7 +93,7 @@ extension SearchOrchestrator {
         timeout: Duration,
         clock: C
     ) async throws -> [ScrapedPage] {
-        let urls = sourcesWithoutExcerpt(sources)
+        let urls = urlsToPreRead(sources)
         guard !urls.isEmpty else { return [] }
         let pages = await scrapeAll(urls, using: scrapeService, timeout: timeout, clock: clock)
         try Task.checkCancellation()

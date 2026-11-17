@@ -320,15 +320,23 @@ final class ChatViewModel {
         guard let index = messages.firstIndex(where: { $0.id == messageID }),
               canRetryInQuickMode(messages[index]),
               let questionIndex = messages[..<index].lastIndex(where: { $0.role == .user }) else { return }
+        await rerunAnswer(at: index, questionIndex: questionIndex, mode: .quick)
+    }
+
+    /// Refait la réponse `index` : MÊME question, même historique, même bulle (identifiant gardé),
+    /// l'ancienne réponse retirée de l'historique persisté. Partagé par « Relancer en mode Rapide »
+    /// et « Lire cette page » (`ChatViewModel+ReadPage`) ; défini ici car il écrit dans `messages`.
+    func rerunAnswer(at index: Int, questionIndex: Int, mode: ResponseMode) async {
         let question = messages[questionIndex].text
         let replaced = messages[index]
+        let messageID = replaced.id
         messages[index] = Message(id: messageID, role: .assistant, isStreaming: true)
         persistenceErrorDescription = nil
         deleteStoredMessage(id: replaced.storedMessageID, conversationID: replaced.storedConversationID)
         await runExchange(Exchange(
             question: question,
             history: Self.classifierHistory(from: Array(messages[..<questionIndex])),
-            mode: .quick,
+            mode: mode,
             attachments: attachmentSnapshot(),
             conversationID: currentConversationID,
             answerID: messageID

@@ -260,6 +260,9 @@ struct ChatView: View {
             messagesList
             composer
         }
+        .environment(\.readPageAction, ReadPageAction(isEnabled: viewModel.canReadPage) { url in
+            await readPageAndRegenerate(url: url)
+        })
         .sheet(item: $consentRequest) { request in
             CloudConsentSheet(
                 request: request,
@@ -599,6 +602,14 @@ struct ChatView: View {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
         whenConsented { viewModel.startRetryInQuickMode(messageID: messageID) }
+    }
+
+    /// « Lire cette page » (mission C5) : la page lue, la réponse est refaite avec elle, comme pour toute
+    /// génération (accord IA cloud d'abord). Lecture échouée : rien n'est relancé.
+    private func readPageAndRegenerate(url: String) async {
+        guard await viewModel.readPage(url: url) == .readyToRegenerate else { return }
+        setPinned(true)
+        whenConsented { viewModel.startRegenerationWithReadPages() }
     }
 
     /// Envoi bloqué hors connexion (tâche 1.16) : même question, relancée (le bouton Stop l'arrête

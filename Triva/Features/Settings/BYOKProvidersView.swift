@@ -198,7 +198,12 @@ struct BYOKProvidersView: View {
     }
 
     private var header: some View {
-        Text("Chaque clé reste dans le Trousseau de cet appareil, envoyée uniquement à son fournisseur.")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Chaque clé reste dans le Trousseau de cet appareil, envoyée uniquement à son fournisseur.")
+            // Même texte, même constante que l'accueil (`PaidKeyNotice`).
+            Text(PaidKeyNotice.text)
+                .accessibilityIdentifier("legal.paidKeyNotice")
+        }
     }
 
     private var addCustomProviderButton: some View {

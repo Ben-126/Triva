@@ -93,6 +93,9 @@ struct AIEngineSelectionView: View {
                             title: "Clé API personnelle",
                             subtitle: Self.cloudKeyCardSubtitle
                         )
+                        // Mention validée par Ben : payant chez le fournisseur, gratuit chez Triva.
+                        PaidKeyNoticeText()
+                            .padding(.horizontal, 4)
                     }
                 }
 

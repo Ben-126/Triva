@@ -134,6 +134,8 @@ struct SourcesListView: View {
     var unreadNumbers: Set<Int> = []
     /// Sources refusées à la lecture automatique par leur site (mission C4) : état partagé, observable.
     private let refusals = SiteReadRefusals.shared
+    /// Dans le chat : lire la page refait aussi la réponse (mission C5). `nil` : lecture seule.
+    @Environment(\.readPageAction) private var readPageAction
 
     var body: some View {
         // 12 entre deux sources, 4 entre titre et domaine : avant, le même écart séparait
@@ -236,7 +238,13 @@ struct SourcesListView: View {
     /// posée sur la bulle (DESIGN.md : pas de verre sur verre).
     private func readButton(for source: SearXNGSearchResult) -> some View {
         Button {
-            Task { await refusals.readPage(url: source.url) }
+            Task {
+                if let readPageAction {
+                    await readPageAction.perform(source.url)
+                } else {
+                    await refusals.readPage(url: source.url)
+                }
+            }
         } label: {
             Text(ReadPagePresentation.buttonTitle)
                 .font(.footnote.weight(.medium))
@@ -245,26 +253,16 @@ struct SourcesListView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(readPageAction?.isEnabled == false)
         .padding(.leading, 24)
         .accessibilityLabel(ReadPagePresentation.buttonAccessibilityLabel(title: source.title))
         .accessibilityIdentifier("source.readPage")
     }
 
-    /// Mention de licence : une ligne `.caption`, même encre que le domaine ; le nom de licence est
-    /// cliquable (texte Markdown, rendu par `Text`).
+    /// Mention de licence : voir `SourceLicenseLine`, partagée avec la fiche d'une citation.
     private func licenseLine(_ license: SourcesListPresentation.LicenseAttribution) -> some View {
-        Text(licenseMarkdown(license))
-            .font(.caption)
-            .foregroundStyle(MessageBubbleView.legendStyle)
-            .tint(.accentColor)
-            .fixedSize(horizontal: false, vertical: true)
+        SourceLicenseLine(license: license)
             .padding(.leading, 24)
-    }
-
-    private func licenseMarkdown(_ license: SourcesListPresentation.LicenseAttribution) -> AttributedString {
-        var text = AttributedString(license.text)
-        if let url = license.licenseURL, let range = text.range(of: license.licenseName) { text[range].link = url }
-        return text
     }
 
     /// « lemonde.fr » ou « lemonde.fr · non lue » : la mention reste sur la ligne du domaine,
@@ -329,4 +327,26 @@ private extension SearXNGSearchResult {
         SearXNGSearchResult(previewTitle: "SearXNG — moteur de recherche", previewURL: "https://docs.searxng.org"),
     ])
     .padding(20)
+}
+
+
+/// Mention de licence d'une source : une ligne `.caption`, même encre que le domaine ; le nom de
+/// licence est cliquable (texte Markdown, rendu par `Text`). Une seule vue pour la liste des
+/// sources et la fiche d'une citation (`CitationSourceCard`), donc un seul texte (mission C5).
+struct SourceLicenseLine: View {
+    let license: SourcesListPresentation.LicenseAttribution
+
+    var body: some View {
+        Text(attributedText)
+            .font(.caption)
+            .foregroundStyle(MessageBubbleView.legendStyle)
+            .tint(.accentColor)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var attributedText: AttributedString {
+        var text = AttributedString(license.text)
+        if let url = license.licenseURL, let range = text.range(of: license.licenseName) { text[range].link = url }
+        return text
+    }
 }

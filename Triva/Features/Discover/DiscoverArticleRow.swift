@@ -213,7 +213,7 @@ struct DiscoverArticleRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(MediaResultsPresentation.accessibilityLabel(title: title, domain: spokenMeta))
-            .accessibilityHint("Ouvre l'article dans ton navigateur")
+            .accessibilityHint("Ouvre l'article dans Triva")
             .accessibilityIdentifier("discover.article")
             .accessibilityRemoveTraits(.isButton)
             .accessibilityAddTraits(.isLink)

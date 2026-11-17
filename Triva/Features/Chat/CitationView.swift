@@ -277,6 +277,11 @@ struct CitationSourceCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            // Même mention de licence que la liste des sources (mission C5).
+            if let license = SourcesListPresentation.licenseAttribution(for: selection.source) {
+                SourceLicenseLine(license: license)
+            }
         }
         .accessibilityElement(children: .combine)
     }
