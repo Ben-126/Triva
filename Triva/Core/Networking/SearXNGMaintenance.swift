@@ -50,6 +50,10 @@ final class SearXNGMaintenance {
     /// un passage ne ferait que télécharger l'annuaire et sonder des instances dans le vide
     /// (tâche 1.16). Lue à CHAQUE activation, pas mémorisée.
     private let isOffline: @MainActor () -> Bool
+    /// Vrai quand l'utilisateur laisse la mise à jour automatique active (Réglages > Avancé,
+    /// `InstanceAutoUpdatePolicy`). Lue à CHAQUE activation : désactivé, plus aucun passage, donc
+    /// ni annuaire searx.space ni re-sonde (mission C3, M13).
+    private let isAutoUpdateEnabled: @MainActor () -> Bool
 
     /// Passage en cours, `nil` au repos. Lecture exposée pour les tests.
     private(set) var inFlight: Task<Void, Never>?
@@ -60,15 +64,18 @@ final class SearXNGMaintenance {
     ///   - prober: sonde de la re-sonde (la vraie par défaut, une fausse dans les tests).
     ///   - makeFailoverManager: voir la propriété du même nom.
     ///   - isOffline: voir la propriété du même nom ; `{ false }` par défaut (comportement d'avant 1.16).
+    ///   - isAutoUpdateEnabled: voir la propriété du même nom ; lit le réglage de l'app par défaut.
     init(
         refresher: any SearXNGDirectoryRefreshing,
         prober: any InstanceProbing = SearXNGInstanceHealthProbe(),
         isOffline: @escaping @MainActor () -> Bool = { false },
+        isAutoUpdateEnabled: @escaping @MainActor () -> Bool = { InstanceAutoUpdatePolicy.isEnabled() },
         makeFailoverManager: @escaping @MainActor () -> FailoverManager
     ) {
         self.refresher = refresher
         self.prober = prober
         self.isOffline = isOffline
+        self.isAutoUpdateEnabled = isAutoUpdateEnabled
         self.makeFailoverManager = makeFailoverManager
     }
 
@@ -80,11 +87,15 @@ final class SearXNGMaintenance {
     /// et la re-sonde mettrait à l'écart des instances qui n'ont rien fait de mal : il n'y a pas de
     /// réseau pour les juger. Le retour de la connexion rappelle cette fonction (`TrivaApp`).
     ///
+    /// Mise à jour automatique désactivée (mission C3, M13) : AUCUN passage non plus, car les deux
+    /// étapes (annuaire, re-sonde) contactent des tiers sans action de l'utilisateur.
+    ///
     /// - Returns: la tâche du passage lancé (que les tests attendent), ou `nil` si un passage
-    ///   était déjà en cours ou si l'appareil est hors connexion : rien n'est alors relancé.
+    ///   était déjà en cours, si l'appareil est hors connexion ou si le réglage est coupé : rien
+    ///   n'est alors relancé.
     @discardableResult
     func sceneDidBecomeActive() -> Task<Void, Never>? {
-        guard inFlight == nil, !isOffline() else { return nil }
+        guard inFlight == nil, isAutoUpdateEnabled(), !isOffline() else { return nil }
         // Le corps de la tâche hérite du main actor : il ne peut donc démarrer qu'après la fin
         // de cette fonction, et `inFlight` est toujours affecté AVANT que `runPass` ne le remette
         // à `nil`.

@@ -1,0 +1,484 @@
+{
+  "_comment": "Brouillon À VALIDER — mission T2 du 2026-11-17. Source unique pour l'écran natif « Licences et attributions » (M5) et pour docs/licences.md. Le français fait foi. Les textes des licences sont repris tels quels des fichiers des paquets (checkouts SwiftPM du 2026-11-17) ; '@apache-2.0' renvoie à licenseTexts['Apache-2.0'], qui doit être affiché en entier une fois, avec le copyright et le NOTICE propres à chaque paquet. licenseFile = chemin relatif au dossier SourcePackages/checkouts : l'agent de code doit embarquer le vrai fichier quand c'est possible.",
+  "generatedFrom": {
+    "packageResolved": "Triva.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+    "checkouts": "SourcePackages/checkouts (DerivedData)",
+    "embeddedCheck": "nm -U sur Triva.debug.dylib, build Debug iOS du 2026-11-14 : à refaire sur l'archive Release (M5)"
+  },
+  "app": {
+    "name": "Triva",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 [titulaire à préciser]",
+    "note": "Fichier LICENSE du dépôt ; titulaire à préciser avec le parent (audit, constat 33). Ne jamais afficher de nom de famille sans accord.",
+    "licenseFile": "LICENSE (racine du dépôt Triva)"
+  },
+  "dependencies": [
+    {
+      "id": "claude-for-foundation-models",
+      "name": "ClaudeForFoundationModels",
+      "version": "révision fd965bf (branche, pas de version)",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2026 Anthropic PBC (en-têtes des sources)",
+      "url": "https://github.com/anthropics/ClaudeForFoundationModels",
+      "licenseFile": "ClaudeForFoundationModels/LICENSE",
+      "licenseText": "@apache-2.0",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "eventsource",
+      "name": "EventSource",
+      "version": "1.5.1",
+      "license": "MIT",
+      "copyright": "Copyright 2025 Mattt (https://mat.tt)",
+      "url": "https://github.com/mattt/EventSource",
+      "licenseFile": "EventSource/LICENSE.md",
+      "licenseText": "Copyright 2025 Mattt (https://mat.tt)\n\nPermission is hereby granted, free of charge, to any person obtaining a\ncopy of this software and associated documentation files (the \"Software\"),\nto deal in the Software without restriction, including without limitation\nthe rights to use, copy, modify, merge, publish, distribute, sublicense,\nand/or sell copies of the Software, and to permit persons to whom the\nSoftware is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS\nOR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.",
+      "includedVia": "swift-huggingface",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "mlx-swift",
+      "name": "MLX Swift",
+      "version": "0.31.6",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2023 ml-explore",
+      "url": "https://github.com/ml-explore/mlx-swift",
+      "licenseFile": "mlx-swift/LICENSE",
+      "licenseText": "MIT License\n\nCopyright (c) 2023 ml-explore\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "includedVia": "mlx-swift-lm",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "mlx",
+      "name": "MLX (embarqué dans Cmlx)",
+      "version": "version embarquée par mlx-swift 0.31.6",
+      "license": "MIT",
+      "copyright": "Copyright © 2023 Apple Inc.",
+      "url": "https://github.com/ml-explore/mlx",
+      "licenseFile": "mlx-swift/Source/Cmlx/mlx/LICENSE",
+      "licenseText": "MIT License\n\nCopyright © 2023 Apple Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "includedVia": "mlx-swift",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "mlx-c",
+      "name": "MLX C (embarqué dans Cmlx)",
+      "version": "version embarquée par mlx-swift 0.31.6",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2023 ml-explore",
+      "url": "https://github.com/ml-explore/mlx-c",
+      "licenseFile": "mlx-swift/Source/Cmlx/mlx-c/LICENSE",
+      "licenseText": "MIT License\n\nCopyright (c) 2023 ml-explore\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "includedVia": "mlx-swift",
+      "embedded": true,
+      "embeddedEvidence": "Embarqué dans la cible Cmlx de mlx-swift (même bibliothèque que mlx) ; non isolé par les symboles."
+    },
+    {
+      "id": "metal-cpp",
+      "name": "metal-cpp (embarqué dans Cmlx)",
+      "version": "metal-cpp_macOS15_iOS18-beta, avec correctif de mlx-swift",
+      "license": "Apache-2.0",
+      "copyright": "Copyright © 2024 Apple Inc.",
+      "url": "https://developer.apple.com/metal/cpp/",
+      "licenseFile": "mlx-swift/Source/Cmlx/metal-cpp/LICENSE.txt",
+      "licenseText": "@apache-2.0",
+      "includedVia": "mlx-swift",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "fmt",
+      "name": "{fmt}",
+      "version": "12.1.0",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors",
+      "url": "https://github.com/fmtlib/fmt",
+      "licenseFile": "mlx-swift/Source/Cmlx/fmt/LICENSE",
+      "licenseText": "Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n--- Optional exception to the license ---\n\nAs an exception, if, as a result of your compiling your source code, portions\nof this Software are embedded into a machine-executable object form of such\nsource code, you may redistribute such embedded portions in such object form\nwithout including the above copyright and permission notices.",
+      "includedVia": "mlx-swift",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5).",
+      "note": "Licence MIT avec exception facultative : l'attribution n'est pas exigée pour les portions compilées dans un binaire ; listé par courtoisie."
+    },
+    {
+      "id": "nlohmann-json",
+      "name": "JSON for Modern C++ (nlohmann/json)",
+      "version": "3.11.3",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2013-2022 Niels Lohmann",
+      "url": "https://github.com/nlohmann/json",
+      "licenseFile": "mlx-swift/Source/Cmlx/json/LICENSE.MIT",
+      "licenseText": "MIT License \n\nCopyright (c) 2013-2022 Niels Lohmann\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "includedVia": "mlx-swift",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "mlx-swift-lm",
+      "name": "MLX Swift LM",
+      "version": "révision 37688d2 (branche, pas de version)",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2024 ml-explore",
+      "url": "https://github.com/ml-explore/mlx-swift-lm",
+      "licenseFile": "mlx-swift-lm/LICENSE",
+      "licenseText": "MIT License\n\nCopyright (c) 2024 ml-explore\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "xgrammar",
+      "name": "XGrammar (embarqué dans mlx-swift-lm)",
+      "version": "v0.1.30",
+      "license": "Apache-2.0",
+      "copyright": "Copyright (c) 2024 by XGrammar Contributors",
+      "url": "https://github.com/mlc-ai/xgrammar",
+      "licenseFile": "mlx-swift-lm/Libraries/MLXCXGrammar/xgrammar/LICENSE",
+      "licenseText": "@apache-2.0",
+      "notice": "XGrammar\n\nCopyright (c) 2024 by XGrammar Contributors",
+      "noticeFile": "mlx-swift-lm/Libraries/MLXCXGrammar/xgrammar/NOTICE",
+      "includedVia": "mlx-swift-lm",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "picojson",
+      "name": "PicoJSON (embarqué dans XGrammar)",
+      "version": "version embarquée par XGrammar v0.1.30",
+      "license": "BSD-2-Clause",
+      "copyright": "Copyright 2009-2010 Cybozu Labs, Inc. ; Copyright 2011-2014 Kazuho Oku",
+      "url": "https://github.com/kazuho/picojson",
+      "licenseFile": "mlx-swift-lm/Libraries/MLXCXGrammar/xgrammar/3rdparty/picojson/picojson.h (en-tête du fichier)",
+      "licenseText": "Copyright 2009-2010 Cybozu Labs, Inc.\nCopyright 2011-2014 Kazuho Oku\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice,\n   this list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE\nARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE\nLIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR\nCONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF\nSUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS\nINTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN\nCONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)\nARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE\nPOSSIBILITY OF SUCH DAMAGE.",
+      "includedVia": "xgrammar",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5).",
+      "note": "Pas de fichier LICENSE séparé : la licence est dans l'en-tête de picojson.h. La BSD-2-Clause exige de reproduire l'avis dans la documentation du binaire."
+    },
+    {
+      "id": "dlpack",
+      "name": "DLPack (embarqué dans XGrammar)",
+      "version": "version embarquée par XGrammar v0.1.30",
+      "license": "Apache-2.0",
+      "copyright": "Copyright (c) 2017 by Contributors",
+      "url": "https://github.com/dmlc/dlpack",
+      "licenseFile": "(aucun fichier LICENSE dans le paquet ; licence du dépôt https://github.com/dmlc/dlpack/blob/main/LICENSE, lue le 2026-11-17)",
+      "licenseText": "@apache-2.0",
+      "includedVia": "xgrammar",
+      "embedded": true,
+      "embeddedEvidence": "Symboles DLTensor/dlpack trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "swift-huggingface",
+      "name": "Swift Hugging Face",
+      "version": "0.9.0",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2025 Hugging Face SAS.",
+      "url": "https://github.com/huggingface/swift-huggingface",
+      "licenseFile": "swift-huggingface/LICENSE",
+      "licenseText": "@apache-2.0",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "swift-transformers",
+      "name": "Swift Transformers",
+      "version": "1.3.3",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2022 Hugging Face SAS.",
+      "url": "https://github.com/huggingface/swift-transformers",
+      "licenseFile": "swift-transformers/LICENSE",
+      "licenseText": "@apache-2.0",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "swift-jinja",
+      "name": "Swift Jinja",
+      "version": "2.4.2",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2022 Hugging Face SAS.",
+      "url": "https://github.com/huggingface/swift-jinja",
+      "licenseFile": "swift-jinja/LICENSE",
+      "licenseText": "@apache-2.0",
+      "includedVia": "swift-transformers",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    },
+    {
+      "id": "swift-crypto",
+      "name": "Swift Crypto",
+      "version": "4.5.1",
+      "license": "Apache-2.0",
+      "copyright": "Copyright (c) 2019-2025 Apple Inc. and the SwiftCrypto project authors",
+      "url": "https://github.com/apple/swift-crypto",
+      "licenseFile": "swift-crypto/LICENSE.txt",
+      "licenseText": "@apache-2.0",
+      "notice": "                            The SwiftCrypto Project\n                            =======================\n\nPlease visit the SwiftCrypto web site for more information:\n\n  * https://github.com/apple/swift-crypto\n\nCopyright 2019 The SwiftCrypto Project\n\nThe SwiftCrypto Project licenses this file to you under the Apache License,\nversion 2.0 (the \"License\"); you may not use this file except in compliance\nwith the License. You may obtain a copy of the License at:\n\n  https://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\nWARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\nLicense for the specific language governing permissions and limitations\nunder the License.\n\nAlso, please refer to each LICENSE.<component>.txt file, which is located in\nthe 'license' directory of the distribution file, for the license terms of the\ncomponents that this product depends on.\n\n-------------------------------------------------------------------------------\n\nThis product contains test vectors from Google's wycheproof project.\n\n  * LICENSE (Apache License 2.0):\n    * https://github.com/C2SP/wycheproof/blob/31387e2cd596587c859c611027b6a44d2e2b65ff/LICENSE\n  * HOMEPAGE:\n    * https://github.com/google/wycheproof\n\n---\n\nThis product contains a derivation of various files from SwiftNIO.\n\n  * LICENSE (Apache License 2.0):\n    * https://www.apache.org/licenses/LICENSE-2.0\n  * HOMEPAGE:\n    * https://github.com/apple/swift-nio",
+      "noticeFile": "swift-crypto/NOTICE.txt",
+      "includedVia": "swift-huggingface, swift-transformers",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5).",
+      "note": "Seul le module Crypto (qui s'appuie sur CryptoKit sur les plateformes Apple) est trouvé dans le binaire ; BoringSSL et _CryptoExtras n'y sont pas."
+    },
+    {
+      "id": "swift-asn1",
+      "name": "Swift ASN.1",
+      "version": "1.7.1",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2022 The SwiftASN1 Project",
+      "url": "https://github.com/apple/swift-asn1",
+      "licenseFile": "swift-asn1/LICENSE.txt",
+      "licenseText": "@apache-2.0",
+      "notice": "                            The SwiftASN1 Project\n                            =====================\n\nPlease visit the SwiftASN1 web site for more information:\n\n  * https://github.com/apple/swift-asn1\n\nCopyright 2022 The SwiftASN1 Project\n\nThe SwiftASN1 Project licenses this file to you under the Apache License,\nversion 2.0 (the \"License\"); you may not use this file except in compliance\nwith the License. You may obtain a copy of the License at:\n\n  https://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS, WITHOUT\nWARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the\nLicense for the specific language governing permissions and limitations\nunder the License.\n\nAlso, please refer to each LICENSE.txt file, which is located in\nthe 'license' directory of the distribution file, for the license terms of the\ncomponents that this product depends on.\n\n---\n\nThis product contains derivations of various scripts from SwiftNIO.\n\n  * LICENSE (Apache License 2.0):\n    * https://www.apache.org/licenses/LICENSE-2.0\n  * HOMEPAGE:\n    * https://github.com/apple/swift-nio\n    \n---\n\nThis product contains derivations of various scripts from Swift OpenAPI Generator.\n\n  * LICENSE (Apache License 2.0):\n    * https://www.apache.org/licenses/LICENSE-2.0\n  * HOMEPAGE:\n    * https://github.com/apple/swift-openapi-generator",
+      "noticeFile": "swift-asn1/NOTICE.txt",
+      "includedVia": "swift-crypto",
+      "embedded": false,
+      "embeddedEvidence": "Aucun symbole trouvé dans Triva.debug.dylib (build Debug iOS du 2026-11-14). Gardé par prudence : à retirer seulement si l'archive Release le confirme (M5)."
+    },
+    {
+      "id": "swift-collections",
+      "name": "Swift Collections",
+      "version": "1.6.0",
+      "license": "Apache-2.0 WITH Swift-exception",
+      "copyright": "Copyright (c) 2021 - 2026 Apple Inc. and the Swift project authors",
+      "url": "https://github.com/apple/swift-collections",
+      "licenseFile": "swift-collections/LICENSE.txt",
+      "licenseText": "@apache-2.0",
+      "includedVia": "swift-transformers, swift-jinja",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5).",
+      "note": "Runtime Library Exception : l'attribution n'est pas exigée pour le code compilé dans le binaire ; listé par courtoisie."
+    },
+    {
+      "id": "swift-numerics",
+      "name": "Swift Numerics",
+      "version": "1.1.1",
+      "license": "Apache-2.0 WITH Swift-exception",
+      "copyright": "Copyright (c) 2020-2025 Apple Inc. and the Swift Numerics project authors",
+      "url": "https://github.com/apple/swift-numerics",
+      "licenseFile": "swift-numerics/LICENSE.txt",
+      "licenseText": "@apache-2.0",
+      "includedVia": "mlx-swift",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5).",
+      "note": "Runtime Library Exception : l'attribution n'est pas exigée pour le code compilé dans le binaire ; listé par courtoisie."
+    },
+    {
+      "id": "yyjson",
+      "name": "yyjson",
+      "version": "0.12.0",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2020 YaoYuan <ibireme@gmail.com>",
+      "url": "https://github.com/ibireme/yyjson",
+      "licenseFile": "yyjson/LICENSE",
+      "licenseText": "MIT License\n\nCopyright (c) 2020 YaoYuan <ibireme@gmail.com>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "includedVia": "swift-transformers",
+      "embedded": true,
+      "embeddedEvidence": "Symboles trouvés dans Triva.debug.dylib (build Debug iOS du 2026-11-14) ; à reconfirmer sur l'archive Release (M5)."
+    }
+  ],
+  "buildOnlyNotEmbedded": [
+    {
+      "id": "swift-argument-parser",
+      "name": "Swift Argument Parser",
+      "version": "1.8.2",
+      "license": "Apache-2.0 WITH Swift-exception",
+      "url": "https://github.com/apple/swift-argument-parser",
+      "embedded": false,
+      "embeddedEvidence": "Outil de build seulement : aucun symbole dans le binaire. Pas d'attribution requise."
+    },
+    {
+      "id": "swift-syntax",
+      "name": "Swift Syntax",
+      "version": "603.0.2",
+      "license": "Apache-2.0 WITH Swift-exception",
+      "url": "https://github.com/swiftlang/swift-syntax",
+      "embedded": false,
+      "embeddedEvidence": "Sert aux macros pendant la compilation : aucun symbole dans le binaire. Pas d'attribution requise."
+    }
+  ],
+  "models": [
+    {
+      "id": "qwen3-0.6b",
+      "name": "Qwen3 0.6B",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2024 Alibaba Cloud",
+      "origin": "https://huggingface.co/Qwen/Qwen3-0.6B",
+      "conversion": "https://huggingface.co/mlx-community/Qwen3-0.6B-4bit",
+      "licenseText": "@apache-2.0",
+      "note": "Conversion MLX 4 bits par mlx-community ; téléchargé à la demande depuis Hugging Face, pas inclus dans l'app.",
+      "verified": "LICENSE du dépôt Qwen/Qwen3-0.6B lu le 2026-11-17"
+    },
+    {
+      "id": "qwen3-1.7b",
+      "name": "Qwen3 1.7B",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2024 Alibaba Cloud",
+      "origin": "https://huggingface.co/Qwen/Qwen3-1.7B",
+      "conversion": "https://huggingface.co/mlx-community/Qwen3-1.7B-4bit",
+      "licenseText": "@apache-2.0",
+      "note": "Conversion MLX 4 bits par mlx-community ; téléchargé à la demande depuis Hugging Face, pas inclus dans l'app.",
+      "verified": "LICENSE du dépôt Qwen/Qwen3-1.7B lu le 2026-11-17"
+    },
+    {
+      "id": "qwen3-4b",
+      "name": "Qwen3 4B",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2024 Alibaba Cloud",
+      "origin": "https://huggingface.co/Qwen/Qwen3-4B",
+      "conversion": "https://huggingface.co/mlx-community/Qwen3-4B-4bit",
+      "licenseText": "@apache-2.0",
+      "note": "Conversion MLX 4 bits par mlx-community ; téléchargé à la demande depuis Hugging Face, pas inclus dans l'app.",
+      "verified": "LICENSE du dépôt Qwen/Qwen3-4B lu le 2026-11-17"
+    },
+    {
+      "id": "qwen3-8b",
+      "name": "Qwen3 8B",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2024 Alibaba Cloud",
+      "origin": "https://huggingface.co/Qwen/Qwen3-8B",
+      "conversion": "https://huggingface.co/mlx-community/Qwen3-8B-4bit",
+      "licenseText": "@apache-2.0",
+      "note": "Conversion MLX 4 bits par mlx-community ; téléchargé à la demande depuis Hugging Face, pas inclus dans l'app.",
+      "verified": "LICENSE du dépôt Qwen/Qwen3-8B lu le 2026-11-17"
+    },
+    {
+      "id": "qwen3-14b",
+      "name": "Qwen3 14B",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2024 Alibaba Cloud",
+      "origin": "https://huggingface.co/Qwen/Qwen3-14B",
+      "conversion": "https://huggingface.co/mlx-community/Qwen3-14B-4bit",
+      "licenseText": "@apache-2.0",
+      "note": "Conversion MLX 4 bits par mlx-community ; téléchargé à la demande depuis Hugging Face, pas inclus dans l'app.",
+      "verified": "LICENSE du dépôt Qwen/Qwen3-14B lu le 2026-11-17"
+    },
+    {
+      "id": "qwen3-30b-a3b",
+      "name": "Qwen3 30B-A3B",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2024 Alibaba Cloud",
+      "origin": "https://huggingface.co/Qwen/Qwen3-30B-A3B",
+      "conversion": "https://huggingface.co/mlx-community/Qwen3-30B-A3B-4bit",
+      "licenseText": "@apache-2.0",
+      "note": "Conversion MLX 4 bits par mlx-community ; téléchargé à la demande depuis Hugging Face, pas inclus dans l'app.",
+      "verified": "LICENSE du dépôt Qwen/Qwen3-30B-A3B lu le 2026-11-17"
+    },
+    {
+      "id": "qwen3-32b",
+      "name": "Qwen3 32B",
+      "license": "Apache-2.0",
+      "copyright": "Copyright 2024 Alibaba Cloud",
+      "origin": "https://huggingface.co/Qwen/Qwen3-32B",
+      "conversion": "https://huggingface.co/mlx-community/Qwen3-32B-4bit",
+      "licenseText": "@apache-2.0",
+      "note": "Conversion MLX 4 bits par mlx-community ; téléchargé à la demande depuis Hugging Face, pas inclus dans l'app.",
+      "verified": "LICENSE du dépôt Qwen/Qwen3-32B lu le 2026-11-17"
+    }
+  ],
+  "dataSources": [
+    {
+      "id": "open-meteo",
+      "name": "Open-Meteo",
+      "use": "Widget météo",
+      "license": "CC-BY-4.0",
+      "attribution": "Données météo : Open-Meteo.com (CC BY 4.0)",
+      "attributionEN": "Weather data by Open-Meteo.com (CC BY 4.0)",
+      "url": "https://open-meteo.com/",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "terms": "https://open-meteo.com/en/licence",
+      "note": "API gratuite réservée à un usage non commercial (https://open-meteo.com/en/terms) ; lien obligatoire à côté des données (ecrans.md G.1, M6).",
+      "verified": "2026-11-14 (audit, T1)"
+    },
+    {
+      "id": "wikipedia",
+      "name": "Wikipédia",
+      "use": "Sources ouvertes",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Wikipédia · CC BY-SA 4.0",
+      "url": "https://www.wikipedia.org/",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "terms": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
+      "note": "Textes sous CC BY-SA 4.0 (et GFDL).",
+      "verified": "2026-11-14 (T1)"
+    },
+    {
+      "id": "marginalia",
+      "name": "Marginalia Search",
+      "use": "Sources ouvertes",
+      "license": "CC-BY-NC-SA-4.0",
+      "attribution": "Résultat Marginalia Search · CC BY-NC-SA 4.0",
+      "url": "https://marginalia-search.com/",
+      "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "terms": "https://about.marginalia-search.com/article/api/",
+      "note": "Clé publique gratuite, usage non commercial seulement.",
+      "verified": "licence : 2026-11-14 (audit) ; marginalia-search.com répond (HTTP 200, titre « Marginalia Search ») le 2026-11-17"
+    },
+    {
+      "id": "openalex",
+      "name": "OpenAlex",
+      "use": "Sources ouvertes (articles scientifiques)",
+      "license": "CC0-1.0",
+      "attribution": "Données OpenAlex (CC0)",
+      "url": "https://openalex.org/",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "terms": "https://help.openalex.org/data/how-its-built/",
+      "note": "« everything is released under a CC0 public-domain license ». Attribution non exigée, faite par courtoisie.",
+      "verified": "2026-11-17"
+    },
+    {
+      "id": "arxiv",
+      "name": "arXiv",
+      "use": "Sources ouvertes (prépublications)",
+      "license": "CC0-1.0",
+      "attribution": "Merci à arXiv pour l'accès ouvert à ses métadonnées. Triva n'est ni approuvée ni soutenue par arXiv.",
+      "attributionEN": "Thank you to arXiv for open access to its metadata. Triva is not endorsed or supported by arXiv.",
+      "url": "https://arxiv.org/",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "terms": "https://info.arxiv.org/help/api/tou.html",
+      "note": "Métadonnées sous CC0 1.0 ; interdiction de présenter le projet comme approuvé par arXiv ; pas de logo. Les articles eux-mêmes gardent leur propre licence.",
+      "verified": "2026-11-17"
+    }
+  ],
+  "discoverFeeds": [
+    {
+      "id": "numerama",
+      "name": "Numerama",
+      "terms": "https://www.numerama.com/mentions-legales/",
+      "rule": "Flux reproductibles librement ; usage des articles par une IA interdit : aucune action IA sur ces articles (allowsAIUse: false)."
+    },
+    {
+      "id": "frandroid",
+      "name": "Frandroid",
+      "terms": "https://www.frandroid.com/mentions-legales",
+      "rule": "Flux reproductibles librement."
+    },
+    {
+      "id": "the-conversation",
+      "name": "The Conversation",
+      "terms": "https://theconversation.com/fr/republishing-guidelines",
+      "license": "CC-BY-ND-4.0",
+      "rule": "Licence Creative Commons Attribution / Pas de modification (CC BY-ND 4.0, lien lu le 2026-11-17) : citer l'auteur et le site, ne pas modifier ; seul le résumé est repris, sans images."
+    },
+    {
+      "id": "espn",
+      "name": "ESPN",
+      "terms": "https://www.espn.com/espn/news/story?page=rssinfo",
+      "rule": "Contenu affiché tel quel, lien vers l'article, mention d'ESPN, sans publicité."
+    },
+    {
+      "id": "pmc",
+      "name": "Variety, Deadline, The Hollywood Reporter, ARTnews (Penske Media)",
+      "terms": "https://pmc.com/terms-of-use",
+      "rule": "Conditions § 19 « Content Feeds » : flux repris tels quels, lien direct vers l'article et mention du média."
+    }
+  ],
+  "licenseTexts": {
+    "Apache-2.0": "Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright [yyyy] [name of copyright owner]\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.",
+    "Swift-exception": "## Runtime Library Exception to the Apache 2.0 License: ##\n\n\n    As an exception, if you use this Software to compile your source code and\n    portions of this Software are embedded into the binary product as a result,\n    you may redistribute such product without providing attribution as would\n    otherwise be required by Sections 4(a), 4(b) and 4(d) of the License."
+  }
+}

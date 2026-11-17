@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// Clés de licence portées par `SearXNGSearchResult.licenseKey`.
+nonisolated enum SourcesLicense {
+    static let marginaliaKey = "marginalia"
+}
+
 /// Logique pure de `SourcesListView`, testée dans
 /// `MessageBubblePresentationTests.swift`.
 nonisolated enum SourcesListPresentation {
@@ -22,6 +27,54 @@ nonisolated enum SourcesListPresentation {
 
     /// Mention d'une source affichée mais jamais lue (mission C1, rapport E2).
     static let unreadLabel = "non lue"
+
+    /// Mention sous le domaine d'une source dont la lecture automatique a été refusée par le site,
+    /// puis de son sort après un clic sur « Lire cette page » (texte À VALIDER, voir `ReadPagePresentation`).
+    static func readStatusLabel(for state: SiteReadRefusals.State?) -> String? {
+        switch state {
+        case nil: nil
+        case .refused: ReadPagePresentation.refusedLabel
+        case .reading: ReadPagePresentation.readingLabel
+        case .read: ReadPagePresentation.readLabel
+        case .readFailed: ReadPagePresentation.failedLabel
+        }
+    }
+
+    /// Le bouton « Lire cette page » n'est proposé que tant que la page n'est ni lue ni en cours de lecture.
+    static func offersReadButton(for state: SiteReadRefusals.State?) -> Bool {
+        state == .refused || state == .readFailed
+    }
+
+    /// Mention de licence d'une source dont le contenu est sous licence libre (mission C4, M7).
+    /// arXiv : provenance seule. Wikipédia : CC BY-SA 4.0 ; Marginalia : CC BY-NC-SA 4.0 (usage non commercial, app gratuite).
+    /// `nil` pour toute autre source. Textes de `textes/ecrans.md` G.2 et G.3 (À VALIDER, texte légal).
+    static func licenseAttribution(for source: SearXNGSearchResult) -> LicenseAttribution? {
+        let host = URL(string: source.url)?.host?.lowercased() ?? ""
+        if host == "wikipedia.org" || host.hasSuffix(".wikipedia.org") {
+            return LicenseAttribution(
+                text: "Wikipédia · CC BY-SA 4.0", licenseName: "CC BY-SA 4.0",
+                licenseURL: URL(string: "https://creativecommons.org/licenses/by-sa/4.0/")!
+            )
+        }
+        if host == "arxiv.org" || host.hasSuffix(".arxiv.org") {
+            // Simple provenance : pas de logo, aucune formule d'aval (arXiv API Terms of Use).
+            return LicenseAttribution(text: "Source : arXiv.org", licenseName: "", licenseURL: nil)
+        }
+        if source.licenseKey == SourcesLicense.marginaliaKey {
+            return LicenseAttribution(
+                text: "Résultat Marginalia Search · CC BY-NC-SA 4.0", licenseName: "CC BY-NC-SA 4.0",
+                licenseURL: URL(string: "https://creativecommons.org/licenses/by-nc-sa/4.0/")!
+            )
+        }
+        return nil
+    }
+
+    struct LicenseAttribution: Equatable {
+        let text: String
+        let licenseName: String
+        /// `nil` : simple mention de provenance, sans lien.
+        let licenseURL: URL?
+    }
 
     /// Ce qui s'affiche sous le titre d'une source web : le domaine seul, sans `www.`
     /// (« lemonde.fr »), comme Découvrir. Avant la mission C1, l'URL brute et percent-encodée
@@ -46,8 +99,11 @@ nonisolated enum SourcesListPresentation {
 
     /// Libellé VoiceOver d'une source web : son numéro (celui des citations), son titre, son
     /// domaine, et « non lue » le cas échéant.
-    static func webAccessibilityLabel(number: Int, title: String, domain: String, isUnread: Bool) -> String {
+    static func webAccessibilityLabel(
+        number: Int, title: String, domain: String, isUnread: Bool, readStatus: String? = nil
+    ) -> String {
         let base = "Source \(number), \(title), \(domain)"
+        if let readStatus { return "\(base), \(readStatus)" }
         return isUnread ? "\(base), \(unreadLabel)" : base
     }
 }
@@ -76,6 +132,8 @@ struct SourcesListView: View {
     /// Numéros (1-based) des sources jamais lues (`Message.uncitableSourceNumbers`) : marquées
     /// sobrement « non lue », sans être retirées (elles gardent leur rang, donc leur numéro).
     var unreadNumbers: Set<Int> = []
+    /// Sources refusées à la lecture automatique par leur site (mission C4) : état partagé, observable.
+    private let refusals = SiteReadRefusals.shared
 
     var body: some View {
         // 12 entre deux sources, 4 entre titre et domaine : avant, le même écart séparait
@@ -123,6 +181,8 @@ struct SourcesListView: View {
     private func webRow(_ source: SearXNGSearchResult, number: Int) -> some View {
         let domain = SourcesListPresentation.displayDomain(for: source)
         let isUnread = unreadNumbers.contains(number)
+        let readState = refusals.state(for: source.url)
+        let readStatus = SourcesListPresentation.readStatusLabel(for: readState)
         let content = HStack(alignment: .firstTextBaseline, spacing: 8) {
             numberLabel(number)
             VStack(alignment: .leading, spacing: 4) {
@@ -133,7 +193,7 @@ struct SourcesListView: View {
                     .foregroundStyle(.primary)
                 // Une seule ligne, coupée au milieu si besoin : un domaine reste reconnaissable
                 // par son début et sa fin, et n'est jamais césuré.
-                Text(domainLine(domain: domain ?? source.url, isUnread: isUnread))
+                Text(domainLine(domain: domain ?? source.url, isUnread: isUnread, readStatus: readStatus))
                     .font(.caption)
                     // Même encre que les légendes de la réponse : en `.secondary`, le domaine
                     // mesurait 2,86:1 sur le verre en clair (décision de Ben, 4,5:1 visés).
@@ -143,29 +203,76 @@ struct SourcesListView: View {
             }
         }
 
-        if let url = SourcesListPresentation.openableURL(for: source), let domain {
-            // `.plain` et `.leading`, constatés indispensables à l'écran (QA Q1, iOS 27) : le style
-            // automatique d'un `Link` pose l'accent comme couleur de premier plan, et `.primary` /
-            // `.secondary`, hiérarchiques, en héritent ; il centre aussi tout texte sur plusieurs lignes.
-            Link(destination: url) { content }
-                .buttonStyle(.plain)
-                .multilineTextAlignment(.leading)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(SourcesListPresentation.webAccessibilityLabel(
-                    number: number, title: source.title, domain: domain, isUnread: isUnread
-                ))
-                .accessibilityAddTraits(.isLink)
-                .accessibilityIdentifier("source.link")
-        } else {
-            // URL sans hôte lisible ou hors http(s) : du texte plutôt qu'un lien mort ou une autre app.
-            content
+        VStack(alignment: .leading, spacing: 2) {
+            if let url = SourcesListPresentation.openableURL(for: source), let domain {
+                // `.plain` et `.leading`, constatés indispensables à l'écran (QA Q1, iOS 27) : le style
+                // automatique d'un `Link` pose l'accent comme couleur de premier plan, et `.primary` /
+                // `.secondary`, hiérarchiques, en héritent ; il centre aussi tout texte sur plusieurs lignes.
+                Link(destination: url) { content }
+                    .buttonStyle(.plain)
+                    .multilineTextAlignment(.leading)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(SourcesListPresentation.webAccessibilityLabel(
+                        number: number, title: source.title, domain: domain, isUnread: isUnread,
+                        readStatus: readStatus
+                    ))
+                    .accessibilityAddTraits(.isLink)
+                    .accessibilityIdentifier("source.link")
+            } else {
+                // URL sans hôte lisible ou hors http(s) : du texte plutôt qu'un lien mort ou une autre app.
+                content
+            }
+            if SourcesListPresentation.offersReadButton(for: readState) {
+                readButton(for: source)
+            }
+            if let license = SourcesListPresentation.licenseAttribution(for: source) {
+                licenseLine(license)
+            }
         }
+    }
+
+    /// « Lire cette page » : lecture demandée par l'utilisateur, comme dans un navigateur. Aligné sous
+    /// le titre (largeur du numéro + espace). Texte d'accent sobre, pas de verre : la liste est déjà
+    /// posée sur la bulle (DESIGN.md : pas de verre sur verre).
+    private func readButton(for source: SearXNGSearchResult) -> some View {
+        Button {
+            Task { await refusals.readPage(url: source.url) }
+        } label: {
+            Text(ReadPagePresentation.buttonTitle)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.tint)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 24)
+        .accessibilityLabel(ReadPagePresentation.buttonAccessibilityLabel(title: source.title))
+        .accessibilityIdentifier("source.readPage")
+    }
+
+    /// Mention de licence : une ligne `.caption`, même encre que le domaine ; le nom de licence est
+    /// cliquable (texte Markdown, rendu par `Text`).
+    private func licenseLine(_ license: SourcesListPresentation.LicenseAttribution) -> some View {
+        Text(licenseMarkdown(license))
+            .font(.caption)
+            .foregroundStyle(MessageBubbleView.legendStyle)
+            .tint(.accentColor)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 24)
+    }
+
+    private func licenseMarkdown(_ license: SourcesListPresentation.LicenseAttribution) -> AttributedString {
+        var text = AttributedString(license.text)
+        if let url = license.licenseURL, let range = text.range(of: license.licenseName) { text[range].link = url }
+        return text
     }
 
     /// « lemonde.fr » ou « lemonde.fr · non lue » : la mention reste sur la ligne du domaine,
     /// discrète, sans couleur ni icône.
-    private func domainLine(domain: String, isUnread: Bool) -> String {
-        isUnread ? "\(domain) · \(SourcesListPresentation.unreadLabel)" : domain
+    private func domainLine(domain: String, isUnread: Bool, readStatus: String?) -> String {
+        var line = domain
+        if let readStatus { line += " · \(readStatus)" } else if isUnread { line += " · \(SourcesListPresentation.unreadLabel)" }
+        return line
     }
 }
 

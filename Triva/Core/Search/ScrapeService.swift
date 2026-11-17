@@ -17,6 +17,10 @@ nonisolated struct ScrapedPage: Sendable, Equatable {
     let title: String
     let content: String
     let succeeded: Bool
+    /// Vrai quand la page n'a PAS été lue parce que le site s'y oppose (`robots.txt`, `X-Robots-Tag: noai`,
+    /// `tdm-reservation`). La source garde son titre, son extrait du moteur et son lien ; l'utilisateur
+    /// peut la faire lire lui-même (« Lire cette page »). `succeeded` reste alors faux.
+    var refusedBySite: Bool = false
 }
 
 /// Abstraction pour permettre le mock dans `SearchOrchestrator` et les tests,
@@ -78,15 +82,14 @@ nonisolated extension URLFetching {
     }
 }
 
-/// Implémentation `URLSession` réelle. User-Agent desktop custom, même
-/// intention que le spoofing de la version web d'origine — sans le masquage de
-/// `navigator.webdriver`, sans objet hors d'un vrai navigateur. Session
+/// Implémentation `URLSession` réelle. User-Agent HONNÊTE et stable (« Triva/1.0 (… contact) »,
+/// celui des sources ouvertes) : Triva ne se fait plus passer pour Chrome (mission C4, audit
+/// constat 12 ; CPI L122-5-3 III, Guidelines 5.2.2). Session
 /// sans cache par défaut (widget météo : la ville et les coordonnées sont des
 /// données personnelles qui n'ont pas à rester dans `Cache.db`) ; le scraping
 /// injecte la sienne, voir `ScrapeService.scrapingSession`.
 nonisolated struct URLSessionFetcher: URLFetching {
-    private static let userAgent =
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    static let userAgent = OpenSourceSearchHTTP.userAgent
 
     let urlSession: URLSession
 
@@ -172,6 +175,8 @@ nonisolated struct ScrapeService: ScrapeServing {
     private let timeoutInterval: TimeInterval
     private let maxDownloadBytes: Int
     private let maxContentCharactersPerPage: Int
+    /// `nil` : `robots.txt` n'est pas consulté (tests, et lecture demandée par l'utilisateur).
+    private let robots: RobotsTxtChecker?
 
     /// Constructeur de production : construit un `URLSessionFetcher` plutôt
     /// que d'exposer `URLFetching` (détail réservé aux tests).
@@ -181,11 +186,13 @@ nonisolated struct ScrapeService: ScrapeServing {
         maxDownloadBytes: Int = ScrapeService.defaultMaxDownloadBytes,
         maxContentCharactersPerPage: Int = ScrapeService.defaultMaxContentCharactersPerPage
     ) {
+        let fetcher = URLSessionFetcher(urlSession: urlSession)
         self.init(
-            fetcher: URLSessionFetcher(urlSession: urlSession),
+            fetcher: fetcher,
             timeoutInterval: timeoutInterval,
             maxDownloadBytes: maxDownloadBytes,
-            maxContentCharactersPerPage: maxContentCharactersPerPage
+            maxContentCharactersPerPage: maxContentCharactersPerPage,
+            robots: RobotsTxtChecker(fetcher: fetcher)
         )
     }
 
@@ -194,8 +201,10 @@ nonisolated struct ScrapeService: ScrapeServing {
         fetcher: any URLFetching,
         timeoutInterval: TimeInterval = ScrapeService.defaultIdleTimeout,
         maxDownloadBytes: Int = ScrapeService.defaultMaxDownloadBytes,
-        maxContentCharactersPerPage: Int = ScrapeService.defaultMaxContentCharactersPerPage
+        maxContentCharactersPerPage: Int = ScrapeService.defaultMaxContentCharactersPerPage,
+        robots: RobotsTxtChecker? = nil
     ) {
+        self.robots = robots
         self.fetcher = fetcher
         self.timeoutInterval = timeoutInterval
         self.maxDownloadBytes = maxDownloadBytes
@@ -212,8 +221,23 @@ nonisolated struct ScrapeService: ScrapeServing {
     /// `defer` annule la requête sur TOUTES les sorties.
     @concurrent
     func scrape(url: String) async -> ScrapedPage {
+        await scrape(url: url, honoringSiteRules: true)
+    }
+
+    /// Lecture demandée par l'UTILISATEUR (bouton « Lire cette page ») : comme un navigateur, sans
+    /// appliquer `robots.txt` ni les signaux d'opposition de la réponse. Même User-Agent honnête.
+    @concurrent
+    func readOnUserRequest(url: String) async -> ScrapedPage {
+        await scrape(url: url, honoringSiteRules: false)
+    }
+
+    private func scrape(url: String, honoringSiteRules: Bool) async -> ScrapedPage {
         guard let parsedURL = URL(string: url), Self.isScrapable(parsedURL) else {
             return Self.failedPage(url)
+        }
+        if let userPage = UserReadPages.page(for: url) { return userPage }
+        if honoringSiteRules, let robots, !(await robots.isAllowed(parsedURL)) {
+            return Self.refusedPage(url)
         }
         let stream: URLByteStream
         do {
@@ -230,6 +254,8 @@ nonisolated struct ScrapeService: ScrapeServing {
         else {
             return Self.failedPage(url)
         }
+        // Opposition portée par la réponse elle-même : le corps n'est pas lu (le `defer` annule).
+        if honoringSiteRules, SiteReadSignals.optsOutOfAI(httpResponse) { return Self.refusedPage(url) }
 
         let body = await Self.readBoundedBody(
             stream.bytes,
@@ -304,6 +330,10 @@ nonisolated struct ScrapeService: ScrapeServing {
         guard !BotChallengeDetector.isChallenge(html: html, title: title, content: content) else { return failedPage(url) }
         let chunk = firstChunk(of: content, maxCharacters: maxCharacters)
         return ScrapedPage(url: url, title: title.isEmpty ? url : title, content: chunk, succeeded: true)
+    }
+
+    private static func refusedPage(_ url: String) -> ScrapedPage {
+        ScrapedPage(url: url, title: url, content: "", succeeded: false, refusedBySite: true)
     }
 
     private static func failedPage(_ url: String) -> ScrapedPage {

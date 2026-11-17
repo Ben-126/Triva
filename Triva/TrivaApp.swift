@@ -318,12 +318,14 @@ extension TrivaSharedStores {
     func makeSearXNGMaintenance(
         requester: any HTTPDataRequesting = URLSessionDataRequester(),
         prober: any InstanceProbing = SearXNGInstanceHealthProbe(),
-        isOffline: @escaping @MainActor () -> Bool = { ConnectivityMonitor.shared.isOffline }
+        isOffline: @escaping @MainActor () -> Bool = { ConnectivityMonitor.shared.isOffline },
+        isAutoUpdateEnabled: @escaping @MainActor () -> Bool = { InstanceAutoUpdatePolicy.isEnabled() }
     ) -> SearXNGMaintenance {
         SearXNGMaintenance(
             refresher: SearXNGDirectoryRefresher(requester: requester, prober: prober, store: searchDirectory),
             prober: prober,
             isOffline: isOffline,
+            isAutoUpdateEnabled: isAutoUpdateEnabled,
             makeFailoverManager: { [self] in makeFailoverManager(instances: searXNGInstances) }
         )
     }
@@ -416,6 +418,16 @@ struct TrivaApp: App {
         // `#if` et non `#available` : `Settings` est une scène macOS
         // uniquement, sur toutes les versions.
         #if os(macOS)
+        // Navigateur intégré du Mac (mission C3) : une fenêtre par page, ouverte par
+        // `opensLinksInApp()` (`openWindow(value: url)`). `SFSafariViewController` n'existe pas sur Mac.
+        WindowGroup("Navigateur", for: URL.self) { $url in
+            if let url {
+                MacBrowserWindowContent(url: url)
+            }
+        }
+        .defaultSize(width: 960, height: 720)
+        .restorationBehavior(.disabled)
+
         Settings {
             TrivaSettingsWindow(stores: stores)
         }
@@ -450,6 +462,8 @@ private struct TrivaSettingsWindow: View {
         // Taille minimale : en dessous, les écrans poussés depuis les Réglages
         // (liste d'instances SearXNG, modèles MLX) deviennent illisibles.
         .frame(minWidth: 520, minHeight: 560)
+        // Les liens de la fenêtre Réglages (pages légales) ouvrent le navigateur intégré (C3).
+        .opensLinksInApp()
     }
 }
 #endif

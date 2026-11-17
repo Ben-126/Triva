@@ -24,6 +24,9 @@ struct AdvancedSettingsView: View {
     /// Filtre adulte des recherches (décision Q5, révisée le 2026-11-14) : activé par défaut.
     @AppStorage(SafeSearchPolicy.defaultsKey) private var safeSearchEnabled = SafeSearchPolicy.enabledByDefault
 
+    /// Mise à jour automatique de la liste d'instances (mission C3, M13) : activée par défaut.
+    @AppStorage(InstanceAutoUpdatePolicy.defaultsKey) private var autoUpdateInstances = InstanceAutoUpdatePolicy.enabledByDefault
+
     var body: some View {
         Form {
             Section {
@@ -34,6 +37,11 @@ struct AdvancedSettingsView: View {
                     )
                 }
                 .accessibilityIdentifier("settings.searxngInstances")
+                Toggle(InstanceAutoUpdateText.toggle, isOn: $autoUpdateInstances)
+                    .accessibilityIdentifier("settings.autoUpdateInstances")
+            } footer: {
+                // À VALIDER (texte légal)
+                Text(InstanceAutoUpdateText.footer)
             }
 
             Section {

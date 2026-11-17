@@ -106,6 +106,7 @@ extension SearchOrchestrator {
                 onPageCollected?(page)
             }
             group.cancelAll()
+            SiteReadRefusals.record(Array(finishedPages.values))
             return urls.indices.map { finishedPages[$0] ?? ScrapedPage(url: urls[$0], title: urls[$0], content: "", succeeded: false) }
         }
     }
@@ -200,7 +201,7 @@ extension SearchOrchestrator {
         let canonicalURLByKey = canonicalURLsByKey(sources)
         return pages.compactMap { page in
             guard let canonicalURL = canonicalURLByKey[urlKey(page.url)] else { return nil }
-            return ScrapedPage(url: canonicalURL, title: page.title, content: page.content, succeeded: page.succeeded)
+            return ScrapedPage(url: canonicalURL, title: page.title, content: page.content, succeeded: page.succeeded, refusedBySite: page.refusedBySite)
         }
     }
 

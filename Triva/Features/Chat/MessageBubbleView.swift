@@ -571,6 +571,11 @@ private struct AnswerBubble: View {
             // Mission A2 : précision factuelle ; même composant que le détail d'un favori (E2b).
             AnswerNoteLine(answer: answer)
 
+            // Avertissement permanent « généré par IA » (mission C3, audit légal constat 9).
+            if AIDisclaimerPolicy.shows(state: answer.state, hasText: !bodyText.isEmpty) {
+                AIDisclaimerLine()
+            }
+
             if !message.sources.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     // Même label que le détail d'un favori (FavoritesView, finding 32) : même

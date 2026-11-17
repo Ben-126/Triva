@@ -198,8 +198,14 @@ struct CitationView: View {
         selection = cited
     }
 
+    /// La fiche reste affichée : le navigateur intégré (mission C3) se présente PAR-DESSUS elle.
+    /// La refermer avant (comme avant C3, où le navigateur était une autre app) ferait dismisser
+    /// la présentation qui porte le navigateur ; à la fermeture du navigateur, on retrouve la fiche.
     private func openSource(_ url: URL) {
+        #if os(macOS)
+        // Sur Mac le navigateur est une fenêtre à part : rien à présenter par-dessus la bulle.
         dismissSelection()
+        #endif
         openURL(url)
     }
 

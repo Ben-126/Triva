@@ -112,6 +112,11 @@ struct TrivaRootView: View {
     /// écrit dans le store partagé.
     @State private var pendingEngine: AIEngineOption?
 
+    /// « Triva répond avec une IA » déjà vu (mission C3, AI Act art. 50(1)) : UN drapeau pour toute
+    /// l'app, partagé par les fenêtres. Faux, l'écran passe avant tout le reste, y compris pour
+    /// quelqu'un qui avait déjà choisi un moteur avant cette version.
+    @AppStorage(AIUseNoticeStore.defaultsKey) private var aiNoticeAcknowledged = false
+
     /// Pas de valeur par défaut pour `stores` : seul `TrivaApp` crée les
     /// instances de l'app, les aperçus passent `TrivaSharedStores.preview()`.
     init(stores: TrivaSharedStores) {
@@ -120,6 +125,8 @@ struct TrivaRootView: View {
 
     var body: some View {
         root
+            // Tous les liens web de la fenêtre s'ouvrent dans le navigateur intégré (mission C3).
+            .opensLinksInApp()
             // Posé AUTOUR de la coquille, hors de son `.id(selected)` : la
             // présentation survit à la reconstruction qu'un nouveau moteur
             // déclenche, au lieu d'être arrachée avec l'ancienne identité.
@@ -133,7 +140,11 @@ struct TrivaRootView: View {
 
     @ViewBuilder
     private var root: some View {
-        if let selected = stores.engineSettings.selectedOption {
+        if !aiNoticeAcknowledged {
+            onboardingStack {
+                AIUseNoticeView { aiNoticeAcknowledged = true }
+            }
+        } else if let selected = stores.engineSettings.selectedOption {
             TrivaRootShell(
                 engine: selected,
                 onChangeEngine: { isChoosingEngine = true },

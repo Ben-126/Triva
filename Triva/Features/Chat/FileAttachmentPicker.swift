@@ -108,8 +108,9 @@ nonisolated struct FileAttachmentTruncationNote: Sendable, Equatable {
 /// Textes de la rangée de pièces jointes. Messages FERMÉS : aucun ne recopie
 /// `localizedDescription` ni le contenu d'un fichier (même principe que
 /// `ChatViewModel.userFacingMessage(for:)`) ; seul le NOM choisi par
-/// l'utilisateur est affiché, après nettoyage. `isCopyRestricted` n'est
-/// jamais montré : décision de Ben, ces PDF sont lus sans message particulier.
+/// l'utilisateur est affiché, après nettoyage. Un PDF qui interdit la
+/// copie ET l'extraction pour l'accessibilité est refusé avec `PDFCopyPolicy.refusalMessage`
+/// (décision de Ben, 2026-11-17) ; les autres PDF à copie interdite sont lus sans message.
 nonisolated enum FileAttachmentPresentation {
     static let pickerAccessibilityLabel = "Joindre un fichier"
     static let pickerAccessibilityHint = "PDF, texte, Markdown, CSV ou JSON."

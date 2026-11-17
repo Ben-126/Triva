@@ -105,6 +105,10 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
     case invalidPDF
     /// PDF chiffré avec mot de passe d'ouverture.
     case passwordProtectedPDF
+    /// PDF dont l'auteur interdit la copie du texte ET son extraction pour l'accessibilité
+    /// (`allowsCopying == false` et `allowsContentAccessibility == false`) : jamais lu, avec
+    /// aucun moteur (décision de Ben, 2026-11-17 ; CPI L331-5 — À FAIRE VALIDER PAR UN JURISTE).
+    case copyProtectedPDF
     /// PDF lisible mais sans couche texte : document scanné, ou pages
     /// composées uniquement d'images.
     case noExtractableText(pageCount: Int)
@@ -131,10 +135,27 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
             return "Ce PDF est illisible ou endommagé."
         case .passwordProtectedPDF:
             return "Ce PDF est protégé par un mot de passe. Retire la protection, puis joins-le à nouveau."
+        case .copyProtectedPDF:
+            // À VALIDER (texte légal)
+            return PDFCopyPolicy.refusalMessage
         case .noExtractableText:
             return "Ce PDF ne contient aucun texte sélectionnable. C'est sans doute un document scanné."
         }
     }
+}
+
+/// Politique des PDF à copie interdite (décision FINALE de Ben, 2026-11-17 ; CPI L331-5 et
+/// L335-3-1 — À FAIRE VALIDER PAR UN JURISTE). `PDFDocument.allowsContentAccessibility`
+/// (PDFKit, PDFDocument.h : « Extract content, but only for the purpose of accessibility ») :
+/// un PDF qui interdit la copie n'est lu que s'il autorise cette extraction.
+nonisolated enum PDFCopyPolicy {
+    /// Vrai si le texte du PDF peut être extrait.
+    static func allowsReading(allowsCopying: Bool, allowsContentAccessibility: Bool) -> Bool {
+        allowsCopying || allowsContentAccessibility
+    }
+
+    /// À VALIDER (texte légal)
+    static let refusalMessage = "Ce PDF interdit la copie de son texte : Triva ne peut pas le lire."
 }
 
 /// Encodage effectivement retenu pour un fichier texte. Type dédié plutôt
@@ -445,11 +466,9 @@ nonisolated struct AttachmentTextExtractor: Sendable {
     ///   saisir le mot de passe serait une évolution, pas un correctif.
     /// - Restriction de copie (`allowsCopying == false`) : mesuré sur
     ///   macOS 27, un tel PDF n'est PAS verrouillé et `PDFPage.string` rend
-    ///   son texte normalement. On le lit donc, et on expose
-    ///   `isCopyRestricted`. Refuser ces documents — ou les réserver aux
-    ///   moteurs sur l'appareil, pour que leur texte ne parte pas chez un
-    ///   fournisseur cloud — est un ARBITRAGE PRODUIT réservé à Ben, pas un
-    ///   choix technique à glisser ici.
+    ///   son texte normalement. Décision FINALE de Ben (2026-11-17), voir
+    ///   `PDFCopyPolicy` : lu seulement si `allowsContentAccessibility`, sinon
+    ///   refusé (`copyProtectedPDF`), quel que soit le moteur.
     /// - Page sans texte : `PDFPage.string` renvoie `nil` (pas `""`), aussi
     ///   bien pour une page blanche que pour une page scannée (vérifié) ; les
     ///   deux sont simplement sautées. Si AUCUNE page lue n'a de texte, c'est
@@ -461,6 +480,12 @@ nonisolated struct AttachmentTextExtractor: Sendable {
     ///   continuer à tourner une fois l'utilisateur passé à autre chose.
     private func extractPDF(_ document: PDFDocument, fileName: String, characterLimit: Int) throws -> ExtractedAttachment {
         guard !document.isLocked else { throw AttachmentExtractionError.passwordProtectedPDF }
+        // Décision de Ben (2026-11-17) : un PDF qui interdit la copie n'est lu que s'il autorise
+        // l'extraction pour l'accessibilité ; sinon son texte n'est extrait avec aucun moteur.
+        guard PDFCopyPolicy.allowsReading(
+            allowsCopying: document.allowsCopying,
+            allowsContentAccessibility: document.allowsContentAccessibility
+        ) else { throw AttachmentExtractionError.copyProtectedPDF }
 
         let pageCount = document.pageCount
         guard pageCount > 0 else { throw AttachmentExtractionError.invalidPDF }

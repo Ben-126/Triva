@@ -61,12 +61,12 @@ struct LocalDataEraseSection: View {
     /// Exposé pour les tests : la promesse faite avant l'effacement.
     static let confirmationMessage =
         "Tes conversations, tes favoris et les caches de recherche seront supprimés de cet appareil, "
-        + "sans retour possible. Tes clés API et le choix de ton moteur IA ne changent pas."
+        + "sans retour possible. Tes clés API, tes modèles locaux téléchargés et le choix de ton moteur IA ne changent pas."
 
     private var footerText: String {
         switch phase {
         case .idle:
-            "Supprime les conversations, les favoris et les caches. Les clés API et le moteur choisi sont conservés."
+            "Supprime les conversations, les favoris et les caches. Les clés API, les modèles locaux téléchargés et le moteur choisi sont conservés."
         case .erasing:
             "Effacement en cours…"
         case .done:

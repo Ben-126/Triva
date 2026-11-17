@@ -67,7 +67,14 @@ nonisolated struct SearXNGSearchResult: Codable, Sendable, Equatable, Identifiab
     /// Extrait autorisé à être écrit sur le disque (historique, favoris) : `nil` si transitoire.
     var persistedExcerpt: String? { excerptIsTransient ? nil : content }
 
+    /// Licence du contenu repris, pour la mention d'attribution (mission C4, M7) : « marginalia » pour un
+    /// résultat de Marginalia Search (CC BY-NC-SA 4.0), dont l'adresse pointe vers le site indexé et ne
+    /// trahit donc pas la source. `nil` pour tout le reste. Optionnelle et encodée : l'ancien historique
+    /// (sans cette clé) se relit toujours.
+    var licenseKey: String?
+
     enum CodingKeys: String, CodingKey {
+        case licenseKey = "license_key"
         case title, url, content, author, thumbnail
         case imgSrc = "img_src"
         case thumbnailSrc = "thumbnail_src"

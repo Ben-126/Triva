@@ -33,6 +33,8 @@ extension TrivaUITests {
     enum StoredKey {
         static let engine = "ai.engine.selectedOption"
         static let responseMode = "chat.responseMode.selected"
+        /// Écran « Triva répond avec une IA » déjà vu (`AIUseNoticeStore.defaultsKey`).
+        static let aiNoticeAcknowledged = "legal.aiNotice.acknowledged"
         static let instanceOverrides = "searxng.instanceOverrides"
         static let directorySnapshot = "searxng.directorySnapshot.v1"
         /// Remplace la liste embarquée des instances par une liste neutre (`PublicInstanceList`, DEBUG).
@@ -67,7 +69,8 @@ extension TrivaUITests {
     func launchApp(
         engine: String? = "appleIntelligence",
         responseMode: String? = "quick",
-        extraArguments: [String] = []
+        extraArguments: [String] = [],
+        showsAINotice: Bool = false
     ) {
         #if os(iOS)
         // Portrait imposé : `TrivaUITestsLaunchTests` (une passe par configuration d'interface)
@@ -77,6 +80,12 @@ extension TrivaUITests {
         #endif
         let application = XCUIApplication()
         var arguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
+        // L'écran d'information IA du premier lancement passe avant tout : les parcours le sautent,
+        // sauf celui qui le vérifie (`showsAINotice`). Pas d'argument « NO » : une valeur d'argument
+        // l'emporte sur ce que l'app écrit, l'écran ne se fermerait jamais après « J'ai compris ».
+        if !showsAINotice {
+            arguments += ["-\(StoredKey.aiNoticeAcknowledged)", "YES"]
+        }
         if let engine {
             arguments += ["-\(StoredKey.engine)", engine]
         }

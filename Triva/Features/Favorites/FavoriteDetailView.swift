@@ -182,6 +182,8 @@ struct FavoriteDetailContentView: View {
                     )
                     // Mêmes mentions, même composant que sous la réponse du chat (mission E2b).
                     AnswerNoteLine(answer: answer)
+                    // Même avertissement « généré par IA » que sous la réponse du chat (mission C3).
+                    AIDisclaimerLine()
                 }
                 if !content.sources.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {

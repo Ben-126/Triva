@@ -263,6 +263,20 @@ struct WeatherWidgetView: View, Equatable {
     let data: WeatherWidgetData
 
     var body: some View {
+        // La carte (verre, un seul élément VoiceOver) puis, EN DEHORS d'elle, la mention d'attribution
+        // obligatoire d'Open-Meteo : liens cliquables que `.accessibilityElement(.combine)` aurait avalés.
+        VStack(alignment: .leading, spacing: 6) {
+            card
+            Text(WeatherAttribution.attributedText)
+                .font(.caption)
+                .foregroundStyle(MessageBubbleView.legendStyle)
+                .tint(.accentColor)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 4)
+        }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !locationName.isEmpty {
                 Text(locationName)
@@ -450,4 +464,22 @@ private extension WeatherWidgetData {
     .frame(width: 280)
     .padding(20)
     .dynamicTypeSize(.accessibility5)
+}
+
+/// Attribution obligatoire des données météo (mission C4, audit constat 8). Open-Meteo, licence
+/// CC BY 4.0 (https://open-meteo.com/en/licence, lu le 2026-11-14) : « You must include a link next to
+/// any location Open-Meteo data are displayed ». Texte de `textes/ecrans.md` G.1, À VALIDER (texte légal).
+nonisolated enum WeatherAttribution {
+    static let plainText = "Données météo : Open-Meteo.com (CC BY 4.0)"
+    static let siteName = "Open-Meteo.com"
+    static let siteURL = URL(string: "https://open-meteo.com/")!
+    static let licenseName = "CC BY 4.0"
+    static let licenseURL = URL(string: "https://creativecommons.org/licenses/by/4.0/")!
+
+    static var attributedText: AttributedString {
+        var text = AttributedString(plainText)
+        if let range = text.range(of: siteName) { text[range].link = siteURL }
+        if let range = text.range(of: licenseName) { text[range].link = licenseURL }
+        return text
+    }
 }

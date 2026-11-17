@@ -98,7 +98,11 @@ nonisolated struct MarginaliaSearchProvider: WebSearchProviding {
         // Titre et description sont du texte brut (pas de HTML) : pas de `stripHTML`, qui
         // retirerait un « <T> » légitime d'un article de programmation.
         let results = (decoded.results ?? []).compactMap { item in
-            BYOKSearchHTTP.makeResult(title: item.title, url: item.url, content: item.description)
+            BYOKSearchHTTP.makeResult(title: item.title, url: item.url, content: item.description).map { result in
+                var marked = result
+                marked.licenseKey = SourcesLicense.marginaliaKey
+                return marked
+            }
         }
         return SearXNGSearchResponse(results: Array(results.prefix(max(1, maxResults))), suggestions: [])
     }

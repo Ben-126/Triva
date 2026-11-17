@@ -44,7 +44,8 @@ extension FavoritesStore: AllDeleting {}
 /// la promesse faite à l'utilisateur, il est donc figé ici :
 ///
 /// - EFFACÉ : favoris, historique (conversations, messages, sources), cache
-///   HTTP partagé (`URLCache.shared`), cache de l'écran Découvrir.
+///   HTTP partagé (`URLCache.shared`), cache de l'écran Découvrir, pages lues à la
+///   demande, refus des sites et règles robots.txt gardés en mémoire.
 /// - JAMAIS TOUCHÉ : clés API (Trousseau), choix du moteur IA, fournisseur et
 ///   modèle choisis, instances SearXNG, modèles MLX téléchargés. Cet objet ne
 ///   reçoit d'ailleurs ni le trousseau ni aucun store de réglages : il ne peut
@@ -114,6 +115,11 @@ struct LocalDataEraser {
         await beforeErase?()
         let failed = eraseDatabase()
         await Self.clearCaches(urlCache: urlCache, discoverCache: discoverCache)
+        // Pages lues à la demande (« Lire cette page »), refus des sites et
+        // règles robots.txt en mémoire : elles révèlent les sites consultés.
+        UserReadPages.removeAll()
+        SiteReadRefusals.shared.removeAll()
+        await RobotsRulesCache.shared.removeAll()
 
         if !failed.isEmpty {
             throw .incomplete(failedSteps: failed)

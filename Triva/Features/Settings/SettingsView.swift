@@ -118,6 +118,8 @@ struct SettingsView: View {
                 if let localDataEraser {
                     LocalDataEraseSection(eraser: localDataEraser)
                 }
+                // Dernière section (mission C3) : pages légales, licences, signalement.
+                AboutSection()
             }
             .formStyle(.grouped)
             .navigationTitle("Réglages")
@@ -238,6 +240,8 @@ struct SettingsView: View {
             SearXNGInstancesView(store: instanceStore)
         case .searchKeys:
             SearchKeysView()
+        case .licenses:
+            LicensesView()
         }
     }
 
@@ -317,6 +321,7 @@ nonisolated enum SettingsRoute: Hashable {
     case advanced
     case searxngInstances
     case searchKeys
+    case licenses
 }
 
 // MARK: - Types internes à l'écran

@@ -111,17 +111,16 @@ struct AttachmentExtractorPDFTests {
         }
     }
 
-    @Test("Restriction de copie : texte lu normalement, drapeau levé pour le produit")
+    @Test("Copie interdite sans accessibilité (décision de Ben, 17/11) : PDF refusé, texte jamais extrait")
     func copyRestricted() throws {
         let data = try TestPDF.make(
-            pages: ["Contenu restreint mais lisible"],
+            pages: ["Contenu restreint"],
             auxiliaryInfo: [kCGPDFContextOwnerPassword: "proprietaire", kCGPDFContextAllowsCopying: false]
         )
 
-        let result = try extractor.extract(data: data, fileName: "restreint.pdf")
-
-        #expect(result.isCopyRestricted)
-        #expect(result.sections.map(\.text) == ["Contenu restreint mais lisible"])
+        #expect(throws: AttachmentExtractionError.copyProtectedPDF) {
+            try extractor.extract(data: data, fileName: "restreint.pdf")
+        }
     }
 
     @Test("Octets corrompus, tronqués ou qui ne sont pas un PDF : invalidPDF")
