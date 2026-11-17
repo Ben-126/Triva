@@ -98,8 +98,12 @@ enum TestDefaults {
     /// donc tous les domaines, on laisse au démon le temps d'écrire, on supprime les fichiers, puis on
     /// repasse une fois sur ceux qui seraient réapparus. Les noms restent retenus : le passage final, à la
     /// fin du processus, repasse sur TOUS (une écriture tardive du démon peut recréer un fichier).
-    static func cleanUp() {
-        let names = registry.all()
+    ///
+    /// `only` limite le nettoyage à ces noms. Sans lui, TOUTES les suites retenues sont vidées : réservé
+    /// à la fin du processus. Un test qui appelle `cleanUp()` sans `only` viderait en plein run les
+    /// suites des autres tests, exécutés en parallèle (cause prouvée des échecs intermittents, F1).
+    static func cleanUp(only restricted: [String]? = nil) {
+        let names = restricted ?? registry.all()
         guard !names.isEmpty else { return }
         let preferences = FileManager.default
             .urls(for: .libraryDirectory, in: .userDomainMask)

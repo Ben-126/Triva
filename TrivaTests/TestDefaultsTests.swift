@@ -29,10 +29,25 @@ struct TestDefaultsTests {
         }
         try #require(FileManager.default.fileExists(atPath: file.path), "le fichier de la suite doit exister avant le nettoyage")
 
-        TestDefaults.cleanUp()
+        TestDefaults.cleanUp(only: [name])
 
         #expect(!FileManager.default.fileExists(atPath: file.path))
         #expect(defaults.string(forKey: "cle") == nil)
+    }
+
+    @Test("cleanUp(only:) ne touche pas aux suites des autres tests qui tournent en parallèle")
+    func cleanUpLeavesOtherSuitesAlone() throws {
+        let mine = "test.testDefaults.mine.\(UUID().uuidString)"
+        let other = "test.testDefaults.other.\(UUID().uuidString)"
+        let myDefaults = try #require(TestDefaults.suite(named: mine))
+        let otherDefaults = try #require(TestDefaults.suite(named: other))
+        myDefaults.set("a", forKey: "cle")
+        otherDefaults.set("b", forKey: "cle")
+
+        TestDefaults.cleanUp(only: [mine])
+
+        #expect(myDefaults.string(forKey: "cle") == nil)
+        #expect(otherDefaults.string(forKey: "cle") == "b")
     }
 
     @Test("Le motif de balayage n'accepte que des noms de suite de test (préfixe + UUID), jamais les préférences réelles")
