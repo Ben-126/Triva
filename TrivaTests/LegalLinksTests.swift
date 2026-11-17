@@ -30,9 +30,10 @@ struct LegalLinksTests {
         }
     }
 
-    @Test("L'e-mail de support n'est pas défini : aucun faux contact dans l'app")
-    func supportEmailIsUndefined() {
-        #expect(LegalLinks.supportEmail.isEmpty)
+    @Test("L'e-mail de support est défini : « Signaler un problème » ouvre un e-mail")
+    func supportEmailIsDefined() {
+        #expect(LegalLinks.supportEmail.contains("@"))
+        #expect(LegalLinks.reportDestination().scheme == "mailto")
     }
 
     @Test("Sans e-mail de support, « Signaler un problème » ouvre la page d'assistance")

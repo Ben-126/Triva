@@ -14,11 +14,10 @@ nonisolated enum LegalLinks {
     // À VALIDER : URL définitive après activation de GitHub Pages
     static let baseURL = URL(string: "https://ben-126.github.io/Triva/")!
 
-    /// Adresse de contact pour « Signaler un problème ». VOLONTAIREMENT VIDE : l'e-mail de support
-    /// n'est pas encore défini (`[e-mail de support]`, décision Q2). Tant qu'elle est vide, le
-    /// signalement ouvre la page d'assistance, jamais un e-mail adressé à personne.
-    // À VALIDER : renseigner l'e-mail de support avant la publication
-    static let supportEmail = ""
+    /// Adresse de contact pour « Signaler un problème » (choisie par Ben le 2026-11-17, la même que
+    /// dans les pages légales publiques). Si elle était vidée, le signalement ouvrirait la page
+    /// d'assistance, jamais un e-mail adressé à personne.
+    static let supportEmail = "benpodro@gmail.com"
 
     /// Les quatre pages publiques ouvertes depuis les Réglages.
     enum Page: String, CaseIterable, Sendable {
