@@ -33,7 +33,7 @@ Triva affiche les flux d'actualité de ces éditeurs, en respectant leurs règle
 
 | Éditeur | Règles de reprise |
 |---|---|
-| Numerama | [Mentions légales](https://www.numerama.com/mentions-legales/). Les articles de Numerama ne sont jamais utilisés par une IA dans Triva. |
+| Numerama | [Mentions légales](https://www.numerama.com/mentions-legales/). Les articles de Numerama affichés dans Découvrir ne sont jamais envoyés à une IA par Triva. <!-- À VALIDER --> |
 | Frandroid | [Mentions légales](https://www.frandroid.com/mentions-legales) |
 | The Conversation | Articles sous licence [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/) ([règles de republication](https://theconversation.com/fr/republishing-guidelines)) : auteur et site cités, texte non modifié. |
 | ESPN | [Conditions des flux RSS](https://www.espn.com/espn/news/story?page=rssinfo) |

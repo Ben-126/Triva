@@ -30,7 +30,7 @@ Tu peux brancher dans Triva des services extérieurs avec **ta propre clé** : u
 - Tu dois **respecter ses conditions**, y compris l'**âge minimum** qu'il demande. Par exemple, Tavily est réservé aux personnes de **18 ans ou plus**. Vérifie l'âge minimum dans les conditions de chaque service avant de créer une clé.
 - Ce service peut te **faire payer**. Les frais sont entre toi et lui : l'éditeur de Triva ne touche rien et ne peut pas les rembourser.
 - Ta clé reste dans le Trousseau de ton appareil. Ne la donne à personne.
-- Avant le premier envoi à une IA cloud, Triva te demande ton accord. <!-- dépend de M2 -->
+- Avant le premier envoi à une IA cloud, Triva te demande ton accord.
 
 ## 4. Les réponses viennent d'une IA
 
@@ -54,13 +54,13 @@ Par défaut, Triva demande aux moteurs de recherche de **filtrer les contenus po
 Tu peux joindre un fichier à une question (PDF, texte…). Tu es **responsable** de ce que tu joins : n'utilise que des fichiers que tu as le droit d'utiliser, et fais attention aux informations personnelles qu'ils contiennent (les tiennes ou celles d'autres personnes).
 
 - Le texte d'un fichier joint peut être envoyé à l'IA cloud que tu as choisie (voir la politique de confidentialité).
-- Les **PDF protégés contre la copie** par leur auteur ne sont lus que s'ils autorisent l'extraction de leur texte pour l'accessibilité. Sinon, Triva ne les lit pas du tout, quel que soit le moteur d'IA, et te prévient que ce fichier ne peut pas être lu. <!-- dépend de M10 -->
+- Les **PDF protégés contre la copie** par leur auteur ne sont lus que s'ils autorisent l'extraction de leur texte pour l'accessibilité. Sinon, Triva ne les lit pas du tout, quel que soit le moteur d'IA, et te prévient que ce fichier ne peut pas être lu.
 
 ## 8. Les sources et les liens
 
 - Triva montre des extraits, des images et des liens venant de **sites extérieurs**. Ces contenus appartiennent à leurs auteurs. Ouvre la source pour lire l'original.
 - L'éditeur ne contrôle pas ces sites et n'est pas responsable de leur contenu.
-- Pour lire une page, Triva se présente honnêtement sous le nom « Triva » et respecte les sites qui refusent d'être lus par des robots (fichier `robots.txt`). <!-- dépend de M8 -->
+- Pour lire une page, Triva se présente honnêtement sous le nom « Triva ». Quand elle lit les sources automatiquement, elle respecte les sites qui le refusent (fichier `robots.txt`, signaux « noai » ou « tdm-reservation »). Le bouton **« Lire cette page »** te permet de faire lire toi-même une source refusée, comme tu l'ouvrirais dans un navigateur : utilise-le pour ton usage personnel, en respectant les droits de l'auteur. <!-- À VALIDER --> <!-- À FAIRE VALIDER PAR UN JURISTE : lecture à la demande d'une page ayant exercé l'opt-out TDM (CPI L122-5-3, III) — décision de Ben Q4. -->
 - Si tu réutilises une réponse ou un extrait, respecte les droits de l'auteur d'origine (citation de la source, licence…).
 - Les données météo viennent d'Open-Meteo, et certaines sources ont leur propre licence : voir la page [Licences et attributions](licences.md).
 
@@ -97,7 +97,7 @@ Ces conditions sont soumises au **droit français**. Si tu vis dans un autre pay
 
 ## 12. Changements
 
-Ces conditions peuvent changer, par exemple si Triva ajoute une fonction. La date en haut de la page changera. Si un changement concerne ce qui est envoyé à une IA cloud, Triva te redemandera ton accord dans l'app. <!-- dépend de M2 -->
+Ces conditions peuvent changer, par exemple si Triva ajoute une fonction. La date en haut de la page changera. Si un changement concerne ce qui est envoyé à une IA cloud, Triva te redemandera ton accord dans l'app.
 
 ## 13. Contact
 

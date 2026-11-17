@@ -32,7 +32,7 @@ You can connect outside services to Triva with **your own key**: a cloud AI (Ope
 - You must **follow its terms**, including the **minimum age** it requires. For example, Tavily is only for people **18 or older**. Check the minimum age in each service's terms before creating a key.
 - That service may **charge you**. Fees are between you and the service: Triva's publisher earns nothing and cannot refund them.
 - Your key stays in your device's Keychain. Don't share it with anyone.
-- Before the first time anything is sent to a cloud AI, Triva asks for your permission. <!-- dépend de M2 -->
+- Before the first time anything is sent to a cloud AI, Triva asks for your permission.
 
 ## 4. Answers come from an AI
 
@@ -56,13 +56,13 @@ By default, Triva asks search engines to **filter adult content** (moderate leve
 You can attach a file to a question (PDF, text…). You are **responsible** for what you attach: only use files you have the right to use, and be careful with the personal information they contain (yours or other people's).
 
 - The text of an attached file may be sent to the cloud AI you chose (see the privacy policy).
-- **PDFs copy-protected** by their author are only read if they allow text extraction for accessibility. Otherwise, Triva doesn't read them at all, whatever the AI engine, and tells you that the file can't be read. <!-- dépend de M10 -->
+- **PDFs copy-protected** by their author are only read if they allow text extraction for accessibility. Otherwise, Triva doesn't read them at all, whatever the AI engine, and tells you that the file can't be read.
 
 ## 8. Sources and links
 
 - Triva shows excerpts, images and links from **outside websites**. That content belongs to its authors. Open the source to read the original.
 - The publisher does not control those websites and is not responsible for their content.
-- To read a page, Triva honestly identifies itself as "Triva" and respects websites that refuse to be read by robots (`robots.txt` file). <!-- dépend de M8 -->
+- To read a page, Triva honestly identifies itself as "Triva". When it reads sources automatically, it respects websites that refuse it (`robots.txt` file, "noai" or "tdm-reservation" signals). The **"Read this page"** button (« Lire cette page ») lets you have a refused source read yourself, as you would open it in a browser: use it for your personal use, respecting the author's rights. <!-- À VALIDER -->
 - If you reuse an answer or an excerpt, respect the original author's rights (credit the source, follow its license…).
 - Weather data comes from Open-Meteo, and some sources have their own license: see the [Licenses & Attributions](licenses.md) page.
 
@@ -96,7 +96,7 @@ These terms are governed by **French law**. If you live in another country, you 
 
 ## 12. Changes
 
-These terms may change, for example if Triva adds a feature. The date at the top of the page will change. If a change concerns what is sent to a cloud AI, Triva will ask for your permission again in the app. <!-- dépend de M2 -->
+These terms may change, for example if Triva adds a feature. The date at the top of the page will change. If a change concerns what is sent to a cloud AI, Triva will ask for your permission again in the app.
 
 ## 13. Contact
 

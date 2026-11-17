@@ -17,7 +17,7 @@ This page explains, in plain words, what Triva does with your data. It is writte
 - **No account, no ads, no audience measurement, no tracking.** Triva contains no analytics or advertising tool.
 - **What you do in Triva stays on your device** (iPhone, iPad or Mac), except what has to be sent over the Internet to answer your question.
 - When Triva sends something over the Internet, it goes **directly** from your device to an outside service (a search engine, an AI you chose…). These services can see at least your device's **IP address**. Each one applies its own rules. They are all listed below.
-- You can erase everything at any time in **Settings > Erase All** (« Réglages > Tout effacer »).
+- You can erase your history, favorites and caches at any time in **Settings > Data > Erase All** (« Réglages > Données > Tout effacer »); your keys and local models are deleted in their own settings (see section 7). <!-- À VALIDER -->
 
 ## 1. Who publishes Triva?
 
@@ -35,12 +35,14 @@ This data is stored **only on your device**. The publisher has no access to it.
 |---|---|---|
 | History: your questions, the answers, the sources found | The app's local database | Until you delete it |
 | Favorites | The app's local database | Until you delete them |
-| Settings (chosen AI engine, provider, model, your search instances, your permissions for cloud AIs…) <!-- « permissions » : dépend de M2 --> | App settings (`UserDefaults`) | Until you change them or delete the app |
+| Settings (chosen AI engine, provider, model, your search instances, your permissions for cloud AIs…) | App settings (`UserDefaults`) | Until you change them or delete the app |
 | Your API keys (cloud AI, Brave, Tavily) | The device Keychain (Apple's password vault) | Until you delete them in Settings > API Keys (« Clés API ») or Search Keys (« Clés de recherche ») |
 | List of public search instances and their measured reliability | The app's internal storage | Updated as you use the app |
 | Caches (recent pages and network responses, content of the Discover tab) | The app's internal storage | Renewed automatically; emptied by "Erase All" |
 | Local AI models (MLX) you downloaded | The app's internal storage | Until you delete them in Settings > MLX Models (« Modèles MLX ») |
-| Files you attach to a question | **In memory only**: Triva never copies them to disk | While the conversation is open |
+| Files you attach to a question | The file itself is never copied by Triva: its text is read in memory. But the **file name** and the **excerpts** used as sources of the answer are saved with it in the history (and in favorites if you add it there) | The file: while the conversation is open. The name and excerpts: until you delete the conversation or the favorite, or "Erase All" <!-- À VALIDER --> |
+| Pages you had read with "Read this page" (« Lire cette page ») | **In memory only** | Until Triva is closed or "Erase All" <!-- À VALIDER --> |
+| Data of websites opened in the **built-in browser** (cookies, website data) | iPhone and iPad: storage of the built-in browser (Safari), separate for Triva. Mac: **nothing is kept** | iPhone and iPad: until the website deletes it or you delete the app; **"Erase All" does not delete it** <!-- À VALIDER --> |
 
 **Protection.** Triva adds no encryption of its own: your data is protected by your device's protection (passcode or password, built-in encryption on iPhone and iPad, FileVault on Mac if turned on). It is included in your device's **backups** (iCloud or computer), like other apps' data.
 
@@ -55,7 +57,7 @@ All of this is sent **directly from your device**. None of it goes through a ser
 | **searx.space** (directory of public SearXNG instances) | When you open Triva, at most once every 24 hours (one hour after a failed connection) | Nothing but the request for the list |
 | **A few public SearXNG instances** | When the list is downloaded (to check new instances), and each time you open Triva to retest at most 3 instances that were working badly | A test search, always the word "test". **None of your questions.** |
 
-You can turn these checks off with the **"Update the list automatically"** setting (« Mettre à jour la liste automatiquement »). <!-- dépend de M13 -->
+You can turn these checks off with the **"Update the list automatically"** setting (« Mettre à jour la liste automatiquement », Settings > Advanced). <!-- À VALIDER -->
 
 ### 3.2 When you ask a question
 
@@ -64,11 +66,11 @@ You can turn these checks off with the **"Update the list automatically"** setti
 | **SearXNG instances** (public ones, or the ones you added) | With each search | Your question (sometimes rephrased), the language, the type of search, the results page, the time range; "moderate" adult-content filter by default, which you can turn off in Settings > Advanced |
 | **Open sources**: Wikipedia, OpenAlex, arXiv, Marginalia Search | Search, when useful | The words of your search |
 | **Brave Search** or **Tavily** | Only if you entered your own key | The words of your search and your key |
-| **The web pages found** (any website) | To read the sources of the answer | A request for the page, with a name that identifies Triva. Triva respects sites that refuse robots (`robots.txt` file). <!-- dépend de M8 --> |
+| **The web pages found** (any website) | To read the sources of the answer | A request for the page, with a name that identifies Triva. For this automatic reading, Triva respects websites that refuse it (`robots.txt` file, or "noai" and "tdm-reservation" signals sent by the page). If you tap **"Read this page"** (« Lire cette page ») on a refused source, Triva reads it for you, like a browser, without applying that refusal. <!-- À VALIDER --> |
 | **Open-Meteo** (weather) | When your question is about the weather | The name of the city you typed, then its coordinates |
 | **Hosts of images and thumbnails, YouTube** | When image or video results are shown | The request for the image (as in a web browser) |
 
-In your history, Triva only keeps the **title and link** of Brave results, as Brave's terms require. <!-- dépend de M11 -->
+In your history, Triva only keeps the **title and link** of Brave results, as Brave's terms require.
 
 ### 3.3 The AI engine that writes the answer
 
@@ -76,8 +78,8 @@ You choose the engine yourself in Settings.
 
 - **Apple Intelligence, on device** and **Local model (MLX)** (« Modèle local (MLX) »): the answer is written on your device. Nothing is sent to an outside AI.
 - **Apple Intelligence, Apple's private cloud**: when the question is more than the device can handle, it may be processed by Apple's private cloud (Private Cloud Compute). According to Apple, nothing is kept there. <!-- source Apple NON VÉRIFIÉE --> See [Apple's privacy policy](https://www.apple.com/legal/privacy/).
-- **Personal API key** (« Clé API personnelle », cloud AI): Triva sends the provider you chose, **using your key**: your question, the earlier messages of the conversation, excerpts from the pages found, and the text of the files you attach. For image and video searches, your question is also sent to it to be rephrased. Before the first message to each provider, Triva asks for your permission; you can withdraw it in Settings > API Keys. <!-- accord : dépend de M2 -->
-- **Copy-protected PDFs** are read only if they allow text extraction for accessibility. Otherwise, Triva does not read them at all (neither on your device nor in the cloud) and tells you so. <!-- dépend de M10 -->
+- **Personal API key** (« Clé API personnelle », cloud AI): Triva sends the provider you chose, **using your key**: your question, the earlier messages of the conversation, excerpts from the pages found, and the text of the files you attach. For image and video searches, your question is also sent to it to be rephrased. Before the first message to each provider, Triva asks for your permission; you can withdraw it in Settings > API Keys.
+- **Copy-protected PDFs** are read only if they allow text extraction for accessibility. Otherwise, Triva does not read them at all (neither on your device nor in the cloud) and tells you so.
 - Some providers (OpenAI, Claude, Perplexity) can also **search the web** from your question, if you turn this mode on; it is billed to your account with them.
 - To show the list of models or check your key, Triva also contacts that provider with your key.
 
@@ -85,9 +87,13 @@ You choose the engine yourself in Settings.
 
 The model is downloaded from **Hugging Face**, which receives the name of the requested model and your IP address.
 
-### 3.5 When you open the Discover tab (« Découvrir »)
+### 3.5 When you open a link <!-- À VALIDER -->
 
-Triva downloads the news feeds of these publishers: Numerama, Frandroid, The Conversation, ESPN, Variety, Deadline, The Hollywood Reporter, ARTnews. They only receive the request for the feed (and your IP address).
+Links open in Triva's **built-in browser** (built-in Safari on iPhone and iPad, a web window on Mac). The website receives what it receives from any browser (IP address, request for the page) and may set cookies. Triva doesn't see or keep what you do on these websites. The website's own rules apply.
+
+### 3.6 When you open the Discover tab (« Découvrir »)
+
+Triva downloads the news feeds of these publishers: Numerama, Frandroid, The Conversation, ESPN, Variety, Deadline, The Hollywood Reporter, ARTnews. They receive the request for the feed (and your IP address). The **article images** (except for The Conversation) are also downloaded from the servers of these publishers, or of those hosting their images, which then receive your IP address. <!-- À VALIDER -->
 
 ## 4. Outside services follow their own rules
 
@@ -127,7 +133,15 @@ If you add a **custom provider** or your **own** search instance, you are the on
 ## 5. Why these requests are made
 
 - To **answer your question**: that is the service you ask Triva for.
-- To **keep search reliable** (listing and testing instances): without it, many searches would fail. You can turn this off. <!-- réglage : dépend de M13 -->
+- To **keep search reliable** (listing and testing instances): without it, many searches would fail. You can turn this off.
+
+**Legal bases** (GDPR, article 6): <!-- À VALIDER -->
+
+- what is sent to answer your question relies on **performing the service** you ask for by using Triva (see the [terms of use](terms.md));
+- updating and testing instances relies on the **legitimate interest** in keeping search reliable; you can object by turning off "Update the list automatically";
+- sending to a cloud AI relies on your **permission**, which you can withdraw at any time in Settings > API Keys.
+
+You don't have to use these services: without a cloud AI or a key, Triva works with Apple Intelligence or a local model.
 
 <!-- À FAIRE VALIDER PAR UN JURISTE : bases légales (voir la version française). -->
 
@@ -142,9 +156,10 @@ For what you decide to send yourself, with your own key or your own service, eac
 ## 7. Erasing your data
 
 - **Erase All** (« Tout effacer », Settings, "Data" section, « Données ») deletes at once, on this device: your history (conversations, messages, sources), your favorites, the network cache and the Discover tab cache. Normally, the database is emptied completely and no trace of it remains. If that isn't possible, Triva deletes items one by one (leaving the same temporary traces as a single deleted conversation, see below) and tells you if part of it could not be erased.
-- "Erase All" **does not delete**: your API keys, the chosen engine, provider and model, your search instances, the downloaded local models. To delete them: Settings > API Keys (or Search Keys), and Settings > MLX Models.
+- "Erase All" **does not delete**: your API keys, the chosen engine, provider and model, your permissions for cloud AIs, your search instances, your other settings, the downloaded local models. <!-- À VALIDER --> To delete them: Settings > API Keys (or Search Keys), and Settings > MLX Models.
 - A **single conversation you delete** disappears from the app right away. It may stay for a while in the database's internal file, still protected by your device's encryption, until that file is cleaned up automatically.
 - **Deleting the app** removes its data from the device. Keys saved in the Keychain may sometimes remain after the app is deleted: delete them first in Triva's Settings. <!-- comportement du Trousseau après désinstallation : NON VÉRIFIÉ dans la documentation Apple -->
+- **Data of websites opened in the built-in browser** (cookies): on Mac, nothing is kept; on iPhone and iPad, "Erase All" doesn't delete it for now, deleting the app does. <!-- À VALIDER -->
 - What you have **already sent** to an outside service (section 3) cannot be erased by Triva: ask that service directly.
 
 ## 8. Your rights
@@ -168,12 +183,13 @@ In France, under 15, some uses of your data require a parent's permission as wel
 - No ads.
 - No audience measurement or usage statistics. Triva itself sends no error reports. If you turned on sharing analytics with developers in your device settings, Apple may pass crash reports to the publisher without your identity. <!-- fonction Apple « Partager avec les développeurs » : formulation NON VÉRIFIÉE dans la doc Apple -->
 - No tracking across apps or websites, no advertising identifier.
+- No automated decisions about you: Triva makes no decision about you that would have legal effects or significantly affect you (GDPR, article 22). <!-- À VALIDER -->
 - No selling or sharing of data by the publisher: it has none.
 - No access to your location, contacts, photo library, microphone or camera. Triva only reads the files you choose to attach yourself. Triva may ask for access to the **local network**, only if you add a search instance hosted at home.
 
 ## 11. Changes to this policy
 
-If Triva changes the way it handles your data, this page will be updated and its date will change. If a change concerns what is sent to a cloud AI, Triva will ask for your permission again in the app. <!-- dépend de M2 -->
+If Triva changes the way it handles your data, this page will be updated and its date will change. If a change concerns what is sent to a cloud AI, Triva will ask for your permission again in the app.
 
 ## Version history
 

@@ -49,9 +49,9 @@ Nothing that goes through the publisher: **Triva has no server**, no ads, no ana
 
 - **Apple Intelligence, on device** and **Local Model (MLX)**: the answer is written **on your device**. Your question is not sent to any outside AI (the web search itself always goes over the Internet).
 - **Apple Intelligence, Apple's private cloud**: for requests too heavy for the device, Apple may process them on its secure servers.
-- **Personal API Key**: the answer is written by the cloud provider you chose, with your key. Triva asks for your permission before the first time anything is sent. <!-- dépend de M2 -->
+- **Personal API Key**: the answer is written by the cloud provider you chose, with your key. Triva asks for your permission before the first time anything is sent.
 
-The badge at the top of the screen always shows which engine is answering. <!-- emplacement du badge à vérifier -->
+The engine badge, on the search screen, always shows which AI engine is answering and whether your question is sent to an online AI. <!-- À VALIDER -->
 
 ### Local models (MLX) take up a lot of space
 
@@ -63,9 +63,9 @@ Settings, "Data" section (« Données ») > **Erase All** (« Tout effacer »): 
 
 ### What are "SearXNG instances"?
 
-SearXNG is a free search engine that volunteers and non-profits run on their own servers (each server is an "instance"). By default Triva uses **public** instances and switches to another one if one doesn't answer. You can also add your own instance in Settings > SearXNG Instances (« Instances SearXNG »).
+SearXNG is a free search engine that volunteers and non-profits run on their own servers (each server is an "instance"). By default Triva uses **public** instances and switches to another one if one doesn't answer. You can also add your own instance in Settings > Advanced > SearXNG Instances (« Réglages > Avancé > Instances SearXNG »). <!-- À VALIDER -->
 
-To keep the list up to date, Triva sometimes downloads the public directory searx.space and tests a few instances with the word "test" (never your questions). You can turn this off with Update the list automatically (« Mettre à jour la liste automatiquement »). <!-- dépend de M13 -->
+To keep the list up to date, Triva sometimes downloads the public directory searx.space and tests a few instances with the word "test" (never your questions). You can turn this off in Settings > Advanced > Update the list automatically (« Mettre à jour la liste automatiquement »). <!-- À VALIDER -->
 
 ### Search doesn't work or is slow
 
@@ -73,13 +73,13 @@ Public instances are sometimes overloaded or block apps. Try again a bit later, 
 
 ### Why doesn't Triva read some websites?
 
-Some websites ask automated programs not to read them, with a file called `robots.txt`. Triva honestly identifies itself as "Triva" and **respects that refusal**: it doesn't read those pages, but still gives you their link. <!-- dépend de M8 -->
+Some websites ask automated programs not to read them, with a file called `robots.txt`. Triva honestly identifies itself as "Triva" and, when it reads sources automatically, **respects that refusal** (like the "noai" or "tdm-reservation" signals of some pages): it doesn't read those pages, but gives you their title, an excerpt from the search engine and their link. If you still want Triva to use one of these pages, tap **"Read this page"** (« Lire cette page ») under the source: Triva then reads it for you, like a browser. <!-- À VALIDER -->
 
-Other websites block all apps, require a subscription or display their content in a way Triva can't read. Open the source link to see the page in your browser.
+Other websites block all apps, require a subscription or display their content in a way Triva can't read. Open the source link to see the page in Triva's built-in browser. <!-- À VALIDER -->
 
 ### Why doesn't Triva read one of my PDFs?
 
-Some PDFs are **copy-protected** by their author. Triva reads a protected PDF only if it allows text extraction for accessibility (for example for screen readers). Otherwise, Triva doesn't read it at all, with any AI engine, and tells you that the file can't be read. There is no setting to override this: it is the file author's choice. <!-- dépend de M10 -->
+Some PDFs are **copy-protected** by their author. Triva reads a protected PDF only if it allows text extraction for accessibility (for example for screen readers). Otherwise, Triva doesn't read it at all, with any AI engine, and tells you that the file can't be read. There is no setting to override this: it is the file author's choice.
 
 ### I see adult content
 

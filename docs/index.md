@@ -4,9 +4,9 @@
 
 # Triva
 
-Triva cherche sur le web et te répond avec des sources, sur iPhone, iPad et Mac. Gratuite, sans publicité, sans compte et sans serveur : ce que tu fais dans Triva reste sur ton appareil.
+Triva cherche sur le web et te répond avec des sources, sur iPhone, iPad et Mac. Gratuite, sans publicité, sans compte et sans serveur : ce que tu fais dans Triva reste sur ton appareil, sauf ce qu'il faut envoyer sur Internet pour répondre (voir la politique de confidentialité). <!-- À VALIDER -->
 
-*Triva searches the web and answers with sources, on iPhone, iPad and Mac. Free, no ads, no account, no server. English pages below.*
+*Triva searches the web and answers with sources, on iPhone, iPad and Mac. Free, no ads, no account, no server: what you do in Triva stays on your device, except what has to be sent over the Internet to answer. <!-- À VALIDER --> English pages below.*
 
 ## En français
 

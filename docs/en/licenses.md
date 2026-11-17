@@ -32,7 +32,7 @@ Triva shows news feeds from these publishers, following their reuse rules: a lin
 
 | Publisher | Reuse rules |
 |---|---|
-| Numerama | [Legal notice](https://www.numerama.com/mentions-legales/). Numerama articles are never used by an AI in Triva. |
+| Numerama | [Legal notice](https://www.numerama.com/mentions-legales/). Numerama articles shown in Discover are never sent to an AI by Triva. <!-- À VALIDER --> |
 | Frandroid | [Legal notice](https://www.frandroid.com/mentions-legales) |
 | The Conversation | Articles under [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/) ([republishing guidelines](https://theconversation.com/fr/republishing-guidelines)): author and site credited, text not modified. |
 | ESPN | [RSS feed terms](https://www.espn.com/espn/news/story?page=rssinfo) |
