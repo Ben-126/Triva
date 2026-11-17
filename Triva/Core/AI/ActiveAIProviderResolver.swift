@@ -72,7 +72,8 @@ enum ActiveAIProviderResolver {
         mlxCatalog: [MLXModelCatalogEntry],
         cloudSelection: CloudProviderSelectionStore,
         customCloudPresets: [CloudProviderPreset],
-        keyStore: any APIKeyStoring = KeychainAPIKeyStore()
+        keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
+        cloudConsent: (any CloudAIConsentChecking)? = nil
     ) throws -> any AIGenerating {
         guard let option = engine else {
             throw ActiveAIProviderResolverError.noEngineSelected
@@ -103,7 +104,8 @@ enum ActiveAIProviderResolver {
             guard let provider = CloudProviderSelectionResolver.makeProvider(
                 for: selection,
                 customPresets: customCloudPresets,
-                keyStore: keyStore
+                keyStore: keyStore,
+                consent: cloudConsent
             ) else {
                 throw ActiveAIProviderResolverError.cloudSelectionUnresolvable(selection)
             }
@@ -121,7 +123,8 @@ enum ActiveAIProviderResolver {
         mlxCatalog: [MLXModelCatalogEntry],
         cloudSelection: CloudProviderSelectionStore,
         customCloudPresets: [CloudProviderPreset],
-        keyStore: any APIKeyStoring = KeychainAPIKeyStore()
+        keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
+        cloudConsent: (any CloudAIConsentChecking)? = nil
     ) throws -> any AIGenerating {
         try resolve(
             engine: engineSettings.selectedOption,
@@ -129,7 +132,8 @@ enum ActiveAIProviderResolver {
             mlxCatalog: mlxCatalog,
             cloudSelection: cloudSelection,
             customCloudPresets: customCloudPresets,
-            keyStore: keyStore
+            keyStore: keyStore,
+            cloudConsent: cloudConsent
         )
     }
 }

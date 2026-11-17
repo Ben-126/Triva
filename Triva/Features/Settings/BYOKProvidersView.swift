@@ -29,6 +29,8 @@ struct BYOKProvidersView: View {
     /// orpheline, sans clé pour la résoudre. Pas d'`@State` : la vue ne le
     /// possède pas, elle le transmet.
     private let selectionStore: CloudProviderSelectionStore
+    /// Accords d'envoi aux fournisseurs cloud (mission C2), partagés par toute l'app.
+    private let consentStore: CloudAIConsentStore
     @State private var isAddingCustomProvider = false
     /// Un seul `APIKeysViewModel` par fournisseur, construit paresseusement et
     /// réutilisé pour la ligne ET la destination du `NavigationLink` — sinon
@@ -51,8 +53,10 @@ struct BYOKProvidersView: View {
     init(
         customStore: CustomProviderStore,
         selectionStore: CloudProviderSelectionStore,
+        consentStore: CloudAIConsentStore,
         onClose: (() -> Void)? = nil
     ) {
+        self.consentStore = consentStore
         _customStore = State(initialValue: customStore)
         self.selectionStore = selectionStore
         self.onClose = onClose
@@ -67,12 +71,12 @@ struct BYOKProvidersView: View {
             Form {
                 Section {
                     if let claudeViewModel = viewModels[Self.claudeProviderID] {
-                        row(displayName: "Claude", viewModel: claudeViewModel)
+                        row(providerID: Self.claudeProviderID, displayName: "Claude", viewModel: claudeViewModel)
                     }
 
                     ForEach(CloudProviderCatalog.presets) { preset in
                         if let viewModel = viewModels[preset.id] {
-                            row(displayName: preset.displayName, viewModel: viewModel)
+                            row(providerID: preset.id, displayName: preset.displayName, viewModel: viewModel)
                         }
                     }
 
@@ -211,7 +215,7 @@ struct BYOKProvidersView: View {
     /// sur Mac) et touche Supprimer (Mac) mènent à la même confirmation. Pas de `.onDelete` : il
     /// retire la ligne AVANT qu'on puisse confirmer, alors que la clé API part avec elle.
     private func customRow(_ preset: CloudProviderPreset, viewModel: APIKeysViewModel) -> some View {
-        let base = row(displayName: preset.displayName, viewModel: viewModel)
+        let base = row(providerID: preset.id, displayName: preset.displayName, viewModel: viewModel)
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 deleteButton(for: preset)
             }
@@ -248,6 +252,8 @@ struct BYOKProvidersView: View {
     private func confirmDeletion(of preset: CloudProviderPreset) {
         do {
             try Self.removeCustomProvider(preset, from: customStore, viewModels: &viewModels)
+            // Fournisseur disparu : son accord n'a plus d'objet.
+            consentStore.revoke(providerID: preset.id)
         } catch {
             deletionErrorMessage = (error as? CustomProviderStoreError)?.userFacingMessage
                 ?? CustomProviderStoreError.keyNotDeleted.userFacingMessage
@@ -283,9 +289,14 @@ struct BYOKProvidersView: View {
         return base + " Il est utilisé en ce moment : tu devras en choisir un autre."
     }
 
-    private func row(displayName: String, viewModel: APIKeysViewModel) -> some View {
+    private func row(providerID: String, displayName: String, viewModel: APIKeysViewModel) -> some View {
         NavigationLink {
-            ProviderAPIKeyEntryView(providerDisplayName: displayName, viewModel: viewModel)
+            ProviderAPIKeyEntryView(
+                providerDisplayName: displayName,
+                viewModel: viewModel,
+                providerID: providerID,
+                consentStore: consentStore
+            )
         } label: {
             LabeledContent(displayName, value: viewModel.hasStoredKey ? "Configuré" : "")
         }
@@ -295,5 +306,9 @@ struct BYOKProvidersView: View {
 #Preview {
     // Stores des aperçus (domaine `UserDefaults` dédié), jamais ceux de l'app.
     let stores = TrivaSharedStores.preview()
-    BYOKProvidersView(customStore: stores.customProviders, selectionStore: stores.cloudSelection)
+    BYOKProvidersView(
+        customStore: stores.customProviders,
+        selectionStore: stores.cloudSelection,
+        consentStore: stores.cloudConsent
+    )
 }

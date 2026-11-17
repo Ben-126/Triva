@@ -204,6 +204,10 @@ struct ChatView: View {
     /// Voir `EnvironmentValues.openSearchKeySettings`.
     @Environment(\.openSearchKeySettings) private var openSearchKeySettings
     @FocusState private var isDraftFocused: Bool
+    /// Consentement cloud en attente (mission C2) : la feuille est montrée, `afterConsent` repart
+    /// avec l'envoi interrompu une fois « Autoriser » touché.
+    @State private var consentRequest: CloudAIConsentRequest?
+    @State private var afterConsent: (() -> Void)?
 
     /// Repli tant que `TrivaSharedStores` ne porte pas le store du mode :
     /// UNE instance par processus, partagée par toutes les fenêtres (iPad,
@@ -255,6 +259,23 @@ struct ChatView: View {
         VStack(spacing: 0) {
             messagesList
             composer
+        }
+        .sheet(item: $consentRequest) { request in
+            CloudConsentSheet(
+                request: request,
+                onAllow: {
+                    viewModel.allowCloudConsent(request)
+                    let action = afterConsent
+                    afterConsent = nil
+                    consentRequest = nil
+                    action?()
+                },
+                onCancel: {
+                    afterConsent = nil
+                    consentRequest = nil
+                    viewModel.declineCloudConsent()
+                }
+            )
         }
         .toolbar {
             // Décision 1 de Ben : les questions s'enchaînent dans la même
@@ -538,7 +559,13 @@ struct ChatView: View {
 
     private func send() {
         guard !isSendDisabled else { return }
+        // Avant de vider le brouillon : si l'utilisateur annule la feuille, sa saisie reste.
+        whenConsented { performSend() }
+    }
+
+    private func performSend() {
         let query = draftText
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if let sessionDraft {
             sessionDraft.text = ""
         } else {
@@ -548,10 +575,21 @@ struct ChatView: View {
         viewModel.startSend(query: query)
     }
 
+    /// Exécute `action` tout de suite, ou après l'accord de l'utilisateur si un envoi à une IA cloud
+    /// n'a pas encore été autorisé pour ce fournisseur (aucun envoi sans accord).
+    private func whenConsented(_ action: @escaping () -> Void) {
+        if let request = viewModel.consentRequestBeforeSending() {
+            afterConsent = action
+            consentRequest = request
+        } else {
+            action()
+        }
+    }
+
     /// Suggestion touchée : envoyée comme une nouvelle question (le bouton Stop l'arrête comme un
     /// envoi tapé).
     private func sendSuggestion(_ suggestion: String) {
-        viewModel.startSuggestion(suggestion)
+        whenConsented { viewModel.startSuggestion(suggestion) }
     }
 
     /// Décision (c) : même question, en mode Rapide, à la place de la réponse
@@ -560,7 +598,7 @@ struct ChatView: View {
     private func retryInQuickMode(messageID: UUID) {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
-        viewModel.startRetryInQuickMode(messageID: messageID)
+        whenConsented { viewModel.startRetryInQuickMode(messageID: messageID) }
     }
 
     /// Envoi bloqué hors connexion (tâche 1.16) : même question, relancée (le bouton Stop l'arrête
@@ -568,7 +606,7 @@ struct ChatView: View {
     private func relaunchAfterOffline(quickMode: Bool) {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
-        viewModel.startRetryAfterOffline(quickMode: quickMode)
+        whenConsented { viewModel.startRetryAfterOffline(quickMode: quickMode) }
     }
 
     /// Le brouillon en cours est gardé : il servira de première question.

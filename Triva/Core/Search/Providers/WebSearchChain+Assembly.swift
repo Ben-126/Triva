@@ -47,10 +47,11 @@ extension WebSearchChain {
         searchKeys: SearchKeyStore,
         failoverManager: FailoverManager,
         fallbackLanguage: String?,
-        openSources: OpenSourceSearchChain = OpenSourceSearchChain()
+        openSources: OpenSourceSearchChain = OpenSourceSearchChain(),
+        cloudConsent: (any CloudAIConsentChecking)? = nil
     ) -> WebSearchChain {
         let keyed = keyedProviders(from: searchKeys)
-        let cloud = activeCloudProvider(engine: engine, selection: cloudSelection, keyStore: cloudKeyStore)
+        let cloud = activeCloudProvider(engine: engine, selection: cloudSelection, keyStore: cloudKeyStore, consent: cloudConsent)
         return WebSearchChain(
             keyedProviders: keyed.providers,
             searxng: SearXNGWebSearchProvider(failover: failoverManager),
@@ -92,11 +93,12 @@ extension WebSearchChain {
     private static func activeCloudProvider(
         engine: AIEngineOption,
         selection: CloudProviderSelection?,
-        keyStore: any APIKeyStoring
+        keyStore: any APIKeyStoring,
+        consent: (any CloudAIConsentChecking)?
     ) -> (provider: (any WebSearchProviding)?, keyUnreadable: Bool) {
         guard engine == .cloudBYOK else { return (nil, false) }
         do {
-            return (try CloudWebSearchProvider.make(for: selection, keyStore: keyStore), false)
+            return (try CloudWebSearchProvider.make(for: selection, keyStore: keyStore, consent: consent), false)
         } catch {
             logger.error("Clé du fournisseur IA illisible dans le trousseau : recherche cloud sautée")
             return (nil, true)

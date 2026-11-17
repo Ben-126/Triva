@@ -356,7 +356,9 @@ final class SearchSession {
                 self?.pipelineConfigurationForSending() ?? .appleIntelligence
             },
             historyStore: stores.chatHistory,
-            favoritesStore: stores.favorites
+            favoritesStore: stores.favorites,
+            resolveConsentRequest: { [weak self] in self?.cloudConsentRequestForSending() },
+            grantConsent: { [weak self] request in self?.stores.cloudConsent.grant(providerID: request.providerID) }
         )
     }
 
@@ -384,6 +386,18 @@ final class SearchSession {
         }
     }
 
+    /// Demande de consentement à montrer AVANT un envoi : `nil` pour Apple Intelligence et MLX (sur
+    /// l'appareil), sans fournisseur choisi (l'envoi échouera de lui-même), ou accord déjà donné.
+    /// Interne pour les tests. La porte qui bloque réellement est `CloudAIConsentGate`.
+    func cloudConsentRequestForSending() -> CloudAIConsentRequest? {
+        guard engine == .cloudBYOK, let selection = stores.cloudSelection.selection else { return nil }
+        guard !stores.cloudConsent.isGranted(providerID: selection.providerID) else { return nil }
+        return CloudAIConsentCatalog.request(
+            providerID: selection.providerID,
+            customPresets: stores.customProviders.customPresets
+        )
+    }
+
     /// Provider IA à utiliser pour un envoi : TOUJOURS celui de `engine`, le
     /// moteur affiché par le badge de cette fenêtre (bug 10), jamais celui
     /// qu'un store relu indiquerait. Interne (et non privé) pour que les tests
@@ -409,7 +423,8 @@ final class SearchSession {
                 mlxCatalog: [],
                 cloudSelection: stores.cloudSelection,
                 customCloudPresets: stores.customProviders.customPresets,
-                keyStore: stores.keyStore
+                keyStore: stores.keyStore,
+                cloudConsent: stores.cloudConsent.storage
             )
             // Apple Intelligence : le provider local, déjà vérifié disponible, devient le secours
             // du cloud privé quand celui-ci est proposé et choisi (mission A4) ; sinon, tel quel.
@@ -458,7 +473,8 @@ final class SearchSession {
             cloudKeyStore: stores.keyStore,
             searchKeys: searchKeyStore,
             failoverManager: failoverManager,
-            fallbackLanguage: Self.fallbackSearchLanguage()
+            fallbackLanguage: Self.fallbackSearchLanguage(),
+            cloudConsent: stores.cloudConsent.storage
         )
     }
 

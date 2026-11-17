@@ -107,6 +107,11 @@ final class ChatViewModel {
     func setOfflineNotice(_ notice: OfflineNotice?) {
         offlineNotice = notice
     }
+
+    /// Seul point d'écriture de `errorDescription` hors de ce fichier (`ChatViewModel+CloudConsent`).
+    func setErrorDescription(_ text: String?) {
+        errorDescription = text
+    }
     /// `StoredConversation.id` du fil. Jamais la référence SwiftData :
     /// supprimée depuis la Bibliothèque, elle resterait lisible.
     private(set) var currentConversationID: UUID?
@@ -128,6 +133,9 @@ final class ChatViewModel {
     let historyStore: ChatHistoryStore?
     let favoritesStore: FavoritesStore?
     let now: @MainActor () -> Date
+    /// Consentement cloud (mission C2) : la demande à montrer avant d'envoyer, `nil` si rien à demander.
+    let resolveConsentRequest: @MainActor () -> CloudAIConsentRequest?
+    let grantConsent: @MainActor (CloudAIConsentRequest) -> Void
 
     @ObservationIgnored var activeExchangeID: UUID?
     /// Génération passée en arrière-plan par l'ouverture d'une autre conversation (`ChatViewModel+Background`).
@@ -182,8 +190,12 @@ final class ChatViewModel {
             await SuggestionsService(aiProvider: provider).generateSuggestions(chatHistory: history)
         },
         makeMediaSearcher: @escaping @MainActor (FailoverManager) -> any MediaSearching = { SearXNGMediaSearcher(failoverManager: $0) },
-        now: @escaping @MainActor () -> Date = { .now }
+        now: @escaping @MainActor () -> Date = { .now },
+        resolveConsentRequest: @escaping @MainActor () -> CloudAIConsentRequest? = { nil },
+        grantConsent: @escaping @MainActor (CloudAIConsentRequest) -> Void = { _ in }
     ) {
+        self.resolveConsentRequest = resolveConsentRequest
+        self.grantConsent = grantConsent
         self.resolveProvider = resolveProvider
         self.resolveFailoverManager = resolveFailoverManager
         self.resolveWebSearchChain = resolveWebSearchChain

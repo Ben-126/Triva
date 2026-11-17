@@ -41,6 +41,8 @@ struct OpenAICompatibleProvider: AIGenerating {
     let model: String
     private let keyStore: any APIKeyStoring
     private let client: any OpenAICompatibleRequesting
+    /// Porte du consentement (mission C2) : `nil` seulement pour les tests qui construisent le provider à la main.
+    private let consentGate: CloudAIConsentGate?
 
     /// `providerName` optionnel pour ne casser aucun appelant : sans lui, nom
     /// du preset du catalogue, sinon hôte de l'URL (voir `fallbackName`).
@@ -50,8 +52,10 @@ struct OpenAICompatibleProvider: AIGenerating {
         baseURL: URL,
         model: String,
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
-        client: any OpenAICompatibleRequesting = OpenAICompatibleClient()
+        client: any OpenAICompatibleRequesting = OpenAICompatibleClient(),
+        consentGate: CloudAIConsentGate? = nil
     ) {
+        self.consentGate = consentGate
         self.account = account
         let trimmedName = providerName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.providerName = trimmedName.isEmpty ? Self.fallbackName(account: account, baseURL: baseURL) : trimmedName
@@ -80,6 +84,7 @@ struct OpenAICompatibleProvider: AIGenerating {
     }
 
     func generate(prompt: String) async throws -> String {
+        try consentGate?.require()
         let apiKey = try readAPIKey()
         do {
             return try await client.generate(baseURL: baseURL, apiKey: apiKey, model: model, prompt: prompt)

@@ -127,14 +127,18 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
 
     private let apiKey: SearchSecret
     private let requester: any HTTPDataRequesting
+    /// Porte du consentement (mission C2) : `search` envoie la question au fournisseur.
+    private let consentGate: CloudAIConsentGate?
 
     /// `model` : remplace le modèle par défaut (tests, ou futur réglage). Ignoré par Perplexity.
     init(
         service: CloudWebSearchService,
         apiKey: String,
         model: String? = nil,
-        requester: any HTTPDataRequesting = URLSessionDataRequester()
+        requester: any HTTPDataRequesting = URLSessionDataRequester(),
+        consentGate: CloudAIConsentGate? = nil
     ) {
+        self.consentGate = consentGate
         self.service = service
         self.apiKey = SearchSecret(apiKey)
         let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -165,7 +169,8 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
     static func make(
         for selection: CloudProviderSelection?,
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
-        requester: any HTTPDataRequesting = URLSessionDataRequester()
+        requester: any HTTPDataRequesting = URLSessionDataRequester(),
+        consent: (any CloudAIConsentChecking)? = nil
     ) throws -> CloudWebSearchProvider? {
         guard let selection, let service = CloudWebSearchService(providerID: selection.providerID) else {
             return nil
@@ -178,7 +183,12 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
         }
         let secret = SearchSecret(storedKey ?? "")
         guard !secret.isEmpty else { return nil }
-        return CloudWebSearchProvider(service: service, apiKey: secret.value, requester: requester)
+        return CloudWebSearchProvider(
+            service: service,
+            apiKey: secret.value,
+            requester: requester,
+            consentGate: consent.map { CloudAIConsentGate(providerID: selection.providerID, checker: $0) }
+        )
     }
 
     // MARK: - Recherche
@@ -189,6 +199,7 @@ nonisolated struct CloudWebSearchProvider: WebSearchProviding {
     /// une erreur : le modèle a pu juger la recherche inutile, c'est une réponse vide valide.
     @concurrent
     func search(query: String, options: WebSearchOptions) async throws -> SearXNGSearchResponse {
+        try consentGate?.require()
         guard !apiKey.isEmpty else { throw WebSearchError.missingKey }
         guard let cleanQuery = BYOKSearchHTTP.trimmedQuery(query) else { return BYOKSearchHTTP.emptyResponse }
 

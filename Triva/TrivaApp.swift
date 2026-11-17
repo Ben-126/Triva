@@ -67,6 +67,9 @@ struct TrivaSharedStores {
     /// (`SearchSession`) — les tests y substituent un faux trousseau d'un bout
     /// à l'autre.
     let keyStore: any APIKeyStoring
+    /// Accords d'envoi aux fournisseurs IA cloud (mission C2, App Store 5.1.2(i)) : UN store pour
+    /// toutes les fenêtres ; les providers cloud lisent le même `UserDefaults` en direct.
+    let cloudConsent: CloudAIConsentStore
     /// Stockage local partagé par l'historique et les favoris. Indisponible
     /// (base illisible), il ne se replie plus sur la mémoire : les deux stores
     /// refusent d'écrire et les écrans le disent (voir `TrivaStorage`).
@@ -149,6 +152,7 @@ struct TrivaSharedStores {
         self.chatHistory = ChatHistoryStore(storage: storage)
         self.favorites = FavoritesStore(storage: storage)
         self.keyStore = keyStore
+        self.cloudConsent = CloudAIConsentStore(userDefaults: userDefaults)
         self.storage = storage
     }
 
@@ -439,6 +443,7 @@ private struct TrivaSettingsWindow: View {
             mlxSelectionStore: stores.mlxSelection,
             cloudSelectionStore: stores.cloudSelection,
             customProviderStore: stores.customProviders,
+            cloudConsentStore: stores.cloudConsent,
             instanceStore: stores.searchInstances,
             localDataEraser: stores.makeLocalDataEraser()
         )

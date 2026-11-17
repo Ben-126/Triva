@@ -21,6 +21,8 @@ struct PerplexityAgentProvider: AIGenerating {
     private let keyStore: any APIKeyStoring
     private let client: any PerplexityAgentRequesting
     private let onSources: @Sendable ([PerplexitySource]) -> Void
+    /// Porte du consentement (mission C2).
+    private let consentGate: CloudAIConsentGate?
 
     init(
         account: String = "perplexity",
@@ -28,8 +30,10 @@ struct PerplexityAgentProvider: AIGenerating {
         model: String,
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
         client: any PerplexityAgentRequesting = PerplexityAgentClient(),
-        onSources: @escaping @Sendable ([PerplexitySource]) -> Void = { _ in }
+        onSources: @escaping @Sendable ([PerplexitySource]) -> Void = { _ in },
+        consentGate: CloudAIConsentGate? = nil
     ) {
+        self.consentGate = consentGate
         self.account = account
         self.baseURL = baseURL
         self.model = model
@@ -39,6 +43,7 @@ struct PerplexityAgentProvider: AIGenerating {
     }
 
     func generate(prompt: String) async throws -> String {
+        try consentGate?.require()
         let apiKey = try readAPIKey()
         return try await client.generate(baseURL: baseURL, apiKey: apiKey, model: model, prompt: prompt)
     }
@@ -49,6 +54,7 @@ struct PerplexityAgentProvider: AIGenerating {
         AsyncThrowingStream { continuation in
             let apiKey: String
             do {
+                try consentGate?.require()
                 apiKey = try readAPIKey()
             } catch {
                 continuation.finish(throwing: error)

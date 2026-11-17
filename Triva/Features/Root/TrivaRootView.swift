@@ -414,6 +414,7 @@ private struct TrivaRootShell: View {
                 mlxSelectionStore: stores.mlxSelection,
                 cloudSelectionStore: stores.cloudSelection,
                 customProviderStore: stores.customProviders,
+                cloudConsentStore: stores.cloudConsent,
                 instanceStore: stores.searchInstances,
                 localDataEraser: stores.makeLocalDataEraser(beforeErase: { [coordinator] in
                     await coordinator.session.chatViewModel?.stopAndWait()

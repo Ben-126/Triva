@@ -68,6 +68,7 @@ struct SettingsView: View {
     @State private var mlxSelectionStore: MLXModelSelectionStore
     @State private var cloudSelectionStore: CloudProviderSelectionStore
     @State private var customProviderStore: CustomProviderStore
+    @State private var cloudConsentStore: CloudAIConsentStore
     @State private var instanceStore: CustomInstanceStore
 
     @State private var presentedSheet: SettingsSheet?
@@ -85,6 +86,7 @@ struct SettingsView: View {
         mlxSelectionStore: MLXModelSelectionStore = MLXModelSelectionStore(),
         cloudSelectionStore: CloudProviderSelectionStore = CloudProviderSelectionStore(),
         customProviderStore: CustomProviderStore = CustomProviderStore(),
+        cloudConsentStore: CloudAIConsentStore = CloudAIConsentStore(),
         instanceStore: CustomInstanceStore = CustomInstanceStore(),
         localDataEraser: LocalDataEraser? = nil,
         navigationPath: Binding<NavigationPath>? = nil,
@@ -99,6 +101,7 @@ struct SettingsView: View {
         _mlxSelectionStore = State(initialValue: mlxSelectionStore)
         _cloudSelectionStore = State(initialValue: cloudSelectionStore)
         _customProviderStore = State(initialValue: customProviderStore)
+        _cloudConsentStore = State(initialValue: cloudConsentStore)
         _instanceStore = State(initialValue: instanceStore)
         injectedNavigationPath = navigationPath
     }
@@ -281,6 +284,7 @@ struct SettingsView: View {
         BYOKProvidersView(
             customStore: customProviderStore,
             selectionStore: cloudSelectionStore,
+            consentStore: cloudConsentStore,
             onClose: { presentedSheet = nil }
         )
         #if os(iOS)

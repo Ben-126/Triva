@@ -91,14 +91,19 @@ enum CloudProviderSelectionResolver {
     static func makeProvider(
         for selection: CloudProviderSelection,
         customPresets: [CloudProviderPreset],
-        keyStore: any APIKeyStoring = KeychainAPIKeyStore()
+        keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
+        consent: (any CloudAIConsentChecking)? = nil
     ) -> (any AIGenerating)? {
+        // Porte du consentement (mission C2) : en production, `consent` est toujours fourni (voir
+        // `ActiveAIProviderResolver`, verrouillé par `CloudAIConsentTests`).
+        let gate = consent.map { CloudAIConsentGate(providerID: selection.providerID, checker: $0) }
         if selection.providerID == claudeProviderID {
             guard !selection.model.isEmpty else { return nil }
             return CloudBYOKProvider(
                 keyStore: keyStore,
                 account: selection.providerID,
-                model: resolvedClaudeModel(forID: selection.model)
+                model: resolvedClaudeModel(forID: selection.model),
+                consentGate: gate
             )
         }
 
@@ -111,7 +116,8 @@ enum CloudProviderSelectionResolver {
                 account: preset.id,
                 baseURL: preset.baseURL,
                 model: selection.model,
-                keyStore: keyStore
+                keyStore: keyStore,
+                consentGate: gate
             )
         }
         // Init memberwise volontairement, pas `init(preset:)` : ce dernier
@@ -123,7 +129,8 @@ enum CloudProviderSelectionResolver {
             providerName: preset.displayName,
             baseURL: preset.baseURL,
             model: selection.model,
-            keyStore: keyStore
+            keyStore: keyStore,
+            consentGate: gate
         )
     }
 }

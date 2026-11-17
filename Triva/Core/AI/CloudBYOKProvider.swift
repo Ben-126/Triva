@@ -40,18 +40,23 @@ struct CloudBYOKProvider: AIGenerating {
     /// (0.6 élargi) de vérifier que le modèle résolu correspond bien à la sélection de
     /// l'utilisateur — même pattern que `OpenAICompatibleProvider.account`/`.model`.
     let model: ClaudeModel
+    /// Porte du consentement (mission C2) : `nil` seulement pour les tests qui construisent le provider à la main.
+    private let consentGate: CloudAIConsentGate?
 
     init(
         keyStore: any APIKeyStoring = KeychainAPIKeyStore(),
         account: String = CloudBYOKProviderKind.claude.rawValue,
-        model: ClaudeModel = .sonnet5
+        model: ClaudeModel = .sonnet5,
+        consentGate: CloudAIConsentGate? = nil
     ) {
+        self.consentGate = consentGate
         self.keyStore = keyStore
         self.account = account
         self.model = model
     }
 
     func generate(prompt: String) async throws -> String {
+        try consentGate?.require()
         let apiKey = try readAPIKey()
 
         let languageModel = ClaudeLanguageModel(name: model, auth: .apiKey(apiKey))
@@ -77,6 +82,7 @@ struct CloudBYOKProvider: AIGenerating {
         AsyncThrowingStream { continuation in
             let apiKey: String
             do {
+                try consentGate?.require()
                 apiKey = try readAPIKey()
             } catch {
                 continuation.finish(throwing: error)

@@ -17,8 +17,19 @@ struct ProviderAPIKeyEntryView: View {
     let providerDisplayName: String
     @State private var viewModel: APIKeysViewModel
     @State private var rawKey: String = ""
+    /// Accord d'envoi (mission C2) : `nil` dans les aperçus.
+    private let consentStore: CloudAIConsentStore?
+    private let providerID: String?
+    @State private var isConfirmingRevoke = false
 
-    init(providerDisplayName: String, viewModel: APIKeysViewModel) {
+    init(
+        providerDisplayName: String,
+        viewModel: APIKeysViewModel,
+        providerID: String? = nil,
+        consentStore: CloudAIConsentStore? = nil
+    ) {
+        self.providerID = providerID
+        self.consentStore = consentStore
         self.providerDisplayName = providerDisplayName
         _viewModel = State(initialValue: viewModel)
     }
@@ -36,6 +47,10 @@ struct ProviderAPIKeyEntryView: View {
                             entryField
                         }
                     }
+                }
+
+                if let consentStore, let providerID {
+                    consentSection(store: consentStore, providerID: providerID)
                 }
 
                 if case .failed(let message) = viewModel.state {
@@ -62,6 +77,43 @@ struct ProviderAPIKeyEntryView: View {
     /// réexplore pas l'écran.
     private func announce(error description: String) {
         AccessibilityNotification.Announcement("Erreur : \(description)").post()
+    }
+
+    /// Accord d'envoi à ce fournisseur et son retrait (textes A.2 de `ecrans.md`).
+    /// À VALIDER (texte légal).
+    @ViewBuilder
+    private func consentSection(store: CloudAIConsentStore, providerID: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if store.isGranted(providerID: providerID) {
+                HStack {
+                    Label(CloudAIConsentText.revokeStatus, systemImage: "checkmark.circle")
+                        .font(.headline)
+                    Spacer()
+                    Button(CloudAIConsentText.revokeButton, role: .destructive) {
+                        isConfirmingRevoke = true
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("consent.revoke")
+                }
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                .confirmationDialog(
+                    CloudAIConsentText.revokeConfirmTitle(providerDisplayName),
+                    isPresented: $isConfirmingRevoke,
+                    titleVisibility: .visible
+                ) {
+                    Button(CloudAIConsentText.revokeConfirmAction, role: .destructive) {
+                        store.revoke(providerID: providerID)
+                    }
+                    Button(CloudAIConsentText.cancel, role: .cancel) {}
+                } message: {
+                    Text(CloudAIConsentText.revokeConfirmBody(providerDisplayName))
+                }
+            }
+            Text(CloudAIConsentText.revokeFooter)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var header: some View {

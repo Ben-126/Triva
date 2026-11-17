@@ -28,6 +28,9 @@ extension ChatViewModel {
     }
 
     private static func pipelineMessage(for error: Error) -> String? {
+        if error is CloudAIConsentError {
+            return CloudAIConsentText.blocked
+        }
         if let chainError = error as? WebSearchChainError {
             // Texte fixe, sans le détail des sources : `SearchKeyInvitation` dit le reste. Appareil
             // hors ligne : le texte parle de la connexion, et il n'y a pas d'invitation.
