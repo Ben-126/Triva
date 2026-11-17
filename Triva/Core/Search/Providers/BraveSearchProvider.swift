@@ -26,6 +26,8 @@ import Foundation
 ///   toute façon par sécurité, voir `BYOKSearchHTTP.stripHTML`) ;
 /// - `result_filter=web` : seuls les résultats web sont utiles ici, inutile de payer le transfert
 ///   des vidéos, forums et infobox ;
+/// - `safesearch=moderate` (ou `off` si désactivé dans Réglages, décision Q5, voir `SafeSearchPolicy`), même si c'est
+///   le défaut de Brave, pour ne pas dépendre d'un défaut qui pourrait changer ;
 /// - les catégories `.academic` et `.discussion` sont traitées comme `.general` : Brave est un
 ///   moteur web généraliste. Lever `.unsupportedCategory` ferait sauter une source qui marche.
 ///
@@ -33,6 +35,9 @@ import Foundation
 /// rapportent qu'un jeton invalide renvoie 422 avec le code `SUBSCRIPTION_TOKEN_INVALID`
 /// (forum communautaire Brave) ; on le lit donc comme « clé refusée ». Tout autre 422 est une
 /// requête mal formée de notre côté (`.invalidResponse`).
+///
+/// Conservation : chaque résultat est marqué `excerptIsTransient` (décision Q6, audit n° 22) : son
+/// extrait sert à la réponse en cours, puis l'historique et les favoris ne gardent que titre + lien.
 ///
 /// CONCURRENCE : `nonisolated` + `@concurrent` sur `search` (décodage JSON hors du main actor,
 /// voir `ScrapeService`).
@@ -75,13 +80,18 @@ nonisolated struct BraveSearchProvider: WebSearchProviding, SearchKeyValidating 
 
     // MARK: - Requête
 
-    func buildRequest(query: String, options: WebSearchOptions) throws -> URLRequest {
+    func buildRequest(
+        query: String,
+        options: WebSearchOptions,
+        safeSearchEnabled: Bool = SafeSearchPolicy.isEnabled()
+    ) throws -> URLRequest {
         let count = BYOKSearchHTTP.clamp(options.maxResults, to: 1...Self.maxCount)
         var items = [
             URLQueryItem(name: "q", value: BYOKSearchHTTP.trimmedQuery(query) ?? query),
             URLQueryItem(name: "count", value: String(count)),
             URLQueryItem(name: "text_decorations", value: "false"),
             URLQueryItem(name: "result_filter", value: "web"),
+            URLQueryItem(name: "safesearch", value: SafeSearchPolicy.braveLevel(enabled: safeSearchEnabled)),
         ]
         if let language = Self.searchLanguage(for: options.language) {
             items.append(URLQueryItem(name: "search_lang", value: language))
@@ -129,12 +139,15 @@ nonisolated struct BraveSearchProvider: WebSearchProviding, SearchKeyValidating 
         let decoded = try BYOKSearchHTTP.decode(WebResponse.self, from: data)
         // `web` est absent quand la requête ne donne aucun résultat web : réponse vide valide.
         let raw = decoded.web?.results ?? []
-        let results = raw.compactMap { item in
-            BYOKSearchHTTP.makeResult(
+        let results = raw.compactMap { item -> SearXNGSearchResult? in
+            guard var result = BYOKSearchHTTP.makeResult(
                 title: item.title.map(BYOKSearchHTTP.stripHTML),
                 url: item.url,
                 content: item.description.map(BYOKSearchHTTP.stripHTML)
-            )
+            ) else { return nil }
+            // Conditions d'utilisation de Brave : extraits non conservés (décision Q6).
+            result.excerptIsTransient = true
+            return result
         }
         let capped = Array(results.prefix(max(1, maxResults)))
         return SearXNGSearchResponse(results: capped, suggestions: [])

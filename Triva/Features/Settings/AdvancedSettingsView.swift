@@ -12,7 +12,7 @@ import SwiftUI
 /// 2026-11-12). Avant, c'était un groupe repliable (`DisclosureGroup`) : un clic de plus pour
 /// l'ouvrir, et une ligne de réglage glissée dans la section « Recherche ».
 ///
-/// Elle porte aujourd'hui une seule ligne, la liste d'instances SearXNG, dont la valeur dit d'un
+/// Elle porte la liste d'instances SearXNG et l'interrupteur du filtre adulte, dont la valeur dit d'un
 /// coup d'œil si elle a été modifiée. Composants système (`Form`), comme les autres Réglages.
 ///
 /// Poussée dans la pile des Réglages : pas de `NavigationStack` ici (une pile imbriquée dans une
@@ -20,6 +20,9 @@ import SwiftUI
 /// que `SearchKeysView`.
 struct AdvancedSettingsView: View {
     let instanceStore: CustomInstanceStore
+
+    /// Filtre adulte des recherches (décision Q5, révisée le 2026-11-14) : activé par défaut.
+    @AppStorage(SafeSearchPolicy.defaultsKey) private var safeSearchEnabled = SafeSearchPolicy.enabledByDefault
 
     var body: some View {
         Form {
@@ -31,6 +34,14 @@ struct AdvancedSettingsView: View {
                     )
                 }
                 .accessibilityIdentifier("settings.searxngInstances")
+            }
+
+            Section {
+                Toggle("Filtrer les contenus pour adultes", isOn: $safeSearchEnabled)
+                    .accessibilityIdentifier("settings.safeSearch")
+            } footer: {
+                // À VALIDER (texte légal)
+                Text("Masque les résultats et images pour adultes dans les recherches.")
             }
         }
         .formStyle(.grouped)

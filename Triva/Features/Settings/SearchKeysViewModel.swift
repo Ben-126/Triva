@@ -23,6 +23,21 @@ nonisolated extension BYOKSearchSource {
     }
 }
 
+nonisolated extension BYOKSearchSource {
+    /// Mention juridique courte affichée sous la section de la source (audit légal n° 23).
+    /// Tavily : réservé aux 18 ans et plus, et peut réutiliser les requêtes envoyées. Source :
+    /// Tavily Platform Terms (mise à jour du 2026-05-04), citée dans l'audit légal.
+    /// Brave n'a pas de mention ici (ses conditions sont traitées par la non-conservation des extraits).
+    // À VALIDER (texte légal)
+    var legalNote: String? {
+        switch self {
+        case .brave: nil
+        case .tavily:
+            "Tavily est réservé aux personnes de 18 ans et plus. Tavily peut réutiliser les requêtes que tu lui envoies."
+        }
+    }
+}
+
 // MARK: - État d'une source
 
 /// Résultat de la dernière action sur une clé, affiché sous sa section.

@@ -126,7 +126,12 @@ struct SearXNGClient: SearXNGSearching {
     /// qui déclenche un `fatalError` sur un encodage invalide, ne peut pas planter
     /// ici. Les espaces restent en `%20`, que le serveur décode correctement :
     /// inutile de les convertir en `+`.
-    private static func buildURL(instance: URL, query: String, options: SearXNGSearchOptions) -> URL? {
+    static func buildURL(
+        instance: URL,
+        query: String,
+        options: SearXNGSearchOptions,
+        safeSearchEnabled: Bool = SafeSearchPolicy.isEnabled()
+    ) -> URL? {
         guard var components = URLComponents(
             url: instance.appendingPathComponent("search"),
             resolvingAgainstBaseURL: false
@@ -137,6 +142,8 @@ struct SearXNGClient: SearXNGSearching {
         var queryItems = [
             URLQueryItem(name: "format", value: "json"),
             URLQueryItem(name: "q", value: query),
+            // Filtre « modéré » par défaut, web et images ; 0 si l'utilisateur l'a désactivé (Q5).
+            URLQueryItem(name: "safesearch", value: SafeSearchPolicy.searXNGLevel(enabled: safeSearchEnabled)),
         ]
         if !options.categories.isEmpty {
             queryItems.append(URLQueryItem(name: "categories", value: options.categories.joined(separator: ",")))

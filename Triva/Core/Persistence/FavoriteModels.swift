@@ -232,6 +232,6 @@ nonisolated final class StoredFavoriteSource {
 
     /// Copie d'un résultat de recherche (marquage direct depuis le chat).
     convenience init(result: SearXNGSearchResult, order: Int) {
-        self.init(title: result.title, url: result.url, snippet: result.content, order: order)
+        self.init(title: result.title, url: result.url, snippet: result.persistedExcerpt, order: order)
     }
 }

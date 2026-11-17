@@ -57,6 +57,16 @@ nonisolated struct SearXNGSearchResult: Codable, Sendable, Equatable, Identifiab
     let author: String?
     let iframeSrc: String?
 
+    /// `true` quand l'extrait (`content`) vient d'un fournisseur dont les conditions interdisent de
+    /// le conserver au-delà de la réponse en cours (Brave Search API : décision Q6, 2026-11-14).
+    /// L'extrait reste utilisable pendant la réponse (prompt, classement) ; l'historique et les
+    /// favoris n'en gardent que le titre et le lien (voir `persistedExcerpt`). Hors de `CodingKeys`
+    /// : jamais encodé ni décodé, `false` par défaut. À FAIRE VALIDER par un juriste (audit n° 22).
+    var excerptIsTransient: Bool = false
+
+    /// Extrait autorisé à être écrit sur le disque (historique, favoris) : `nil` si transitoire.
+    var persistedExcerpt: String? { excerptIsTransient ? nil : content }
+
     enum CodingKeys: String, CodingKey {
         case title, url, content, author, thumbnail
         case imgSrc = "img_src"

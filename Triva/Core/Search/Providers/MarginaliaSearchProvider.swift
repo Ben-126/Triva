@@ -66,13 +66,17 @@ nonisolated struct MarginaliaSearchProvider: WebSearchProviding {
 
     // MARK: - Requête
 
-    func buildRequest(query: String, options: WebSearchOptions) throws -> URLRequest {
+    func buildRequest(
+        query: String,
+        options: WebSearchOptions,
+        safeSearchEnabled: Bool = SafeSearchPolicy.isEnabled()
+    ) throws -> URLRequest {
         let count = BYOKSearchHTTP.clamp(options.maxResults, to: 1...Self.maxCount)
         let items = [
             URLQueryItem(name: "query", value: BYOKSearchHTTP.trimmedQuery(query) ?? query),
             URLQueryItem(name: "count", value: String(count)),
             URLQueryItem(name: "dc", value: String(Self.resultsPerDomain)),
-            URLQueryItem(name: "nsfw", value: "1"),
+            URLQueryItem(name: "nsfw", value: SafeSearchPolicy.marginaliaLevel(enabled: safeSearchEnabled)),
         ]
         let url = try BYOKSearchHTTP.makeURL(host: Self.host, path: Self.path, queryItems: items)
         var request = OpenSourceSearchHTTP.makeRequest(url: url, accept: "application/json")

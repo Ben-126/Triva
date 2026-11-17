@@ -81,8 +81,15 @@ private struct SearchKeySection: View {
         } header: {
             Text(verbatim: source.displayName)
         } footer: {
-            if let feedback = entry.feedback {
-                SearchKeyFeedbackLabel(feedback: feedback)
+            VStack(alignment: .leading, spacing: 6) {
+                if let feedback = entry.feedback {
+                    SearchKeyFeedbackLabel(feedback: feedback)
+                }
+                // Texte secondaire du pied de section, sans alerte (DESIGN.md).
+                if let note = source.legalNote {
+                    Text(note)
+                        .accessibilityIdentifier("searchKeys.legalNote.\(source.rawValue)")
+                }
             }
         }
     }

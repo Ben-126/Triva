@@ -348,7 +348,7 @@ nonisolated final class StoredSource {
         self.init(
             title: result.title,
             url: result.url,
-            snippet: result.content,
+            snippet: result.persistedExcerpt,
             order: order
         )
     }

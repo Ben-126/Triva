@@ -25,6 +25,8 @@ import Foundation
 /// - `include_answer = false` : Triva fait sa propre synthèse et ses propres citations. La
 ///   « réponse » de Tavily serait un texte sans source exploitable ;
 /// - `max_results` borné à 1…20 (documenté 0…20, mais 0 ne servirait à rien) ;
+/// - `safe_search = true` par défaut, omis si l'utilisateur a désactivé le filtre (décision Q5, voir `SafeSearchPolicy`) ; valable pour les
+///   profondeurs `basic` et `advanced`, seules utilisées ;
 /// - `language` : code ISO 639-1 (« fr »), documenté comme simple BONUS de classement (il
 ///   favorise la langue, il n'exclut rien). Omis si l'appelant n'en donne pas.
 ///
@@ -81,7 +83,11 @@ nonisolated struct TavilySearchProvider: WebSearchProviding, SearchKeyValidating
 
     // MARK: - Requête
 
-    func buildRequest(query: String, options: WebSearchOptions) throws -> URLRequest {
+    func buildRequest(
+        query: String,
+        options: WebSearchOptions,
+        safeSearchEnabled: Bool = SafeSearchPolicy.isEnabled()
+    ) throws -> URLRequest {
         let url = try BYOKSearchHTTP.makeURL(host: Self.host, path: Self.path, queryItems: [])
         let body = RequestBody(
             query: BYOKSearchHTTP.trimmedQuery(query) ?? query,
@@ -89,7 +95,8 @@ nonisolated struct TavilySearchProvider: WebSearchProviding, SearchKeyValidating
             topic: "general",
             maxResults: BYOKSearchHTTP.clamp(options.maxResults, to: 1...Self.maxResultsLimit),
             includeAnswer: false,
-            language: BYOKSearchHTTP.baseLanguage(from: options.language)
+            language: BYOKSearchHTTP.baseLanguage(from: options.language),
+            safeSearch: SafeSearchPolicy.tavilyFlag(enabled: safeSearchEnabled)
         )
 
         var request = URLRequest(url: url, timeoutInterval: BYOKSearchHTTP.timeout)
@@ -132,9 +139,11 @@ nonisolated struct TavilySearchProvider: WebSearchProviding, SearchKeyValidating
         let maxResults: Int
         let includeAnswer: Bool
         let language: String?
+        let safeSearch: Bool?
 
         enum CodingKeys: String, CodingKey {
             case query, topic, language
+            case safeSearch = "safe_search"
             case searchDepth = "search_depth"
             case maxResults = "max_results"
             case includeAnswer = "include_answer"
