@@ -116,16 +116,24 @@ nonisolated enum DiscoverArticlePresentation {
             .lowercased(with: RelativeDateLabel.locale)
     }
 
+    /// « Par {auteur} », `nil` sans auteur.
+    static func authorCredit(_ author: String?) -> String? {
+        guard let name = author.map(displayText), !name.isEmpty else { return nil }
+        return "Par \(name)"
+    }
+
     /// « ESPN · il y a 3 heures » : ligne d'identification d'un article, à l'écran.
-    static func metaLine(source: String?, age: String?) -> String? {
-        let parts = [source, age].compactMap { $0 }.filter { !$0.isEmpty }
+    /// Avec un auteur : « Par Jean Dupont · The Conversation · il y a 3 heures » (citation exigée par la
+    /// licence CC BY-ND 4.0 de The Conversation) ; sans auteur, le média seul.
+    static func metaLine(author: String? = nil, source: String?, age: String?) -> String? {
+        let parts = [authorCredit(author), source, age].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// La même, pour VoiceOver : une virgule plutôt qu'un point médian, que le lecteur
     /// d'écran prononcerait.
-    static func spokenMetaLine(source: String?, age: String?) -> String? {
-        let parts = [source, age].compactMap { $0 }.filter { !$0.isEmpty }
+    static func spokenMetaLine(author: String? = nil, source: String?, age: String?) -> String? {
+        let parts = [authorCredit(author), source, age].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
@@ -203,8 +211,8 @@ struct DiscoverArticleRow: View {
         let title = DiscoverArticlePresentation.displayText(article.title)
         let source = DiscoverArticlePresentation.sourceLabel(sourceName: article.sourceName, url: article.url)
         let age = DiscoverArticlePresentation.ageLabel(publishedAt: article.publishedAt, now: Date(), calendar: calendar)
-        let meta = DiscoverArticlePresentation.metaLine(source: source, age: age)
-        let spokenMeta = DiscoverArticlePresentation.spokenMetaLine(source: source, age: age)
+        let meta = DiscoverArticlePresentation.metaLine(author: article.author, source: source, age: age)
+        let spokenMeta = DiscoverArticlePresentation.spokenMetaLine(author: article.author, source: source, age: age)
         if let url = DiscoverArticlePresentation.articleURL(from: article.url) {
             Button {
                 openURL(url)

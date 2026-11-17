@@ -132,6 +132,23 @@ struct EraseAllDataTests {
         #expect(try fresh.fetchCount(FetchDescriptor<StoredConversation>()) == 1)
     }
 
+    @Test("Tout effacer vide aussi les données du navigateur intégré (une seule fois)")
+    func clearsEmbeddedBrowserData() async throws {
+        final class Counter { var value = 0 }
+        struct NothingToDelete: AllDeleting { func deleteAll() throws {} }
+        let counter = Counter()
+        let eraser = LocalDataEraser(
+            chatHistory: NothingToDelete(),
+            favorites: NothingToDelete(),
+            discoverCache: DiscoverNoCache(),
+            urlCache: URLCache(memoryCapacity: 0, diskCapacity: 0),
+            storage: nil,
+            clearBrowserData: { counter.value += 1 }
+        )
+        try await eraser.eraseAll()
+        #expect(counter.value == 1)
+    }
+
     @Test("Le repli objet par objet (sans stockage rouvrable) laisse des traces dans les fichiers : c'est ce que deleteAllData corrige")
     func objectByObjectDeletionLeavesTraces() async throws {
         let fixture = try DiskFixture()

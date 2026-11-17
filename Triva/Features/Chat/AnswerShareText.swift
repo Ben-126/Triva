@@ -43,3 +43,25 @@ nonisolated enum AnswerShareText {
     static let copiedTitle = "Réponse copiée"
     static let shareTitle = "Partager la réponse"
 }
+
+/// Marquage lisible par une machine (règlement (UE) 2024/1689, art. 50(2)) déposé avec le texte au
+/// bouton Copier : un second élément du presse-papiers, de type personnalisé, qu'un logiciel peut lire
+/// sans analyser la phrase « générée par IA ». Le texte brut reste l'élément principal : coller dans une
+/// app qui ne connaît pas ce type donne le texte marqué, comme avant.
+///
+/// Partager (`ShareLink`) ne peut pas porter ce second élément de façon fiable : le texte marqué
+/// (`AnswerShareText`) est donc le seul marquage de ce chemin.
+// À VALIDER (texte légal) : identifiants de la métadonnée.
+nonisolated enum AIProvenanceMetadata {
+    /// Type du presse-papiers (identifiant de type en notation DNS inversée, propre à Triva).
+    static let pasteboardType = "app.triva.ai-provenance"
+    /// Vocabulaire IPTC « Digital Source Type » : contenu entièrement généré par un modèle.
+    static let digitalSourceType = "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"
+
+    /// `{"digitalSourceType":"…","generator":"Triva"}` (clés triées : sortie stable).
+    static func jsonData() -> Data {
+        let object = ["generator": "Triva", "digitalSourceType": digitalSourceType]
+        // Un dictionnaire de chaînes est toujours sérialisable : l'échec est impossible.
+        return (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data()
+    }
+}

@@ -42,7 +42,7 @@ This data is stored **only on your device**. The publisher has no access to it.
 | Local AI models (MLX) you downloaded | The app's internal storage | Until you delete them in Settings > MLX Models (« Modèles MLX ») |
 | Files you attach to a question | The file itself is never copied by Triva: its text is read in memory. But the **file name** and the **excerpts** used as sources of the answer are saved with it in the history (and in favorites if you add it there) | The file: while the conversation is open. The name and excerpts: until you delete the conversation or the favorite, or "Erase All" <!-- À VALIDER --> |
 | Pages you had read with "Read this page" (« Lire cette page ») | **In memory only** | Until Triva is closed or "Erase All" <!-- À VALIDER --> |
-| Data of websites opened in the **built-in browser** (cookies, website data) | iPhone and iPad: storage of the built-in browser (Safari), separate for Triva. Mac: **nothing is kept** | iPhone and iPad: until the website deletes it or you delete the app; **"Erase All" does not delete it** <!-- À VALIDER --> |
+| Data of websites opened in the **built-in browser** (cookies, website data) | iPhone and iPad: storage of the built-in browser (Safari), separate for Triva. Mac: **nothing is kept** | iPhone and iPad: until the website deletes it, you use "Erase All" (which deletes it too) or you delete the app <!-- À VALIDER --> |
 
 **Protection.** Triva adds no encryption of its own: your data is protected by your device's protection (passcode or password, built-in encryption on iPhone and iPad, FileVault on Mac if turned on). It is included in your device's **backups** (iCloud or computer), like other apps' data.
 
@@ -89,7 +89,7 @@ The model is downloaded from **Hugging Face**, which receives the name of the re
 
 ### 3.5 When you open a link <!-- À VALIDER -->
 
-Links open in Triva's **built-in browser** (built-in Safari on iPhone and iPad, a web window on Mac). The website receives what it receives from any browser (IP address, request for the page) and may set cookies. Triva doesn't see or keep what you do on these websites. The website's own rules apply.
+Links open in Triva's **built-in browser** (built-in Safari on iPhone and iPad, a web window on Mac). The website receives what it receives from any browser (IP address, request for the page) and may set cookies. Triva doesn't see or keep what you do on these websites. The website's own rules apply. On iPhone and iPad, "Erase All" also deletes the cookies and data of these websites. <!-- À VALIDER -->
 
 ### 3.6 When you open the Discover tab (« Découvrir »)
 
@@ -155,11 +155,11 @@ For what you decide to send yourself, with your own key or your own service, eac
 
 ## 7. Erasing your data
 
-- **Erase All** (« Tout effacer », Settings, "Data" section, « Données ») deletes at once, on this device: your history (conversations, messages, sources), your favorites, the network cache and the Discover tab cache. Normally, the database is emptied completely and no trace of it remains. If that isn't possible, Triva deletes items one by one (leaving the same temporary traces as a single deleted conversation, see below) and tells you if part of it could not be erased.
+- **Erase All** (« Tout effacer », Settings, "Data" section, « Données ») deletes at once, on this device: your history (conversations, messages, sources), your favorites, the network cache, the Discover tab cache and, on iPhone and iPad, the cookies and data of websites opened in the built-in browser. <!-- À VALIDER --> Normally, the database is emptied completely and no trace of it remains. If that isn't possible, Triva deletes items one by one (leaving the same temporary traces as a single deleted conversation, see below) and tells you if part of it could not be erased.
 - "Erase All" **does not delete**: your API keys, the chosen engine, provider and model, your permissions for cloud AIs, your search instances, your other settings, the downloaded local models. <!-- À VALIDER --> To delete them: Settings > API Keys (or Search Keys), and Settings > MLX Models.
 - A **single conversation you delete** disappears from the app right away. It may stay for a while in the database's internal file, still protected by your device's encryption, until that file is cleaned up automatically.
 - **Deleting the app** removes its data from the device. Keys saved in the Keychain may sometimes remain after the app is deleted: delete them first in Triva's Settings. <!-- comportement du Trousseau après désinstallation : NON VÉRIFIÉ dans la documentation Apple -->
-- **Data of websites opened in the built-in browser** (cookies): on Mac, nothing is kept; on iPhone and iPad, "Erase All" doesn't delete it for now, deleting the app does. <!-- À VALIDER -->
+- **Data of websites opened in the built-in browser** (cookies): on Mac, nothing is kept; on iPhone and iPad, "Erase All" deletes it too (deleting the app does as well). <!-- À VALIDER -->
 - What you have **already sent** to an outside service (section 3) cannot be erased by Triva: ask that service directly.
 
 ## 8. Your rights

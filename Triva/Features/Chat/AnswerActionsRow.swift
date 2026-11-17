@@ -10,6 +10,7 @@
 import SwiftUI
 #if os(iOS)
 import UIKit
+import UniformTypeIdentifiers
 #else
 import AppKit
 #endif
@@ -56,10 +57,19 @@ struct AnswerActionsRow: View {
 
     private func copy() {
         #if os(iOS)
-        UIPasteboard.general.string = text
+        // Un seul élément à deux représentations : le texte marqué (principal) et la métadonnée
+        // « généré par IA » lisible par une machine (AI Act art. 50(2)).
+        UIPasteboard.general.setItems([[
+            UTType.utf8PlainText.identifier: text,
+            AIProvenanceMetadata.pasteboardType: AIProvenanceMetadata.jsonData(),
+        ]])
         #else
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.setData(
+            AIProvenanceMetadata.jsonData(),
+            forType: NSPasteboard.PasteboardType(AIProvenanceMetadata.pasteboardType)
+        )
         #endif
         justCopied = true
         Task {

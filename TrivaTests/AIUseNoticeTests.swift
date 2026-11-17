@@ -54,4 +54,10 @@ struct AIUseNoticeTests {
         #expect(AIUseNoticeText.footer.contains("IA"))
         #expect(AIUseNoticeText.footerShort.contains("IA"))
     }
+
+    @Test("Le texte sur le badge ne promet ni « toujours en haut » ni « données qui quittent l'appareil »")
+    func engineTextIsAccurate() {
+        #expect(AIUseNoticeText.engine == "Le badge du moteur indique toujours quel moteur d'IA répond et si ta question est envoyée à une IA en ligne.")
+        #expect(!AIUseNoticeText.engine.contains("en haut"))
+    }
 }

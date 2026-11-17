@@ -29,6 +29,8 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
     /// Faux si la source interdit l'usage de ses articles par une IA (`FeedSource.allowsAIUse`) :
     /// l'interface ne propose alors aucune action qui enverrait l'article, ou son titre, à l'IA.
     let allowsAIUse: Bool
+    /// Auteur(s) déclaré(s) par le flux, cité(s) dans la ligne méta (licence CC BY-ND de The Conversation).
+    let author: String?
 
     init(topic: DiscoverTopic, item: FeedItem, source: FeedSource) {
         self.init(
@@ -39,7 +41,8 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
             imageURL: source.usesThumbnails ? item.imageURL.flatMap { URL(string: $0) } : nil,
             publishedAt: item.publishedAt,
             sourceName: source.name,
-            allowsAIUse: source.allowsAIUse
+            allowsAIUse: source.allowsAIUse,
+            author: item.author
         )
     }
 
@@ -53,7 +56,8 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
         imageURL: URL?,
         publishedAt: Date? = nil,
         sourceName: String? = nil,
-        allowsAIUse: Bool = true
+        allowsAIUse: Bool = true,
+        author: String? = nil
     ) {
         self.topic = topic
         self.title = title
@@ -63,6 +67,7 @@ nonisolated struct DiscoverArticle: Sendable, Equatable, Identifiable {
         self.publishedAt = publishedAt
         self.sourceName = sourceName
         self.allowsAIUse = allowsAIUse
+        self.author = author
         self.id = Self.normalizedKey(for: url)
     }
 

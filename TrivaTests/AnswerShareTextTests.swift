@@ -77,4 +77,14 @@ struct AnswerShareTextTests {
         #expect(license?.licenseName == "CC BY-SA 4.0")
         #expect(SourcesListPresentation.licenseAttribution(for: source("Autre", "https://autre.example")) == nil)
     }
+
+    @Test("Métadonnée de provenance du bouton Copier : type personnalisé et JSON IPTC « trainedAlgorithmicMedia »")
+    func provenanceMetadata() throws {
+        #expect(AIProvenanceMetadata.pasteboardType == "app.triva.ai-provenance")
+        let object = try #require(try JSONSerialization.jsonObject(with: AIProvenanceMetadata.jsonData()) as? [String: String])
+        #expect(object == [
+            "generator": "Triva",
+            "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia",
+        ])
+    }
 }

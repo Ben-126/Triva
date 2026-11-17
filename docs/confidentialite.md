@@ -40,7 +40,7 @@ Ces données sont enregistrées **uniquement sur ton appareil**. L'éditeur n'y 
 | Modèles d'IA locaux (MLX) que tu as téléchargés | Stockage interne de l'app | Jusqu'à ce que tu les supprimes dans Réglages > Modèles MLX |
 | Fichiers que tu joins à une question | Le fichier lui-même n'est jamais copié par Triva : son texte est lu en mémoire. Mais le **nom du fichier** et les **extraits** qui ont servi de sources à la réponse sont enregistrés avec elle dans l'historique (et dans les favoris si tu l'y ajoutes) | Le fichier : le temps de la conversation ouverte. Le nom et les extraits : jusqu'à ce que tu supprimes la conversation ou le favori, ou « Tout effacer » <!-- À VALIDER --> <!-- écart V2 : UploadsSearchAction.makeResult -> StoredSource(result:).snippet (ChatHistoryModels.swift:351) --> |
 | Pages que tu as fait lire avec « Lire cette page » | **En mémoire seulement** | Jusqu'à la fermeture de Triva ou « Tout effacer » <!-- À VALIDER --> |
-| Données des sites ouverts dans le **navigateur intégré** (cookies, données de site) | iPhone et iPad : stockage du navigateur intégré (Safari), propre à Triva. Mac : **rien n'est gardé** | iPhone et iPad : jusqu'à ce que le site les efface ou que tu supprimes l'app ; **« Tout effacer » ne les supprime pas** <!-- À VALIDER --> <!-- écart code : LocalDataEraser ne vide pas SFSafariViewController.DataStore (rapport V1). Durée exacte côté Apple NON VÉRIFIÉE. --> |
+| Données des sites ouverts dans le **navigateur intégré** (cookies, données de site) | iPhone et iPad : stockage du navigateur intégré (Safari), propre à Triva. Mac : **rien n'est gardé** | iPhone et iPad : jusqu'à ce que le site les efface, que tu utilises « Tout effacer » (qui les supprime aussi) ou que tu supprimes l'app <!-- À VALIDER --> <!-- C4 : LocalDataEraser appelle SFSafariViewController.DataStore.default.clearWebsiteData(). Durée exacte côté Apple NON VÉRIFIÉE. --> |
 
 **Protection.** Triva n'ajoute pas de chiffrement à elle : tes données sont protégées par la protection de ton appareil (code ou mot de passe, chiffrement intégré d'iPhone et d'iPad, FileVault sur Mac s'il est activé). Elles sont incluses dans les **sauvegardes** de ton appareil (iCloud ou ordinateur), comme les données des autres apps.
 
@@ -87,7 +87,7 @@ Le modèle est téléchargé depuis **Hugging Face**, qui reçoit le nom du mod�
 
 ### 3.5 Quand tu ouvres un lien <!-- À VALIDER -->
 
-Les liens s'ouvrent dans le **navigateur intégré** de Triva (Safari intégré sur iPhone et iPad, une fenêtre web sur Mac). Le site ouvert reçoit ce qu'il reçoit de n'importe quel navigateur (adresse IP, demande de la page) et peut déposer des cookies. Triva ne voit pas et ne garde pas ce que tu fais sur ces sites. Les règles du site s'appliquent.
+Les liens s'ouvrent dans le **navigateur intégré** de Triva (Safari intégré sur iPhone et iPad, une fenêtre web sur Mac). Le site ouvert reçoit ce qu'il reçoit de n'importe quel navigateur (adresse IP, demande de la page) et peut déposer des cookies. Triva ne voit pas et ne garde pas ce que tu fais sur ces sites. Les règles du site s'appliquent. Sur iPhone et iPad, « Tout effacer » supprime aussi les cookies et les données de ces sites. <!-- À VALIDER -->
 
 ### 3.6 Quand tu ouvres l'onglet Découvrir
 
@@ -153,11 +153,11 @@ Pour les envois que tu décides toi-même avec ta propre clé ou ton propre serv
 
 ## 7. Effacer tes données
 
-- **Tout effacer** (Réglages, section « Données ») supprime d'un coup, sur cet appareil : ton historique (conversations, messages, sources), tes favoris, le cache réseau et le cache de l'onglet Découvrir. Normalement, la base de données est entièrement vidée et il n'en reste pas de trace. Si ce n'est pas possible, Triva supprime les éléments un par un (avec les mêmes traces temporaires qu'une conversation supprimée seule, voir plus bas) et te dit si une partie n'a pas pu être effacée.
+- **Tout effacer** (Réglages, section « Données ») supprime d'un coup, sur cet appareil : ton historique (conversations, messages, sources), tes favoris, le cache réseau, le cache de l'onglet Découvrir et, sur iPhone et iPad, les cookies et données des sites ouverts dans le navigateur intégré. <!-- À VALIDER --> Normalement, la base de données est entièrement vidée et il n'en reste pas de trace. Si ce n'est pas possible, Triva supprime les éléments un par un (avec les mêmes traces temporaires qu'une conversation supprimée seule, voir plus bas) et te dit si une partie n'a pas pu être effacée.
 - « Tout effacer » **ne supprime pas** : tes clés API, le moteur, le fournisseur et le modèle choisis, tes accords pour les IA cloud, tes instances de recherche, tes autres réglages, les modèles locaux téléchargés. <!-- À VALIDER --> Pour les supprimer : Réglages > Clés API (ou Clés de recherche), et Réglages > Modèles MLX.
 - Une **conversation supprimée seule** disparaît tout de suite de l'app. Elle peut rester un temps dans le fichier interne de la base, toujours protégé par le chiffrement de ton appareil, jusqu'au nettoyage automatique de ce fichier.
 - **Supprimer l'app** supprime ses données de l'appareil. Les clés enregistrées dans le Trousseau peuvent parfois rester après la suppression de l'app : supprime-les d'abord dans les Réglages de Triva. <!-- comportement du Trousseau après désinstallation : NON VÉRIFIÉ dans la documentation Apple -->
-- Les **données des sites ouverts dans le navigateur intégré** (cookies) : sur Mac, rien n'est gardé ; sur iPhone et iPad, « Tout effacer » ne les supprime pas aujourd'hui, supprimer l'app les efface. <!-- À VALIDER -->
+- Les **données des sites ouverts dans le navigateur intégré** (cookies) : sur Mac, rien n'est gardé ; sur iPhone et iPad, « Tout effacer » les supprime aussi (supprimer l'app les efface également). <!-- À VALIDER -->
 - Ce que tu as **déjà envoyé** à un service extérieur (partie 3) ne peut pas être effacé par Triva : demande-le directement à ce service.
 
 ## 8. Tes droits

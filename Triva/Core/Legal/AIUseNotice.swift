@@ -29,8 +29,10 @@ nonisolated enum AIUseNoticeText {
     static let what = "Triva cherche sur le web, puis une intelligence artificielle rédige la réponse à partir des sources trouvées."
     static let errors = "Une IA peut se tromper, mal comprendre une source ou inventer un détail. Vérifie les sources citées avant de t'y fier."
     static let advice = "Ce n'est pas un avis médical, juridique ou financier. Pour ces sujets, demande à un professionnel."
-    /// « En haut de l'écran » : le badge moteur est bien en haut sur la Recherche (iPhone, iPad, Mac).
-    static let engine = "Le badge en haut de l'écran indique toujours quel moteur répond et si tes données quittent l'appareil."
+    /// Le badge n'est pas toujours en haut : quand la place manque, il passe dans la barre de saisie,
+    /// réduit à son icône. Et « sur l'appareil » n'empêche pas la question de partir aux moteurs de recherche :
+    /// le badge dit seulement si une IA en ligne est utilisée (V2 O4).
+    static let engine = "Le badge du moteur indique toujours quel moteur d'IA répond et si ta question est envoyée à une IA en ligne."
     static let continueLabel = "J'ai compris"
 
     /// Avertissement permanent sous chaque réponse (B.2).

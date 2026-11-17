@@ -78,6 +78,17 @@ struct CloudAIConsentStorageTests {
         #expect(v2.isGranted(providerID: "openai"))
     }
 
+    @Test("Le texte de consentement version 2 décrit la règle des PDF protégés (Q3), et les accords v1 sont redemandés")
+    func pdfRuleAndVersion() {
+        #expect(CloudAIConsentStorage.currentTextVersion >= 2)
+        let file = CloudAIConsentText.items.last ?? ""
+        #expect(file.contains("autorise l'extraction pour l'accessibilité"))
+        #expect(!file.contains("restent sur ton appareil"))
+        let defaults = freshDefaults()
+        CloudAIConsentStorage(userDefaults: defaults, textVersion: 1).grant(providerID: "openai")
+        #expect(!CloudAIConsentStorage(userDefaults: defaults).isGranted(providerID: "openai"))
+    }
+
     @Test("L'accord garde sa date et survit à une nouvelle instance")
     func persistence() {
         let defaults = freshDefaults()

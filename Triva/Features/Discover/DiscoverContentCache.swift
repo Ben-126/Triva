@@ -31,6 +31,8 @@ nonisolated struct DiscoverCacheSnapshot: Codable, Sendable, Equatable {
         /// Absent d'un fichier écrit avant l'ajout du drapeau : restauré comme « interdit »
         /// (le plus prudent), jusqu'à la prochaine mise à jour réussie.
         var allowsAIUse: Bool? = nil
+        /// Absent d'un fichier écrit avant l'ajout de l'auteur : restauré sans auteur.
+        var author: String? = nil
     }
 
     struct Section: Codable, Sendable, Equatable {
@@ -149,7 +151,8 @@ extension DiscoverCacheSnapshot {
                         imageURL: article.imageURL?.absoluteString,
                         publishedAt: article.publishedAt,
                         sourceName: article.sourceName,
-                        allowsAIUse: article.allowsAIUse
+                        allowsAIUse: article.allowsAIUse,
+                        author: article.author
                     )
                 }
             )
@@ -173,7 +176,8 @@ extension DiscoverCacheSnapshot {
                     imageURL: article.imageURL.flatMap { URL(string: $0) },
                     publishedAt: article.publishedAt,
                     sourceName: article.sourceName,
-                    allowsAIUse: article.allowsAIUse ?? false
+                    allowsAIUse: article.allowsAIUse ?? false,
+                    author: article.author
                 )
             }
             sectionsByTopic[topic] = DiscoverTopicSection(topic: topic, articles: articles)

@@ -29,6 +29,8 @@ nonisolated final class FeedParser: NSObject, XMLParserDelegate {
     private var current: PartialItem?
     private var captured: String?
     private var buffer = ""
+    /// Vrai entre `<author>` et `</author>` : seul `<name>` y est un nom d'auteur (Atom).
+    private var insideAuthor = false
 
     /// Image candidate par ordre de préférence : `media:content` > `media:thumbnail` >
     /// `enclosure`. Variety envoie plusieurs `media:content` par article : on garde le premier.
@@ -41,11 +43,16 @@ nonisolated final class FeedParser: NSObject, XMLParserDelegate {
         var mediaContent: String?
         var mediaThumbnail: String?
         var enclosure: String?
+        /// Auteurs dans l'ordre du flux (`dc:creator`, Atom `<author><name>`, RSS `author`), sans doublon.
+        var creators: [String] = []
+        var atomNames: [String] = []
+        var rssAuthors: [String] = []
     }
 
     /// Éléments dont on garde le texte, dans un article.
     private static let capturedElements: Set<String> = [
         "title", "link", "description", "summary", "pubDate", "published", "updated", "dc:date",
+        "dc:creator", "author", "name",
     ]
 
     static func items(from data: Data) throws(FeedParseError) -> [FeedItem] {
@@ -74,7 +81,10 @@ nonisolated final class FeedParser: NSObject, XMLParserDelegate {
         }
         guard current != nil else { return }
         buffer = ""
-        captured = Self.capturedElements.contains(elementName) ? elementName : nil
+        if elementName == "author" { insideAuthor = true }
+        // `name` n'est un auteur qu'à l'intérieur de `<author>` ; ailleurs on l'ignore.
+        let wanted = Self.capturedElements.contains(elementName) && (elementName != "name" || insideAuthor)
+        captured = wanted ? elementName : nil
         switch elementName {
         case "link": readAtomLink(attributeDict)
         case "media:content": readMediaContent(attributeDict)
@@ -104,6 +114,7 @@ nonisolated final class FeedParser: NSObject, XMLParserDelegate {
             captured = nil
             return
         }
+        if elementName == "author" { insideAuthor = false }
         guard current != nil, captured == elementName else { return }
         store(buffer, for: elementName)
         captured = nil
@@ -119,6 +130,9 @@ nonisolated final class FeedParser: NSObject, XMLParserDelegate {
         case "description", "summary": current?.summary = text
         case "pubDate", "published", "dc:date": if current?.published.isEmpty ?? false { current?.published = text }
         case "updated": current?.updated = text
+        case "dc:creator": Self.append(FeedText.plain(text), to: &current!.creators)
+        case "name": Self.append(FeedText.plain(text), to: &current!.atomNames)
+        case "author": Self.append(Self.rssAuthorName(FeedText.plain(text)), to: &current!.rssAuthors)
         default: break
         }
     }
@@ -162,6 +176,27 @@ nonisolated final class FeedParser: NSObject, XMLParserDelegate {
         return [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"].contains { path.hasSuffix($0) }
     }
 
+    private static func append(_ name: String, to names: inout [String]) {
+        guard !name.isEmpty, !names.contains(name) else { return }
+        names.append(name)
+    }
+
+    /// RSS 2.0 écrit `<author>` comme une adresse e-mail, parfois suivie du nom entre parenthèses :
+    /// « jean@exemple.fr (Jean Dupont) ». On ne garde que le nom, jamais une adresse e-mail.
+    static func rssAuthorName(_ raw: String) -> String {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let open = text.firstIndex(of: "("), let close = text.lastIndex(of: ")"), open < close {
+            return String(text[text.index(after: open)..<close]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return text.contains("@") ? "" : text
+    }
+
+    /// `dc:creator` d'abord (le plus fiable), puis Atom `<author><name>`, puis RSS `<author>`.
+    private static func author(of partial: PartialItem) -> String? {
+        let names = [partial.creators, partial.atomNames, partial.rssAuthors].first { !$0.isEmpty }
+        return names?.joined(separator: ", ")
+    }
+
     /// Un article sans titre ou sans adresse n'est pas affichable : il est écarté ici.
     private static func makeItem(_ partial: PartialItem) -> FeedItem? {
         let title = FeedText.plain(partial.title)
@@ -173,7 +208,8 @@ nonisolated final class FeedParser: NSObject, XMLParserDelegate {
             link: link,
             summary: FeedText.plainOrNil(partial.summary),
             imageURL: partial.mediaContent ?? partial.mediaThumbnail ?? partial.enclosure,
-            publishedAt: FeedDate.parse(dateText)
+            publishedAt: FeedDate.parse(dateText),
+            author: author(of: partial)
         )
     }
 }

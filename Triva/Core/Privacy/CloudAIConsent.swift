@@ -48,7 +48,8 @@ nonisolated struct CloudAIConsentStorage: CloudAIConsentChecking, @unchecked Sen
     /// Version du texte de consentement affiché (`CloudAIConsentText`). À AUGMENTER dès que la liste
     /// des données envoyées ou le texte change : tous les accords antérieurs sont alors invalides et
     /// l'écran est redemandé (audit § 5.5).
-    static let currentTextVersion = 1
+    /// Version 2 : règle des PDF protégés (Q3) précisée dans la liste des données envoyées.
+    static let currentTextVersion = 2
 
     private let userDefaults: UserDefaults
     private let textVersion: Int

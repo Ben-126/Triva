@@ -16,7 +16,8 @@ import Foundation
 ///   l'article entier (jusqu'à 800 Ko pour un flux de The Conversation), parfois le texte
 ///   derrière un mur payant (`pmc-paywall` chez ARTnews). Triva cite un extrait fourni par
 ///   l'éditeur dans `description`/`summary` et renvoie vers l'article, jamais plus ;
-/// - l'auteur et les catégories : Découvrir n'en a pas l'usage.
+/// - les catégories : Découvrir n'en a pas l'usage. (L'auteur, lui, est lu : la licence CC BY-ND 4.0
+///   de The Conversation exige de le citer.)
 nonisolated struct FeedItem: Sendable, Equatable {
     /// Titre en texte brut (balises retirées, entités décodées).
     var title: String
@@ -29,4 +30,7 @@ nonisolated struct FeedItem: Sendable, Equatable {
     var imageURL: String?
     /// Date de publication réelle, `nil` si le flux n'en donne pas ou si elle est illisible.
     var publishedAt: Date?
+    /// Auteur(s) déclaré(s) par le flux (Atom `<author><name>`, RSS `dc:creator` ou `author`), texte
+    /// brut ; `nil` si le flux n'en donne pas.
+    var author: String? = nil
 }

@@ -451,7 +451,10 @@ struct ThinkBoxView: View {
             .accessibilityHidden(true)
     }
 
-    /// Sélectionnable : copier un raisonnement est utile, surtout sur Mac.
+    /// Sélectionnable : copier un raisonnement est utile, surtout sur Mac. Aucun bouton « Copier » ne
+    /// lui est associé : le seul chemin de copie en un geste est `AnswerActionsRow`, qui passe par
+    /// `AnswerShareText` (marquage `AIGeneratedMarking.marked`) et exclut le raisonnement. La sélection
+    /// manuelle reste une décision de l'utilisateur (audit V2, C6).
     private var fullText: some View {
         Text(verbatim: reasoning)
             .font(.footnote)

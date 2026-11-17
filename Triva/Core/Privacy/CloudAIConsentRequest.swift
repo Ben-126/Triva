@@ -111,8 +111,8 @@ nonisolated enum CloudAIConsentText {
         "ta question\u{00A0};",
         "les messages précédents de la conversation en cours\u{00A0};",
         "des extraits des pages trouvées sur le web\u{00A0};",
-        // La mention des PDF protégés dépend de la mission M10 ; texte A.1 repris tel quel.
-        "le texte des fichiers que tu joins (sauf les PDF protégés contre la copie, qui restent sur ton appareil)."
+        // À VALIDER (texte légal) — texte A.1 (ecrans.md) : règle PDF de la décision Q3.
+        "le texte des fichiers que tu joins (un PDF protégé contre la copie n'est lu que s'il autorise l'extraction pour l'accessibilité\u{00A0}; sinon, il n'est lu par aucun moteur)."
     ]
     static func extra(_ extra: CloudAIConsentExtra, _ r: CloudAIConsentRequest) -> String {
         switch extra {

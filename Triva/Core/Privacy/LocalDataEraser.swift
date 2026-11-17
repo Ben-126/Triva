@@ -7,6 +7,9 @@
 
 import Foundation
 import OSLog
+#if os(iOS)
+import SafariServices
+#endif
 
 /// Étapes de « Tout effacer », dans l'ordre où elles s'exécutent.
 nonisolated enum LocalDataEraseStep: String, Sendable, Equatable, CaseIterable {
@@ -45,7 +48,9 @@ extension FavoritesStore: AllDeleting {}
 ///
 /// - EFFACÉ : favoris, historique (conversations, messages, sources), cache
 ///   HTTP partagé (`URLCache.shared`), cache de l'écran Découvrir, pages lues à la
-///   demande, refus des sites et règles robots.txt gardés en mémoire.
+///   demande, refus des sites et règles robots.txt gardés en mémoire, et — sur iPhone et iPad —
+///   cookies, stockage local et cache du navigateur intégré (`SFSafariViewController.DataStore`).
+///   Sur Mac, la fenêtre du navigateur intégré utilise un stockage non persistant : rien à effacer.
 /// - JAMAIS TOUCHÉ : clés API (Trousseau), choix du moteur IA, fournisseur et
 ///   modèle choisis, instances SearXNG, modèles MLX téléchargés. Cet objet ne
 ///   reçoit d'ailleurs ni le trousseau ni aucun store de réglages : il ne peut
@@ -87,6 +92,7 @@ struct LocalDataEraser {
     private let urlCache: URLCache
     private let storage: TrivaStorage?
     private let beforeErase: (@MainActor () async -> Void)?
+    private let clearBrowserData: @MainActor () async -> Void
 
     /// - Parameters:
     ///   - storage: stockage à effacer d'un coup (`deleteAllData()` puis
@@ -99,7 +105,8 @@ struct LocalDataEraser {
         discoverCache: any DiscoverContentCaching,
         urlCache: URLCache = .shared,
         storage: TrivaStorage? = nil,
-        beforeErase: (@MainActor () async -> Void)? = nil
+        beforeErase: (@MainActor () async -> Void)? = nil,
+        clearBrowserData: @escaping @MainActor () async -> Void = LocalDataEraser.clearEmbeddedBrowserData
     ) {
         self.chatHistory = chatHistory
         self.favorites = favorites
@@ -107,6 +114,7 @@ struct LocalDataEraser {
         self.urlCache = urlCache
         self.storage = storage
         self.beforeErase = beforeErase
+        self.clearBrowserData = clearBrowserData
     }
 
     /// Joue toutes les étapes puis lève `LocalDataEraseError.incomplete` si une
@@ -120,6 +128,7 @@ struct LocalDataEraser {
         UserReadPages.removeAll()
         SiteReadRefusals.shared.removeAll()
         await RobotsRulesCache.shared.removeAll()
+        await clearBrowserData()
 
         if !failed.isEmpty {
             throw .incomplete(failedSteps: failed)
@@ -157,6 +166,14 @@ struct LocalDataEraser {
             failed.append(.history)
         }
         return failed
+    }
+
+    /// Vide cookies, stockage local et cache du navigateur intégré. iPhone et iPad seulement : le Mac
+    /// ouvre ses liens dans une fenêtre `WebView` à stockage non persistant (`InAppBrowser.swift`).
+    static func clearEmbeddedBrowserData() async {
+        #if os(iOS)
+        await SFSafariViewController.DataStore.default.clearWebsiteData()
+        #endif
     }
 
     /// Hors main actor : vider une base SQLite de cache peut être long.
