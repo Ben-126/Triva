@@ -58,9 +58,13 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Les pièces jointes : poser une question sur un PDF ou un fichier texte, sans qu'il quitte l'appareil
 - L'affichage du raisonnement du modèle, quand il en produit un
 - iPhone, iPad (barre latérale, plusieurs fenêtres) et Mac
+- Un usage honnête de l'IA et du web : un écran explique dès le premier lancement que les réponses sont écrites par une IA, chaque réponse porte un avertissement, et le texte copié ou partagé reste marqué « généré par IA ». Triva se présente sous son nom aux sites qu'elle lit et respecte ceux qui refusent la lecture automatique (`robots.txt`)
+- Avant le premier envoi à une IA en ligne, une feuille dit exactement ce qui part et chez qui, et Triva demande ton accord
+- Dans les Réglages : la confidentialité, les conditions d'utilisation, les mentions légales, les licences de tous les logiciels, modèles et sources utilisés, et un bouton « Signaler un problème »
 
 **En cours (fin de V1)**
 - Les essais sur le terrain et la relecture finale
+- La partie légale est prête ; la publication sur l'App Store viendra plus tard
 
 ## Configuration requise
 
@@ -75,6 +79,9 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Aucune donnée envoyée à un serveur intermédiaire
 - Les clés API et les clés de recherche restent en local, dans le Trousseau de ton appareil
 - Uniquement des widgets qui ne demandent ni clé API ni compte — pas de service tiers caché derrière une fonctionnalité en apparence gratuite
+- « Tout effacer » (Réglages > Données) supprime d'un coup l'historique, les favoris, les caches et les données du navigateur intégré
+
+Le détail est dans la [politique de confidentialité](docs/confidentialite.md) ([English](docs/en/privacy.md)), avec les [conditions d'utilisation](docs/conditions.md), les [mentions légales](docs/mentions-legales.md), les [licences et attributions](docs/licences.md) et l'[assistance](docs/assistance.md).
 
 ## License
 
