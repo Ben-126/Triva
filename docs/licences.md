@@ -1,9 +1,4 @@
-<!-- À VALIDER -->
-<!-- Brouillon du 2026-11-17 (mission T2). Version française : elle fait foi. Traduction anglaise : docs/en/licenses.md.
-     Page générée depuis ~/.claude/triva-legal/textes/licences-app.json par gen_licences_md.py : modifier le JSON puis régénérer.
-     Liste des composants : Package.resolved + fichiers LICENSE/NOTICE des paquets (2026-11-17) ; présence dans l'app vérifiée
-     par les symboles d'un build Debug iOS du 2026-11-14 : À RECONFIRMER sur l'archive Release (M5).
-     Les attributions « près des données » (météo, Wikipédia, Marginalia, arXiv) dépendent de M6 et M7. -->
+<!-- Version française : elle fait foi. Traduction : docs/en/licenses.md -->
 
 # Licences et attributions
 
@@ -13,7 +8,7 @@ Triva est construite avec des logiciels libres, des modèles d'IA et des donnée
 
 ## 1. Triva
 
-Le code de Triva est publié sous **licence MIT** (fichier `LICENSE` du dépôt : [adresse du dépôt]). <!-- titulaire du copyright à préciser avec le parent (audit, constat 33) -->
+Le code de Triva est publié sous **licence MIT** (fichier `LICENSE` du dépôt : https://github.com/Ben-126/Triva), « Copyright (c) 2026 Ben Podrojsky ».
 
 ## 2. Sources de données
 
@@ -33,7 +28,7 @@ Triva affiche les flux d'actualité de ces éditeurs, en respectant leurs règle
 
 | Éditeur | Règles de reprise |
 |---|---|
-| Numerama | [Mentions légales](https://www.numerama.com/mentions-legales/). Les articles de Numerama affichés dans Découvrir ne sont jamais envoyés à une IA par Triva. <!-- À VALIDER --> |
+| Numerama | [Mentions légales](https://www.numerama.com/mentions-legales/). Les articles de Numerama affichés dans Découvrir ne sont jamais envoyés à une IA par Triva. |
 | Frandroid | [Mentions légales](https://www.frandroid.com/mentions-legales) |
 | The Conversation | Articles sous licence [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/) ([règles de republication](https://theconversation.com/fr/republishing-guidelines)) : auteur et site cités, texte non modifié. |
 | ESPN | [Conditions des flux RSS](https://www.espn.com/espn/news/story?page=rssinfo) |

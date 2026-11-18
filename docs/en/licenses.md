@@ -1,6 +1,4 @@
-<!-- À VALIDER -->
-<!-- Draft of 2026-11-17 (mission T2). English translation of docs/licences.md: the French version is authoritative.
-     Generated from ~/.claude/triva-legal/textes/licences-app.json by gen_licences_md.py. Components to be RECONFIRMED on the Release archive (M5). -->
+<!-- English translation of docs/licences.md: the French version is authoritative. -->
 
 # Licenses & Attributions
 
@@ -12,7 +10,7 @@ Triva is built with open-source software, AI models and open data by other autho
 
 ## 1. Triva
 
-Triva's code is published under the **MIT license** (`LICENSE` file in the repository: [adresse du dépôt]).
+Triva's code is published under the **MIT license** (`LICENSE` file in the repository: https://github.com/Ben-126/Triva), “Copyright (c) 2026 Ben Podrojsky”.
 
 ## 2. Data sources
 
@@ -32,7 +30,7 @@ Triva shows news feeds from these publishers, following their reuse rules: a lin
 
 | Publisher | Reuse rules |
 |---|---|
-| Numerama | [Legal notice](https://www.numerama.com/mentions-legales/). Numerama articles shown in Discover are never sent to an AI by Triva. <!-- À VALIDER --> |
+| Numerama | [Legal notice](https://www.numerama.com/mentions-legales/). Numerama articles shown in Discover are never sent to an AI by Triva. |
 | Frandroid | [Legal notice](https://www.frandroid.com/mentions-legales) |
 | The Conversation | Articles under [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/) ([republishing guidelines](https://theconversation.com/fr/republishing-guidelines)): author and site credited, text not modified. |
 | ESPN | [RSS feed terms](https://www.espn.com/espn/news/story?page=rssinfo) |

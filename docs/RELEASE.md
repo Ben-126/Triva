@@ -1,7 +1,5 @@
 # Procédure de publication (archive App Store)
 
-<!-- À VALIDER -->
-
 ## Pourquoi
 
 Sur le Mac du développeur, `Triva/Resources/searxng-instances.json` diffère volontairement de la

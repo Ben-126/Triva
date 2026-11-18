@@ -1,8 +1,4 @@
-<!-- À VALIDER -->
-<!-- Brouillon du 2026-11-17 (mission T2). Version française : elle fait foi. Traduction anglaise : docs/en/support.md.
-     Page « Support URL » d'App Store Connect (App Review Guidelines 1.5 : « an easy way to contact you »).
-     Les commentaires « dépend de Mx » signalent une phrase vraie seulement après la mission Mx du plan légal : ne pas publier avant.
-     Les emplacements entre crochets sont à remplir par l'éditeur : ne jamais y mettre de donnée personnelle d'un mineur. -->
+<!-- Version française : elle fait foi. Traduction : docs/en/support.md -->
 
 # Assistance Triva
 
@@ -50,7 +46,7 @@ Rien qui passe par l'éditeur : **Triva n'a pas de serveur**, pas de pub, pas de
 - **Apple Intelligence, cloud privé d'Apple** : pour les demandes trop lourdes pour l'appareil, Apple peut les traiter sur ses serveurs sécurisés.
 - **Clé API personnelle** : la réponse est écrite par le fournisseur cloud que tu as choisi, avec ta clé. Triva te demande ton accord avant le premier envoi.
 
-Le badge du moteur, sur l'écran de recherche, indique toujours quel moteur d'IA répond et si ta question est envoyée à une IA en ligne. <!-- À VALIDER --> <!-- V2 : le badge passe dans la barre de saisie quand la place manque (EngineStatusView.swift:101) : « en haut » retiré -->
+Le badge du moteur, sur l'écran de recherche, indique toujours quel moteur d'IA répond et si ta question est envoyée à une IA en ligne.
 
 ### Les modèles locaux (MLX) prennent beaucoup de place
 
@@ -62,9 +58,9 @@ Réglages, section « Données » > **« Tout effacer »** : ton historique, tes
 
 ### C'est quoi, les « instances SearXNG » ?
 
-SearXNG est un moteur de recherche libre que des bénévoles et des associations font tourner sur leurs propres serveurs (chaque serveur est une « instance »). Triva utilise par défaut des instances **publiques** et passe à une autre si l'une ne répond pas. Tu peux aussi ajouter ta propre instance dans Réglages > Avancé > « Instances SearXNG ». <!-- À VALIDER -->
+SearXNG est un moteur de recherche libre que des bénévoles et des associations font tourner sur leurs propres serveurs (chaque serveur est une « instance »). Triva utilise par défaut des instances **publiques** et passe à une autre si l'une ne répond pas. Tu peux aussi ajouter ta propre instance dans Réglages > Avancé > « Instances SearXNG ».
 
-Pour garder une liste à jour, Triva télécharge de temps en temps l'annuaire public searx.space et teste quelques instances avec le mot « test » (jamais tes questions). Tu peux couper ça dans Réglages > Avancé > « Mettre à jour la liste automatiquement ». <!-- À VALIDER -->
+Pour garder une liste à jour, Triva télécharge de temps en temps l'annuaire public searx.space et teste quelques instances avec le mot « test » (jamais tes questions). Tu peux couper ça dans Réglages > Avancé > « Mettre à jour la liste automatiquement ».
 
 ### La recherche ne marche pas ou est lente
 
@@ -72,9 +68,9 @@ Les instances publiques sont parfois saturées ou bloquent les apps. Réessaie u
 
 ### Pourquoi Triva ne lit pas certains sites ?
 
-Certains sites demandent à ne pas être lus par des programmes automatiques, avec un fichier appelé `robots.txt`. Triva se présente honnêtement sous le nom « Triva » et, quand elle lit les sources automatiquement, **respecte ce refus** (comme les signaux « noai » ou « tdm-reservation » de certaines pages) : elle ne lit pas ces pages, mais te donne leur titre, un extrait du moteur de recherche et leur lien. Si tu veux quand même que Triva tienne compte d'une de ces pages, touche **« Lire cette page »** sous la source : Triva la lit alors pour toi, comme un navigateur. <!-- À VALIDER -->
+Certains sites demandent à ne pas être lus par des programmes automatiques, avec un fichier appelé `robots.txt`. Triva se présente honnêtement sous le nom « Triva » et, quand elle lit les sources automatiquement, **respecte ce refus** (comme les signaux « noai » ou « tdm-reservation » de certaines pages) : elle ne lit pas ces pages, mais te donne leur titre, un extrait du moteur de recherche et leur lien. Si tu veux quand même que Triva tienne compte d'une de ces pages, touche **« Lire cette page »** sous la source : Triva la lit alors pour toi, comme un navigateur.
 
-D'autres sites bloquent toutes les apps, demandent un abonnement ou affichent leur contenu d'une façon que Triva ne sait pas lire. Ouvre le lien de la source pour voir la page dans le navigateur intégré de Triva. <!-- À VALIDER -->
+D'autres sites bloquent toutes les apps, demandent un abonnement ou affichent leur contenu d'une façon que Triva ne sait pas lire. Ouvre le lien de la source pour voir la page dans le navigateur intégré de Triva.
 
 ### Pourquoi Triva ne lit pas un de mes PDF ?
 
@@ -94,4 +90,4 @@ Par défaut, Triva demande aux moteurs de recherche de filtrer ces contenus (niv
 - [Conditions d'utilisation](conditions.md)
 - [Mentions légales](mentions-legales.md)
 - [Licences et attributions](licences.md)
-- Code source de Triva : [adresse du dépôt] <!-- à compléter -->
+- Code source de Triva : [github.com/Ben-126/Triva](https://github.com/Ben-126/Triva)

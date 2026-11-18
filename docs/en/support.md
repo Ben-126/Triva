@@ -1,7 +1,4 @@
-<!-- À VALIDER -->
-<!-- Draft of 2026-11-17 (mission T2). English translation of docs/assistance.md: the French version is authoritative.
-     "dépend de Mx" comments flag a sentence that is only true once mission Mx of the legal plan is delivered: do not publish before then.
-     Bracketed placeholders are filled in by the publisher: never put a minor's personal data there. -->
+<!-- English translation of docs/assistance.md: the French version is authoritative. -->
 
 # Triva Support
 
@@ -51,7 +48,7 @@ Nothing that goes through the publisher: **Triva has no server**, no ads, no ana
 - **Apple Intelligence, Apple's private cloud**: for requests too heavy for the device, Apple may process them on its secure servers.
 - **Personal API Key**: the answer is written by the cloud provider you chose, with your key. Triva asks for your permission before the first time anything is sent.
 
-The engine badge, on the search screen, always shows which AI engine is answering and whether your question is sent to an online AI. <!-- À VALIDER -->
+The engine badge, on the search screen, always shows which AI engine is answering and whether your question is sent to an online AI.
 
 ### Local models (MLX) take up a lot of space
 
@@ -63,9 +60,9 @@ Settings, "Data" section (« Données ») > **Erase All** (« Tout effacer »): 
 
 ### What are "SearXNG instances"?
 
-SearXNG is a free search engine that volunteers and non-profits run on their own servers (each server is an "instance"). By default Triva uses **public** instances and switches to another one if one doesn't answer. You can also add your own instance in Settings > Advanced > SearXNG Instances (« Réglages > Avancé > Instances SearXNG »). <!-- À VALIDER -->
+SearXNG is a free search engine that volunteers and non-profits run on their own servers (each server is an "instance"). By default Triva uses **public** instances and switches to another one if one doesn't answer. You can also add your own instance in Settings > Advanced > SearXNG Instances (« Réglages > Avancé > Instances SearXNG »).
 
-To keep the list up to date, Triva sometimes downloads the public directory searx.space and tests a few instances with the word "test" (never your questions). You can turn this off in Settings > Advanced > Update the list automatically (« Mettre à jour la liste automatiquement »). <!-- À VALIDER -->
+To keep the list up to date, Triva sometimes downloads the public directory searx.space and tests a few instances with the word "test" (never your questions). You can turn this off in Settings > Advanced > Update the list automatically (« Mettre à jour la liste automatiquement »).
 
 ### Search doesn't work or is slow
 
@@ -73,9 +70,9 @@ Public instances are sometimes overloaded or block apps. Try again a bit later, 
 
 ### Why doesn't Triva read some websites?
 
-Some websites ask automated programs not to read them, with a file called `robots.txt`. Triva honestly identifies itself as "Triva" and, when it reads sources automatically, **respects that refusal** (like the "noai" or "tdm-reservation" signals of some pages): it doesn't read those pages, but gives you their title, an excerpt from the search engine and their link. If you still want Triva to use one of these pages, tap **"Read this page"** (« Lire cette page ») under the source: Triva then reads it for you, like a browser. <!-- À VALIDER -->
+Some websites ask automated programs not to read them, with a file called `robots.txt`. Triva honestly identifies itself as "Triva" and, when it reads sources automatically, **respects that refusal** (like the "noai" or "tdm-reservation" signals of some pages): it doesn't read those pages, but gives you their title, an excerpt from the search engine and their link. If you still want Triva to use one of these pages, tap **"Read this page"** (« Lire cette page ») under the source: Triva then reads it for you, like a browser.
 
-Other websites block all apps, require a subscription or display their content in a way Triva can't read. Open the source link to see the page in Triva's built-in browser. <!-- À VALIDER -->
+Other websites block all apps, require a subscription or display their content in a way Triva can't read. Open the source link to see the page in Triva's built-in browser.
 
 ### Why doesn't Triva read one of my PDFs?
 
@@ -95,4 +92,4 @@ It can happen: an AI can be wrong. Always check the cited sources, and report th
 - [Terms of Use](terms.md)
 - [Legal Notice](legal-notice.md)
 - [Licenses & Attributions](licenses.md)
-- Triva source code: [adresse du dépôt] <!-- à compléter -->
+- Triva source code: [github.com/Ben-126/Triva](https://github.com/Ben-126/Triva)

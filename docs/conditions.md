@@ -1,8 +1,4 @@
-<!-- À VALIDER -->
-<!-- Brouillon du 2026-11-17 (mission T2). Version française : elle fait foi. Traduction anglaise : docs/en/terms.md.
-     Les commentaires « dépend de Mx » signalent une phrase vraie seulement après la mission Mx du plan légal : ne pas publier avant qu'elle soit livrée.
-     Les emplacements entre crochets sont à remplir par l'éditeur : ne jamais y mettre de donnée personnelle d'un mineur.
-     Les commentaires « À FAIRE VALIDER PAR UN JURISTE » signalent un point de droit non tranché. -->
+<!-- Version française : elle fait foi. Traduction : docs/en/terms.md -->
 
 # Conditions d'utilisation de Triva
 
@@ -60,19 +56,19 @@ Tu peux joindre un fichier à une question (PDF, texte…). Tu es **responsable*
 
 - Triva montre des extraits, des images et des liens venant de **sites extérieurs**. Ces contenus appartiennent à leurs auteurs. Ouvre la source pour lire l'original.
 - L'éditeur ne contrôle pas ces sites et n'est pas responsable de leur contenu.
-- Pour lire une page, Triva se présente honnêtement sous le nom « Triva ». Quand elle lit les sources automatiquement, elle respecte les sites qui le refusent (fichier `robots.txt`, signaux « noai » ou « tdm-reservation »). Le bouton **« Lire cette page »** te permet de faire lire toi-même une source refusée, comme tu l'ouvrirais dans un navigateur : utilise-le pour ton usage personnel, en respectant les droits de l'auteur. <!-- À VALIDER --> <!-- À FAIRE VALIDER PAR UN JURISTE : lecture à la demande d'une page ayant exercé l'opt-out TDM (CPI L122-5-3, III) — décision de Ben Q4. -->
+- Pour lire une page, Triva se présente honnêtement sous le nom « Triva ». Quand elle lit les sources automatiquement, elle respecte les sites qui le refusent (fichier `robots.txt`, signaux « noai » ou « tdm-reservation »). Le bouton **« Lire cette page »** te permet de faire lire toi-même une source refusée, comme tu l'ouvrirais dans un navigateur : utilise-le pour ton usage personnel, en respectant les droits de l'auteur.
 - Si tu réutilises une réponse ou un extrait, respecte les droits de l'auteur d'origine (citation de la source, licence…).
 - Les données météo viennent d'Open-Meteo, et certaines sources ont leur propre licence : voir la page [Licences et attributions](licences.md).
 
 ## 9. Le code de Triva est libre
 
-Le code de Triva est **open source**, sous **licence MIT** : tu peux le lire, le copier, le modifier et le redistribuer en respectant cette licence. Le texte complet est dans le fichier `LICENSE` du dépôt du code : [adresse du dépôt]. <!-- adresse du dépôt : à compléter quand le compte de publication est choisi -->
+Le code de Triva est **open source**, sous **licence MIT** : tu peux le lire, le copier, le modifier et le redistribuer en respectant cette licence. Le texte complet est dans le fichier `LICENSE` du dépôt du code : [github.com/Ben-126/Triva](https://github.com/Ben-126/Triva).
 
 Triva utilise aussi des logiciels libres et des modèles d'IA d'autres auteurs, sous leurs propres licences : voir [Licences et attributions](licences.md).
 
-Le nom et le logo « Triva » ne sont pas couverts par la licence MIT : ne les utilise pas pour faire croire qu'une autre app est Triva. <!-- À FAIRE VALIDER PAR UN JURISTE : sans dépôt de marque, cette réserve a une portée limitée (audit, constat 38). -->
+Le nom et le logo « Triva » ne sont pas couverts par la licence MIT : ne les utilise pas pour faire croire qu'une autre app est Triva.
 
-Si tu as téléchargé Triva sur l'App Store, le [contrat de licence standard d'Apple](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) s'applique aussi. <!-- À FAIRE VALIDER : choix du contrat standard d'Apple dans App Store Connect (pas d'EULA personnalisée). -->
+Si tu as téléchargé Triva sur l'App Store, le [contrat de licence standard d'Apple](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) s'applique aussi.
 
 ## 10. Ce que l'éditeur peut garantir, et ce qu'il ne peut pas
 
@@ -84,16 +80,9 @@ Triva est faite avec soin, gratuitement, par une petite équipe familiale. L'éd
 
 Ces limites s'appliquent **seulement dans la mesure où la loi le permet**. Rien dans ces conditions ne réduit les droits que la loi te donne si tu es consommateur, ni la responsabilité de l'éditeur en cas de faute lourde ou intentionnelle (dite « dolosive »), ni en cas d'atteinte à ta santé ou à ta sécurité.
 
-<!-- À FAIRE VALIDER PAR UN JURISTE :
-     - validité et portée de cette clause pour un éditeur non professionnel qui fournit gratuitement une app ;
-     - C. civ. art. 1231-3 (faute lourde ou dolosive) et 1170 : rédaction lue dans l'ordonnance n° 2016-131 du 10 février 2016, https://www.legifrance.gouv.fr/jorf/id/JORFTEXT000032004939 (le 2026-11-17) ; version en vigueur non relue sur Légifrance (site injoignable) ;
-     - C. civ. art. 1171 (contrat d'adhésion) et Code de la consommation (clauses abusives, art. R212-1) : lus seulement via des sources secondaires le 2026-11-17, NON VÉRIFIÉ ; l'éditeur non professionnel n'est peut-être pas visé par le Code de la consommation (audit, constat 40). -->
-
 ## 11. Loi applicable
 
 Ces conditions sont soumises au **droit français**. Si tu vis dans un autre pays, tu gardes les protections que la loi de ton pays donne aux consommateurs et qui ne peuvent pas être écartées. En cas de désaccord, écris d'abord à **benpodro@gmail.com** : on cherchera une solution ensemble.
-
-<!-- À FAIRE VALIDER PAR UN JURISTE : maintien des règles impératives du pays de résidence du consommateur (règlement Rome I) et juridiction compétente : NON VÉRIFIÉ pendant la mission. -->
 
 ## 12. Changements
 

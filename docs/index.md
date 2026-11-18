@@ -1,12 +1,8 @@
-<!-- À VALIDER -->
-<!-- Brouillon du 2026-11-17 (mission T2). Page d'accueil des pages publiques de Triva (futur GitHub Pages, PAS activé).
-     Ne pas publier avant que les pages liées soient validées (voir leurs marqueurs « dépend de Mx » et « À FAIRE VALIDER »). -->
-
 # Triva
 
-Triva cherche sur le web et te répond avec des sources, sur iPhone, iPad et Mac. Gratuite, sans publicité, sans compte et sans serveur : ce que tu fais dans Triva reste sur ton appareil, sauf ce qu'il faut envoyer sur Internet pour répondre (voir la politique de confidentialité). <!-- À VALIDER -->
+Triva cherche sur le web et te répond avec des sources, sur iPhone, iPad et Mac. Gratuite, sans publicité, sans compte et sans serveur : ce que tu fais dans Triva reste sur ton appareil, sauf ce qu'il faut envoyer sur Internet pour répondre (voir la politique de confidentialité).
 
-*Triva searches the web and answers with sources, on iPhone, iPad and Mac. Free, no ads, no account, no server: what you do in Triva stays on your device, except what has to be sent over the Internet to answer. <!-- À VALIDER --> English pages below.*
+*Triva searches the web and answers with sources, on iPhone, iPad and Mac. Free, no ads, no account, no server: what you do in Triva stays on your device, except what has to be sent over the Internet to answer. English pages below.*
 
 ## En français
 
@@ -28,4 +24,4 @@ Triva cherche sur le web et te répond avec des sources, sur iPhone, iPad et Mac
 
 **benpodro@gmail.com**
 
-Triva est publiée par [Nom de l'éditeur], à titre non professionnel. Code source sous licence MIT : [adresse du dépôt].
+Triva est publiée par [Nom de l'éditeur], à titre non professionnel. Code source sous licence MIT : [github.com/Ben-126/Triva](https://github.com/Ben-126/Triva).

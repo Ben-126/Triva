@@ -1,8 +1,4 @@
-<!-- À VALIDER -->
-<!-- Draft of 2026-11-17 (mission T2). English translation of docs/conditions.md: the French version is authoritative.
-     "dépend de Mx" comments flag a sentence that is only true once mission Mx of the legal plan is delivered: do not publish before then.
-     Bracketed placeholders are filled in by the publisher: never put a minor's personal data there.
-     "À FAIRE VALIDER PAR UN JURISTE" comments flag a legal point that a lawyer must confirm (details in the French version). -->
+<!-- English translation of docs/conditions.md: the French version is authoritative. -->
 
 # Triva Terms of Use
 
@@ -62,19 +58,19 @@ You can attach a file to a question (PDF, text…). You are **responsible** for 
 
 - Triva shows excerpts, images and links from **outside websites**. That content belongs to its authors. Open the source to read the original.
 - The publisher does not control those websites and is not responsible for their content.
-- To read a page, Triva honestly identifies itself as "Triva". When it reads sources automatically, it respects websites that refuse it (`robots.txt` file, "noai" or "tdm-reservation" signals). The **"Read this page"** button (« Lire cette page ») lets you have a refused source read yourself, as you would open it in a browser: use it for your personal use, respecting the author's rights. <!-- À VALIDER -->
+- To read a page, Triva honestly identifies itself as "Triva". When it reads sources automatically, it respects websites that refuse it (`robots.txt` file, "noai" or "tdm-reservation" signals). The **"Read this page"** button (« Lire cette page ») lets you have a refused source read yourself, as you would open it in a browser: use it for your personal use, respecting the author's rights.
 - If you reuse an answer or an excerpt, respect the original author's rights (credit the source, follow its license…).
 - Weather data comes from Open-Meteo, and some sources have their own license: see the [Licenses & Attributions](licenses.md) page.
 
 ## 9. Triva's code is open source
 
-Triva's code is **open source**, under the **MIT license**: you may read, copy, modify and redistribute it under that license. The full text is in the `LICENSE` file of the code repository: [adresse du dépôt]. <!-- adresse du dépôt : à compléter -->
+Triva's code is **open source**, under the **MIT license**: you may read, copy, modify and redistribute it under that license. The full text is in the `LICENSE` file of the code repository: [github.com/Ben-126/Triva](https://github.com/Ben-126/Triva).
 
 Triva also uses open-source software and AI models by other authors, under their own licenses: see [Licenses & Attributions](licenses.md).
 
-The name and logo "Triva" are not covered by the MIT license: don't use them to make people think another app is Triva. <!-- À FAIRE VALIDER PAR UN JURISTE (voir version française) -->
+The name and logo "Triva" are not covered by the MIT license: don't use them to make people think another app is Triva.
 
-If you downloaded Triva from the App Store, [Apple's standard license agreement](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) also applies. <!-- À FAIRE VALIDER -->
+If you downloaded Triva from the App Store, [Apple's standard license agreement](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) also applies.
 
 ## 10. What the publisher can and cannot promise
 
@@ -86,13 +82,9 @@ Triva is made with care, for free, by a small family team. The publisher does it
 
 These limits apply **only as far as the law allows**. Nothing in these terms reduces the rights the law gives you as a consumer, or the publisher's liability for gross negligence or intentional misconduct, or for harm to your health or safety.
 
-<!-- À FAIRE VALIDER PAR UN JURISTE : voir la version française (art. 1231-3, 1170, 1171 C. civ. ; Code de la consommation). -->
-
 ## 11. Governing law
 
 These terms are governed by **French law**. If you live in another country, you keep the consumer protections of your country's law that cannot be set aside. If there is a disagreement, first write to **benpodro@gmail.com**: we will look for a solution together.
-
-<!-- À FAIRE VALIDER PAR UN JURISTE (voir version française). -->
 
 ## 12. Changes
 

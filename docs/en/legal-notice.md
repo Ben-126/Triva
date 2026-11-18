@@ -1,7 +1,4 @@
-<!-- À VALIDER -->
-<!-- Draft of 2026-11-17 (mission T2). English translation of docs/mentions-legales.md: the French version is authoritative.
-     Variant A chosen (same as the French version).
-     Sources and points to confirm by a lawyer: see the French version. -->
+<!-- English translation of docs/mentions-legales.md: the French version is authoritative. -->
 
 # Legal Notice
 
@@ -13,9 +10,7 @@ These pages (privacy policy, terms of use, support, licenses) and the Triva app 
 
 ## 1. Publisher
 
-<!-- VARIANT A chosen. BLOQUANT AVANT PUBLICATION : see the French version (the publisher must really have given their identification details to GitHub, Inc.). -->
-
-These pages are published by a private individual, on a non-professional basis. <!-- Sentence about identification with the host REMOVED on 18/11: not true with GitHub. Pending decision Q-B1. -->
+These pages are published by a private individual, on a non-professional basis. <!-- Avant publication : voir la décision Q-B1 (identité de l'éditeur, LCEN art. 1-1). -->
 
 Contact: **benpodro@gmail.com**.
 
@@ -32,7 +27,7 @@ The Triva app itself is distributed through Apple's **App Store**. It has **no s
 
 ## 3. Intellectual property
 
-Triva's code is published under the **MIT license** (`LICENSE` file in the repository: [adresse du dépôt]). Software, AI models and data by other authors used by Triva remain under their own licenses: see [Licenses & Attributions](licenses.md).
+Triva's code is published under the **MIT license** (`LICENSE` file in the repository: [github.com/Ben-126/Triva](https://github.com/Ben-126/Triva)). Software, AI models and data by other authors used by Triva remain under their own licenses: see [Licenses & Attributions](licenses.md).
 
 ## 4. Contact
 
