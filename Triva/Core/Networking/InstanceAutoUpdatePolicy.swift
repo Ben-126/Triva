@@ -32,7 +32,7 @@ nonisolated enum InstanceAutoUpdatePolicy {
 
 /// Textes du réglage (`textes/ecrans.md`, section F).
 nonisolated enum InstanceAutoUpdateText {
-    // À VALIDER (texte légal)
+    // Validé par Ben le 2026-11-18 (texte légal)
     static let toggle = "Mettre à jour la liste automatiquement"
     static let footer = "Quand tu ouvres Triva, l'app télécharge la liste des instances publiques sur searx.space (au plus une fois par jour) et teste quelques instances avec la recherche «\u{00A0}test\u{00A0}». Aucune de tes questions n'est envoyée, mais ces sites voient l'adresse IP de ton appareil. Désactivé, Triva garde la dernière liste connue."
 }

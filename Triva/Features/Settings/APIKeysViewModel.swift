@@ -64,7 +64,7 @@ final class APIKeysViewModel {
         do {
             try keyStore.save(apiKey: trimmed, account: account)
         } catch {
-            // Une clé VALIDE que le Trousseau refuse n'est pas une « clé invalide ». **À VALIDER PAR BEN.**
+            // Une clé VALIDE que le Trousseau refuse n'est pas une « clé invalide ». Validé par Ben le 2026-11-18.
             state = .failed(Self.keychainSaveFailureMessage)
             return
         }
@@ -72,7 +72,7 @@ final class APIKeysViewModel {
         state = .saved
     }
 
-    /// Textes **À VALIDER PAR BEN**.
+    /// Textes validés par Ben le 2026-11-18.
     static let keychainSaveFailureMessage = "La clé est valide, mais le Trousseau n'a pas pu l'enregistrer. Réessaie."
     static let keychainDeleteFailureMessage = "La clé n'a pas pu être supprimée du Trousseau : elle y est toujours. Réessaie."
 

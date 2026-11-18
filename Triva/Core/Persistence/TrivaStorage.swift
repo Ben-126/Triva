@@ -47,11 +47,11 @@ final class TrivaStorage {
         case unavailable(reason: String)
     }
 
-    /// Titre de l'écran d'erreur. **À VALIDER PAR BEN.**
+    /// Titre de l'écran d'erreur. Validé par Ben le 2026-11-18.
     static let unavailableTitle = "Impossible d'ouvrir tes conversations enregistrées"
 
     /// Sous-titre de l'écran d'erreur : dit que la recherche reste possible et
-    /// que rien n'est enregistré. **À VALIDER PAR BEN.**
+    /// que rien n'est enregistré. Validé par Ben le 2026-11-18.
     static let unavailableDetail =
         "Tes recherches restent possibles, mais rien n'est enregistré tant que ce problème dure."
 

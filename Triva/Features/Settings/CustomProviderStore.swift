@@ -14,7 +14,7 @@ import Foundation
 nonisolated enum CustomProviderStoreError: Error, Sendable, Equatable {
     case keyNotDeleted
 
-    /// Message court pour l'écran. **À VALIDER PAR BEN.**
+    /// Message court pour l'écran. Validé par Ben le 2026-11-18.
     var userFacingMessage: String {
         switch self {
         case .keyNotDeleted:

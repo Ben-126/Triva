@@ -40,7 +40,7 @@ struct AdvancedSettingsView: View {
                 Toggle(InstanceAutoUpdateText.toggle, isOn: $autoUpdateInstances)
                     .accessibilityIdentifier("settings.autoUpdateInstances")
             } footer: {
-                // À VALIDER (texte légal)
+                // Validé par Ben le 2026-11-18 (texte légal)
                 Text(InstanceAutoUpdateText.footer)
             }
 
@@ -48,7 +48,7 @@ struct AdvancedSettingsView: View {
                 Toggle("Filtrer les contenus pour adultes", isOn: $safeSearchEnabled)
                     .accessibilityIdentifier("settings.safeSearch")
             } footer: {
-                // À VALIDER (texte légal)
+                // Validé par Ben le 2026-11-18 (texte légal)
                 Text("Masque les résultats et images pour adultes dans les recherches.")
             }
         }

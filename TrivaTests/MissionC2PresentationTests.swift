@@ -16,7 +16,7 @@ struct MissionC2PresentationTests {
     @Test("La carte Clé API dit où vont les questions et où reste la clé, sans promettre « uniquement sur cet appareil »")
     func cloudKeyCardIsTruthful() {
         let text = AIEngineSelectionView.cloudKeyCardSubtitle
-        #expect(text.contains("Payant"))
+        #expect(!text.contains("Payant"), "le coût est dit par PaidKeyNotice, juste dessous (Q-C5)")
         #expect(text.contains("envoyées"))
         #expect(text.contains("Trousseau"))
         #expect(!text.contains("uniquement sur cet appareil"))

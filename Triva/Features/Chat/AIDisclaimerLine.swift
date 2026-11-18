@@ -23,7 +23,7 @@ struct AIDisclaimerLine: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        // À VALIDER (texte légal)
+        // Validé par Ben le 2026-11-18 (texte légal)
         Text(dynamicTypeSize.isAccessibilitySize ? AIUseNoticeText.footerShort : AIUseNoticeText.footer)
             .font(.caption)
             .foregroundStyle(MessageBubbleView.legendStyle)

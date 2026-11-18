@@ -42,7 +42,7 @@ nonisolated enum ChatHistoryStoreError: Error, Sendable, Equatable {
         case .fetchFailed:
             return "Impossible de lire l'historique."
         case .storageUnavailable:
-            // À VALIDER PAR BEN. Affiché dans le chat quand un échange n'a pas pu être enregistré.
+            // Validé par Ben le 2026-11-18. Affiché dans le chat quand un échange n'a pas pu être enregistré.
             return "Tes conversations enregistrées sont inaccessibles : cet échange ne sera pas enregistré."
         }
     }

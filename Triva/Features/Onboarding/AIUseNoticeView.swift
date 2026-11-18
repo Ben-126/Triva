@@ -26,7 +26,7 @@ struct AIUseNoticeView: View {
         GeometryReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
-                // À VALIDER (texte légal) — tous les textes de cet écran (`AIUseNoticeText`).
+                // Validé par Ben le 2026-11-18 (texte légal) — tous les textes de cet écran (`AIUseNoticeText`).
                 Text(AIUseNoticeText.title)
                     .screenTitleFont()
                     .accessibilityAddTraits(.isHeader)

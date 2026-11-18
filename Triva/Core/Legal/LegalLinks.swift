@@ -60,7 +60,7 @@ nonisolated enum LegalLinks {
 
 /// Textes de la section « À propos et mentions légales » (`textes/ecrans.md`, section E, et B.3).
 nonisolated enum AboutText {
-    // À VALIDER (texte légal) — tous les libellés de cette énumération.
+    // Validé par Ben le 2026-11-18 (texte légal) — tous les libellés de cette énumération.
     static let header = "À propos et mentions légales"
 
     static let privacyTitle = "Confidentialité"

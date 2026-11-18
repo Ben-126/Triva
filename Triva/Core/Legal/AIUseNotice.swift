@@ -24,7 +24,7 @@ nonisolated enum AIUseNoticeStore {
 
 /// Textes de l'information IA (`textes/ecrans.md`, section B).
 nonisolated enum AIUseNoticeText {
-    // À VALIDER (texte légal) — tous les textes de cette énumération.
+    // Validé par Ben le 2026-11-18 (texte légal) — tous les textes de cette énumération.
     static let title = "Triva répond avec une IA"
     static let what = "Triva cherche sur le web, puis une intelligence artificielle rédige la réponse à partir des sources trouvées."
     static let errors = "Une IA peut se tromper, mal comprendre une source ou inventer un détail. Vérifie les sources citées avant de t'y fier."

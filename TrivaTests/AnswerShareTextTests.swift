@@ -67,7 +67,7 @@ struct AnswerShareTextTests {
 
     @Test("Mention « clé API payante » : texte exact validé par Ben, une seule constante")
     func paidKeyNoticeIsTheValidatedText() {
-        #expect(PaidKeyNotice.text == "Avec ta propre clé, chaque question est payée chez le fournisseur (OpenAI, Anthropic…), sur ton compte chez lui. Triva est gratuite et ne reçoit jamais d'argent. Apple Intelligence et les modèles sur l'appareil sont gratuits.")
+        #expect(PaidKeyNotice.text == "Avec ta propre clé, chaque question est payée chez le fournisseur (OpenAI, Anthropic…), ou décomptée de ton quota gratuit s'il en offre un, sur ton compte chez lui. Triva est gratuite et ne reçoit jamais d'argent. Apple Intelligence et les modèles sur l'appareil sont gratuits.")
     }
 
     @Test("La fiche d'une citation montre la même mention de licence que la liste des sources")

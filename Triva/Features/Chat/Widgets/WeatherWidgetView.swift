@@ -468,7 +468,7 @@ private extension WeatherWidgetData {
 
 /// Attribution obligatoire des données météo (mission C4, audit constat 8). Open-Meteo, licence
 /// CC BY 4.0 (https://open-meteo.com/en/licence, lu le 2026-11-14) : « You must include a link next to
-/// any location Open-Meteo data are displayed ». Texte de `textes/ecrans.md` G.1, À VALIDER (texte légal).
+/// any location Open-Meteo data are displayed ». Texte de `textes/ecrans.md` G.1, validé par Ben le 2026-11-18.
 nonisolated enum WeatherAttribution {
     static let plainText = "Données météo : Open-Meteo.com (CC BY 4.0)"
     static let siteName = "Open-Meteo.com"

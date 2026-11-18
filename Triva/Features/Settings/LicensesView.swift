@@ -27,7 +27,7 @@ struct LicensesView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .failed:
-                // À VALIDER (texte légal)
+                // Validé par Ben le 2026-11-18 (texte légal)
                 ContentUnavailableView(
                     "Licences indisponibles",
                     systemImage: "doc.text",

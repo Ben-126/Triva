@@ -38,7 +38,7 @@ nonisolated enum AnswerShareText {
         hasText && state == .completed
     }
 
-    // À VALIDER (texte légal) : libellés VoiceOver et infobulles.
+    // Validé par Ben le 2026-11-18 (texte légal) : libellés VoiceOver et infobulles.
     static let copyTitle = "Copier la réponse"
     static let copiedTitle = "Réponse copiée"
     static let shareTitle = "Partager la réponse"
@@ -51,7 +51,7 @@ nonisolated enum AnswerShareText {
 ///
 /// Partager (`ShareLink`) ne peut pas porter ce second élément de façon fiable : le texte marqué
 /// (`AnswerShareText`) est donc le seul marquage de ce chemin.
-// À VALIDER (texte légal) : identifiants de la métadonnée.
+// Validé par Ben le 2026-11-18 (texte légal) : identifiants de la métadonnée.
 nonisolated enum AIProvenanceMetadata {
     /// Type du presse-papiers (identifiant de type en notation DNS inversée, propre à Triva).
     static let pasteboardType = "app.triva.ai-provenance"

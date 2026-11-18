@@ -77,8 +77,8 @@ struct LocalDataEraseSection: View {
     }
 
     /// Dit ce qui n'a PAS été effacé, et ce qui l'a été. Les caches sont
-    /// toujours vidés, même quand la base échoue (`LocalDataEraser`). **Textes
-    /// À VALIDER PAR BEN.**
+    /// toujours vidés, même quand la base échoue (`LocalDataEraser`). Textes
+    /// validés par Ben le 2026-11-18.
     static func incompleteMessage(failedSteps: [LocalDataEraseStep]) -> String {
         let retry = " Réessaie ; si cela se reproduit, redémarre l'app."
         let failedFavorites = failedSteps.contains(.favorites)

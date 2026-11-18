@@ -25,7 +25,7 @@ nonisolated struct LicenseCatalog: Sendable, Equatable {
         case dataSource
         case discoverFeed
 
-        // À VALIDER (texte légal)
+        // Validé par Ben le 2026-11-18 (texte légal)
         var title: String {
             switch self {
             case .app: "Triva"
@@ -126,6 +126,7 @@ private nonisolated struct RawCatalog: Decodable {
     struct App: Decodable {
         let name: String
         let license: String
+        let copyright: String?
     }
 
     struct Dependency: Decodable {
@@ -189,8 +190,8 @@ private nonisolated struct RawCatalog: Decodable {
         add(.app, [
             .init(
                 id: "app", kind: .app, name: app.name,
-                summary: "Licence \(app.license)", copyright: nil, licenseText: nil, notice: nil,
-                // À VALIDER (texte légal) : titulaire du droit d'auteur à préciser avec l'éditeur.
+                summary: "Licence \(app.license)", copyright: app.copyright, licenseText: nil, notice: nil,
+                // Titulaire du droit d'auteur : le même que dans LICENSE (validé par Ben le 2026-11-18).
                 notes: ["Triva est un logiciel libre, publié sous licence \(app.license)."],
                 links: []
             ),

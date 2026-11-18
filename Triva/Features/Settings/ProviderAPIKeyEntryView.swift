@@ -80,7 +80,7 @@ struct ProviderAPIKeyEntryView: View {
     }
 
     /// Accord d'envoi à ce fournisseur et son retrait (textes A.2 de `ecrans.md`).
-    /// À VALIDER (texte légal).
+    /// Validé par Ben le 2026-11-18 (texte légal).
     @ViewBuilder
     private func consentSection(store: CloudAIConsentStore, providerID: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {

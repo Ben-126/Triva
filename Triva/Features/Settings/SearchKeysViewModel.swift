@@ -28,7 +28,7 @@ nonisolated extension BYOKSearchSource {
     /// Tavily : réservé aux 18 ans et plus, et peut réutiliser les requêtes envoyées. Source :
     /// Tavily Platform Terms (mise à jour du 2026-05-04), citée dans l'audit légal.
     /// Brave n'a pas de mention ici (ses conditions sont traitées par la non-conservation des extraits).
-    // À VALIDER (texte légal)
+    // Validé par Ben le 2026-11-18 (texte légal)
     var legalNote: String? {
         switch self {
         case .brave: nil

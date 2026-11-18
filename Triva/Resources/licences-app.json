@@ -1,5 +1,5 @@
 {
-  "_comment": "Brouillon À VALIDER — mission T2 du 2026-11-17. Source unique pour l'écran natif « Licences et attributions » (M5) et pour docs/licences.md. Le français fait foi. Les textes des licences sont repris tels quels des fichiers des paquets (checkouts SwiftPM du 2026-11-17) ; '@apache-2.0' renvoie à licenseTexts['Apache-2.0'], qui doit être affiché en entier une fois, avec le copyright et le NOTICE propres à chaque paquet. licenseFile = chemin relatif au dossier SourcePackages/checkouts : l'agent de code doit embarquer le vrai fichier quand c'est possible.",
+  "_comment": "Validé par Ben le 2026-11-18 (mission T2 du 2026-11-17). Source unique pour l'écran natif « Licences et attributions » (M5) et pour docs/licences.md. Le français fait foi. Les textes des licences sont repris tels quels des fichiers des paquets (checkouts SwiftPM du 2026-11-17) ; '@apache-2.0' renvoie à licenseTexts['Apache-2.0'], qui doit être affiché en entier une fois, avec le copyright et le NOTICE propres à chaque paquet. licenseFile = chemin relatif au dossier SourcePackages/checkouts : l'agent de code doit embarquer le vrai fichier quand c'est possible.",
   "generatedFrom": {
     "packageResolved": "Triva.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
     "checkouts": "SourcePackages/checkouts (DerivedData)",
@@ -8,8 +8,8 @@
   "app": {
     "name": "Triva",
     "license": "MIT",
-    "copyright": "Copyright (c) 2026 [titulaire à préciser]",
-    "note": "Fichier LICENSE du dépôt ; titulaire à préciser avec le parent (audit, constat 33). Ne jamais afficher de nom de famille sans accord.",
+    "copyright": "Copyright (c) 2026 Ben Podrojsky",
+    "note": "Fichier LICENSE du dépôt ; titulaire validé par Ben le 2026-11-18 (le même que dans LICENSE).",
     "licenseFile": "LICENSE (racine du dépôt Triva)"
   },
   "dependencies": [

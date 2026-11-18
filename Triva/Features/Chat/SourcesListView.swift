@@ -29,7 +29,7 @@ nonisolated enum SourcesListPresentation {
     static let unreadLabel = "non lue"
 
     /// Mention sous le domaine d'une source dont la lecture automatique a été refusée par le site,
-    /// puis de son sort après un clic sur « Lire cette page » (texte À VALIDER, voir `ReadPagePresentation`).
+    /// puis de son sort après un clic sur « Lire cette page » (texte validé, voir `ReadPagePresentation`).
     static func readStatusLabel(for state: SiteReadRefusals.State?) -> String? {
         switch state {
         case nil: nil
@@ -47,7 +47,7 @@ nonisolated enum SourcesListPresentation {
 
     /// Mention de licence d'une source dont le contenu est sous licence libre (mission C4, M7).
     /// arXiv : provenance seule. Wikipédia : CC BY-SA 4.0 ; Marginalia : CC BY-NC-SA 4.0 (usage non commercial, app gratuite).
-    /// `nil` pour toute autre source. Textes de `textes/ecrans.md` G.2 et G.3 (À VALIDER, texte légal).
+    /// `nil` pour toute autre source. Textes de `textes/ecrans.md` G.2 et G.3 (validé par Ben le 2026-11-18, texte légal).
     static func licenseAttribution(for source: SearXNGSearchResult) -> LicenseAttribution? {
         let host = URL(string: source.url)?.host?.lowercased() ?? ""
         if host == "wikipedia.org" || host.hasSuffix(".wikipedia.org") {

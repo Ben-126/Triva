@@ -39,7 +39,7 @@ struct AboutSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(AboutText.versionLine())
                     .accessibilityIdentifier("settings.about.version")
-                // À VALIDER (texte légal)
+                // Validé par Ben le 2026-11-18 (texte légal)
                 Text(AboutText.footer)
             }
         }

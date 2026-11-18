@@ -136,9 +136,10 @@ struct AIEngineSelectionView: View {
     /// uniquement sur cet appareil », était fausse dans le sens rassurant : la clé part à chaque
     /// requête chez le fournisseur, avec les questions, et rien ne le disait au moment du choix.
     /// Ce texte dit les deux : où vont les questions, et où reste la clé. Il n'y a aucun serveur de
-    /// Triva entre les deux (À VALIDER PAR BEN).
+    /// Triva entre les deux. Le coût est dit par la mention `PaidKeyNotice` affichée juste dessous
+    /// (doublon « Payant » retiré, décision de Ben du 2026-11-18, Q-C5).
     static let cloudKeyCardSubtitle =
-        "Le plus puissant. Payant selon le fournisseur choisi. Tes questions lui sont envoyées "
+        "Le plus puissant. Tes questions lui sont envoyées "
         + "directement\u{00A0}; ta clé reste dans le Trousseau de cet appareil."
 
     private var header: some View {

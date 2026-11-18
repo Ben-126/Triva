@@ -101,7 +101,7 @@ nonisolated enum CloudAIConsentCatalog {
 /// Textes de `textes/ecrans.md` section A (FR). Le projet n'a pas de String Catalog : tout le
 /// texte de l'app est en français littéral, la traduction anglaise n'est donc pas ajoutée ici
 /// (à faire avec la localisation de l'app).
-// À VALIDER (texte légal) — tout ce qui suit.
+// Validé par Ben le 2026-11-18 (texte légal) — tout ce qui suit.
 nonisolated enum CloudAIConsentText {
     static func title(_ r: CloudAIConsentRequest) -> String { "Envoyer tes questions à \(r.titleName)\u{00A0}?" }
     static func intro(_ r: CloudAIConsentRequest) -> String {
@@ -111,7 +111,7 @@ nonisolated enum CloudAIConsentText {
         "ta question\u{00A0};",
         "les messages précédents de la conversation en cours\u{00A0};",
         "des extraits des pages trouvées sur le web\u{00A0};",
-        // À VALIDER (texte légal) — texte A.1 (ecrans.md) : règle PDF de la décision Q3.
+        // Validé par Ben le 2026-11-18 (texte légal) — texte A.1 (ecrans.md) : règle PDF de la décision Q3.
         "le texte des fichiers que tu joins (un PDF protégé contre la copie n'est lu que s'il autorise l'extraction pour l'accessibilité\u{00A0}; sinon, il n'est lu par aucun moteur)."
     ]
     static func extra(_ extra: CloudAIConsentExtra, _ r: CloudAIConsentRequest) -> String {

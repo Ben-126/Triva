@@ -10,7 +10,7 @@
 import Foundation
 
 nonisolated enum AIGeneratedMarking {
-    /// Ligne finale ajoutée à tout texte de réponse copié ou partagé. À VALIDER (texte légal).
+    /// Ligne finale ajoutée à tout texte de réponse copié ou partagé. Validé par Ben le 2026-11-18 (texte légal).
     static let footer = "— Réponse générée par IA avec Triva"
 
     /// Le texte suivi d'une ligne vide puis de la mention. Idempotent : un texte déjà marqué

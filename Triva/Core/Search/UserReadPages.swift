@@ -92,9 +92,9 @@ final class SiteReadRefusals {
     func removeAll() { states.removeAll() }
 }
 
-/// Textes de « Lire cette page » (À VALIDER, texte légal : sobres, sans mention juridique).
+/// Textes de « Lire cette page » (validé par Ben le 2026-11-18, texte légal : sobres, sans mention juridique).
 nonisolated enum ReadPagePresentation {
-    // À VALIDER (texte légal)
+    // Validé par Ben le 2026-11-18 (texte légal)
     static let refusedLabel = "lecture refusée par le site"
     static let buttonTitle = "Lire cette page"
     static let readingLabel = "Lecture…"

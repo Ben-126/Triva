@@ -136,7 +136,7 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
         case .passwordProtectedPDF:
             return "Ce PDF est protégé par un mot de passe. Retire la protection, puis joins-le à nouveau."
         case .copyProtectedPDF:
-            // À VALIDER (texte légal)
+            // Validé par Ben le 2026-11-18 (texte légal)
             return PDFCopyPolicy.refusalMessage
         case .noExtractableText:
             return "Ce PDF ne contient aucun texte sélectionnable. C'est sans doute un document scanné."
@@ -154,7 +154,7 @@ nonisolated enum PDFCopyPolicy {
         allowsCopying || allowsContentAccessibility
     }
 
-    /// À VALIDER (texte légal)
+    /// Validé par Ben le 2026-11-18 (texte légal)
     static let refusalMessage = "Ce PDF interdit la copie de son texte : Triva ne peut pas le lire."
 }
 

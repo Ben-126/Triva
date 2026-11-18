@@ -42,7 +42,7 @@ nonisolated enum FavoritesStoreError: Error, Sendable, Equatable {
         case .notAnAssistantMessage:
             return "Seule une réponse peut être ajoutée aux favoris."
         case .storageUnavailable:
-            // À VALIDER PAR BEN.
+            // Validé par Ben le 2026-11-18.
             return "Tes favoris enregistrés sont inaccessibles pour l'instant."
         }
     }

@@ -29,7 +29,7 @@ import Foundation
 /// FORMULATION (décision de Ben du 2026-11-11, retouchée d'un mot) : deux phrases courtes, sans la
 /// liste des fournisseurs, le coût en « centime » et le reste de la phrase mot pour mot comme il l'a
 /// demandé. Seule l'incise a changé, « si aucune autre source ne répond » devenant « si ni tes clés
-/// de recherche ni les instances SearXNG ne répondent », pour la raison ci-dessus (À VALIDER PAR BEN).
+/// de recherche ni les instances SearXNG ne répondent », pour la raison ci-dessus (validé par Ben le 2026-11-18).
 nonisolated enum CloudWebSearchCostNotice {
     static let sentence =
         "Si ni tes clés de recherche ni les instances SearXNG ne répondent, Triva peut chercher sur le web "
