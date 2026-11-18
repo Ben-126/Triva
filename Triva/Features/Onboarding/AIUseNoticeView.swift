@@ -23,6 +23,7 @@ struct AIUseNoticeView: View {
     }
 
     var body: some View {
+        GeometryReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 // À VALIDER (texte légal) — tous les textes de cet écran (`AIUseNoticeText`).
@@ -35,7 +36,9 @@ struct AIUseNoticeView: View {
                     Text(AIUseNoticeText.errors)
                     Text(AIUseNoticeText.advice)
                     Text(AIUseNoticeText.engine)
-                        .font(.footnote)
+                        // `.subheadline` et non `.footnote` : sur Mac, `.footnote` (10 pt) est bien
+                        // plus petit que le corps et, en gris secondaire, peu lisible.
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
@@ -49,6 +52,12 @@ struct AIUseNoticeView: View {
             .padding(.bottom, 40)
             .frame(maxWidth: contentMaxWidth)
             .frame(maxWidth: .infinity)
+            // Contenu centré verticalement quand il tient dans la fenêtre (grand écran, Mac) :
+            // sans cela il restait collé en haut avec un grand vide dessous. Il défile toujours
+            // quand il est plus haut que la fenêtre (très grand texte).
+            .frame(minHeight: proxy.size.height, alignment: .center)
+        }
+        .scrollBounceBehavior(.basedOnSize)
         }
     }
 }

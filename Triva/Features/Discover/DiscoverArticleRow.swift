@@ -130,6 +130,17 @@ nonisolated enum DiscoverArticlePresentation {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// La ligne méta en deux morceaux, pour l'affichage : `lead` (« Par {auteur} », seul morceau
+    /// qu'on a le droit de tronquer) et `trail` (« {média} · {date} », qui ne doit JAMAIS
+    /// disparaître : la licence CC BY-ND 4.0 de The Conversation exige de citer le média).
+    /// L'auteur de The Conversation porte son affiliation (« Nom, Professeur des universités,
+    /// spécialiste de… ») : sans cette séparation, la ligne était coupée avant le média.
+    /// `lead + " · " + trail` redonne `metaLine`.
+    static func metaParts(author: String? = nil, source: String?, age: String?) -> (lead: String?, trail: String?) {
+        let trail = [source, age].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        return (authorCredit(author), trail.isEmpty ? nil : trail)
+    }
+
     /// La même, pour VoiceOver : une virgule plutôt qu'un point médian, que le lecteur
     /// d'écran prononcerait.
     static func spokenMetaLine(author: String? = nil, source: String?, age: String?) -> String? {
@@ -211,7 +222,7 @@ struct DiscoverArticleRow: View {
         let title = DiscoverArticlePresentation.displayText(article.title)
         let source = DiscoverArticlePresentation.sourceLabel(sourceName: article.sourceName, url: article.url)
         let age = DiscoverArticlePresentation.ageLabel(publishedAt: article.publishedAt, now: Date(), calendar: calendar)
-        let meta = DiscoverArticlePresentation.metaLine(author: article.author, source: source, age: age)
+        let meta = DiscoverArticlePresentation.metaParts(author: article.author, source: source, age: age)
         let spokenMeta = DiscoverArticlePresentation.spokenMetaLine(author: article.author, source: source, age: age)
         if let url = DiscoverArticlePresentation.articleURL(from: article.url) {
             Button {
@@ -267,7 +278,7 @@ struct DiscoverArticleRow: View {
 
     /// `contentShape` : sans lui, seuls le texte et la vignette répondent au
     /// toucher, pas l'espace entre eux.
-    private func rowContent(title: String, meta: String?) -> some View {
+    private func rowContent(title: String, meta: (lead: String?, trail: String?)) -> some View {
         let thumbnailURL = DiscoverArticlePresentation.thumbnailURL(from: article.imageURL)
         let snippet = DiscoverArticlePresentation.snippet(article.snippet, title: article.title)
         return rowLayout {
@@ -284,17 +295,10 @@ struct DiscoverArticleRow: View {
         .contentShape(.rect)
     }
 
-    /// Ligne éditeur · date, tronquée à la fin sur une seule ligne : le nom de l'éditeur,
-    /// qui commence la ligne, est ce qui identifie la source.
-    private func textColumn(title: String, meta: String?, snippet: String?) -> some View {
+    /// Ligne auteur · éditeur · date sur une seule ligne ; l'éditeur n'est jamais tronqué avant l'auteur.
+    private func textColumn(title: String, meta: (lead: String?, trail: String?), snippet: String?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let meta {
-                Text(meta)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
+            metaRow(meta)
             Text(title)
                 .font(.headline)
                 .foregroundStyle(.primary)
@@ -309,6 +313,32 @@ struct DiscoverArticleRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Auteur tronqué en premier (priorité de mise en page la plus basse), média et date
+    /// toujours visibles.
+    @ViewBuilder
+    private func metaRow(_ meta: (lead: String?, trail: String?)) -> some View {
+        if meta.lead != nil || meta.trail != nil {
+            HStack(spacing: 0) {
+                if let lead = meta.lead {
+                    Text(lead)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if meta.trail != nil {
+                        Text(" · ").layoutPriority(1)
+                    }
+                }
+                if let trail = meta.trail {
+                    Text(trail)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
     }
 
     /// « Chercher dans Triva » en premier : c'est l'action qui fait de

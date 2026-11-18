@@ -60,6 +60,18 @@ struct FeedAuthorTests {
         #expect(DiscoverArticlePresentation.metaLine(author: "  ", source: "ESPN", age: nil) == "ESPN")
     }
 
+    @Test("ligne méta affichée : seul l'auteur est tronquable, le média reste dans `trail`")
+    func metaPartsKeepSource() {
+        let long = "Claire Martin, Professeure des universités, spécialiste de l'abeille mellifère et des pollinisateurs"
+        let parts = DiscoverArticlePresentation.metaParts(author: long, source: "The Conversation", age: "hier")
+        #expect(parts.lead == "Par \(long)")
+        #expect(parts.trail == "The Conversation · hier")
+        #expect(DiscoverArticlePresentation.metaParts(author: nil, source: "ESPN", age: nil) == (nil, "ESPN"))
+        #expect(DiscoverArticlePresentation.metaParts(author: "Jean", source: nil, age: nil) == ("Par Jean", nil))
+        let full = DiscoverArticlePresentation.metaLine(author: long, source: "The Conversation", age: "hier")
+        #expect(full == "\(parts.lead!) · \(parts.trail!)")
+    }
+
     @Test("le cache relit l'auteur, et un ancien fichier sans auteur reste lisible")
     func cacheBackwardCompatible() throws {
         let old = #"{"title":"T","url":"https://e.fr/a","snippet":null,"imageURL":null,"publishedAt":null,"sourceName":"E","allowsAIUse":true}"#
