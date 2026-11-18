@@ -305,6 +305,10 @@ struct BYOKProvidersView: View {
         } label: {
             LabeledContent(displayName, value: viewModel.hasStoredKey ? "Configuré" : "")
         }
+        // Sans cela, le bouton de la ligne n'avait aucun libellé propre (audit d'accessibilité, mission V3) :
+        // VoiceOver lit « Claude, Configuré ».
+        .accessibilityLabel(displayName)
+        .accessibilityValue(viewModel.hasStoredKey ? "Configuré" : "")
     }
 }
 

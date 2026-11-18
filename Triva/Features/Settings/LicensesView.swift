@@ -53,7 +53,12 @@ struct LicensesView: View {
             ForEach(sections) { section in
                 Section {
                     ForEach(section.entries) { entry in
-                        NavigationLink(value: entry) {
+                        // Destination dans le lien (et non `navigationDestination(for:)`) : la valeur
+                        // déclarée sur la liste, créée après le chargement du catalogue, ne poussait
+                        // rien sur iPhone (constaté au simulateur, mission V3).
+                        NavigationLink {
+                            LicenseDetailView(entry: entry)
+                        } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.name)
                                 if !entry.summary.isEmpty {
@@ -73,7 +78,6 @@ struct LicensesView: View {
             }
         }
         .searchable(text: $query, prompt: "Rechercher")
-        .navigationDestination(for: LicenseCatalog.Entry.self) { LicenseDetailView(entry: $0) }
         .overlay {
             if sections.isEmpty {
                 ContentUnavailableView.search(text: query)

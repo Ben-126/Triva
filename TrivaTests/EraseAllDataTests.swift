@@ -149,6 +149,13 @@ struct EraseAllDataTests {
         #expect(counter.value == 1)
     }
 
+    #if os(iOS)
+    @Test("iPhone/iPad : la vraie fonction de vidage du navigateur intégré s'exécute jusqu'au bout sans plantage")
+    func realEmbeddedBrowserClearingCompletes() async {
+        await LocalDataEraser.clearEmbeddedBrowserData()
+    }
+    #endif
+
     @Test("Le repli objet par objet (sans stockage rouvrable) laisse des traces dans les fichiers : c'est ce que deleteAllData corrige")
     func objectByObjectDeletionLeavesTraces() async throws {
         let fixture = try DiskFixture()
