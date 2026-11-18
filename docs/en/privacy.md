@@ -5,7 +5,7 @@
 
 # Triva Privacy Policy
 
-*Last updated: [date de publication]*
+*Last updated: 18 November 2026*
 
 *This is a translation. The [French version](../confidentialite.md) is the authoritative one. Triva's screens are in French: the names of screens and buttons are given in English, followed by the French label in brackets the first time.*
 
@@ -195,4 +195,4 @@ If Triva changes the way it handles your data, this page will be updated and its
 
 | Version | Date | Changes |
 |---|---|---|
-| 1.0 | [date de publication] | First version. |
+| 1.0 | 18 November 2026 | First version. |

@@ -5,7 +5,7 @@
 
 # Politique de confidentialité de Triva
 
-*Dernière mise à jour : [date de publication]*
+*Dernière mise à jour : 18 novembre 2026*
 
 Cette page explique, simplement, ce que Triva fait de tes données. Elle est écrite pour être comprise par tout le monde, y compris si tu es au collège.
 
@@ -193,4 +193,4 @@ Si Triva change sa façon de traiter tes données, cette page sera mise à jour 
 
 | Version | Date | Changements |
 |---|---|---|
-| 1.0 | [date de publication] | Première version. |
+| 1.0 | 18 novembre 2026 | Première version. |

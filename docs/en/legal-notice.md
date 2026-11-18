@@ -5,7 +5,7 @@
 
 # Legal Notice
 
-*Last updated: [date de publication]*
+*Last updated: 18 November 2026*
 
 *This is a translation. The [French version](../mentions-legales.md) is the authoritative one.*
 
@@ -15,7 +15,7 @@ These pages (privacy policy, terms of use, support, licenses) and the Triva app 
 
 <!-- VARIANT A chosen. BLOQUANT AVANT PUBLICATION : see the French version (the publisher must really have given their identification details to GitHub, Inc.). -->
 
-These pages are published by a private individual, on a non-professional basis. In accordance with Article 1-1, II, of French Law No. 2004-575 of 21 June 2004 on confidence in the digital economy, the publisher has given their personal identification details to the host named below. <!-- À VALIDER -->
+These pages are published by a private individual, on a non-professional basis. <!-- Sentence about identification with the host REMOVED on 18/11: not true with GitHub. Pending decision Q-B1. -->
 
 Contact: **benpodro@gmail.com**.
 

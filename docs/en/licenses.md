@@ -4,7 +4,7 @@
 
 # Licenses & Attributions
 
-*Last updated: [date de publication]*
+*Last updated: 18 November 2026*
 
 *This is a translation. The [French version](../licences.md) is the authoritative one.*
 

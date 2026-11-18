@@ -6,7 +6,7 @@
 
 # Assistance Triva
 
-*Dernière mise à jour : [date de publication]*
+*Dernière mise à jour : 18 novembre 2026*
 
 ## Nous contacter
 

@@ -7,7 +7,7 @@
 
 # Licences et attributions
 
-*Dernière mise à jour : [date de publication]*
+*Dernière mise à jour : 18 novembre 2026*
 
 Triva est construite avec des logiciels libres, des modèles d'IA et des données ouvertes d'autres auteurs. Merci à eux. Cette page indique leurs licences, comme elles le demandent.
 

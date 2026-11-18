@@ -9,7 +9,7 @@
 
 # Mentions légales
 
-*Dernière mise à jour : [date de publication]*
+*Dernière mise à jour : 18 novembre 2026*
 
 Ces pages (politique de confidentialité, conditions d'utilisation, assistance, licences) et l'app Triva sont publiées **à titre non professionnel**, sans but commercial.
 
@@ -26,7 +26,7 @@ Ces pages (politique de confidentialité, conditions d'utilisation, assistance, 
      Pas de directeur de la publication publié en variante A ; s'il en fallait un, ce ne pourrait pas être le développeur mineur
      (loi n° 82-652, art. 93-2, NON VÉRIFIÉ sur Légifrance). -->
 
-Ces pages sont éditées par un particulier, à titre non professionnel. Conformément à l'article 1-1, II, de la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique, l'éditeur a communiqué ses éléments d'identification personnelle à l'hébergeur indiqué ci-dessous. <!-- À VALIDER -->
+Ces pages sont éditées par un particulier, à titre non professionnel. <!-- Phrase sur l'identification auprès de l'hébergeur RETIRÉE le 18/11 : elle était fausse (GitHub ne recueille pas l'identité). En attente de la décision Q-B1 (coordonnées publiées OU hébergeur qui recueille l'identité). -->
 
 Contact : **benpodro@gmail.com**.
 

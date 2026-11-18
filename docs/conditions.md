@@ -6,7 +6,7 @@
 
 # Conditions d'utilisation de Triva
 
-*Dernière mise à jour : [date de publication]*
+*Dernière mise à jour : 18 novembre 2026*
 
 Ces règles expliquent comment utiliser Triva. Elles sont courtes et écrites simplement. En utilisant Triva, tu les acceptes. Si tu as moins de 15 ans, lis-les avec un de tes parents.
 
@@ -107,4 +107,4 @@ Pour toute question : **benpodro@gmail.com**. Voir aussi la page [Assistance](as
 
 | Version | Date | Changements |
 |---|---|---|
-| 1.0 | [date de publication] | Première version. |
+| 1.0 | 18 novembre 2026 | Première version. |

@@ -5,7 +5,7 @@
 
 # Triva Support
 
-*Last updated: [date de publication]*
+*Last updated: 18 November 2026*
 
 *This is a translation. The [French version](../assistance.md) is the authoritative one. Triva's screens are in French: the names of screens and buttons are given in English, followed by the French label in brackets.*
 
