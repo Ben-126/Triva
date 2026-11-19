@@ -7,9 +7,6 @@
 
 import Foundation
 import OSLog
-#if os(iOS)
-import SafariServices
-#endif
 
 /// Étapes de « Tout effacer », dans l'ordre où elles s'exécutent.
 nonisolated enum LocalDataEraseStep: String, Sendable, Equatable, CaseIterable {
@@ -170,10 +167,11 @@ struct LocalDataEraser {
 
     /// Vide cookies, stockage local et cache du navigateur intégré. iPhone et iPad seulement : le Mac
     /// ouvre ses liens dans une fenêtre `WebView` à stockage non persistant (`InAppBrowser.swift`).
+    ///
+    /// Un seul vidage à la fois, avec un délai maximal : voir `EmbeddedBrowserDataClearer` (des appels
+    /// simultanés s'invalident entre eux et ne rendent jamais la main).
     static func clearEmbeddedBrowserData() async {
-        #if os(iOS)
-        await SFSafariViewController.DataStore.default.clearWebsiteData()
-        #endif
+        await EmbeddedBrowserDataClearer.shared.clear()
     }
 
     /// Hors main actor : vider une base SQLite de cache peut être long.

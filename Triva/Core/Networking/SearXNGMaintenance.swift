@@ -54,6 +54,11 @@ final class SearXNGMaintenance {
     /// `InstanceAutoUpdatePolicy`). Lue à CHAQUE activation : désactivé, plus aucun passage, donc
     /// ni annuaire searx.space ni re-sonde (mission C3, M13).
     private let isAutoUpdateEnabled: @MainActor () -> Bool
+    /// Priorité de la tâche d'un passage : `.background` en production (jamais bloquant, jamais en
+    /// concurrence avec l'interface). Les tests la relèvent : sous très forte charge de la machine
+    /// (charge > 200 le 2026-11-19), une tâche `.background` est ordonnancée très tard et un test qui
+    /// l'attend dépasse son délai (`SearXNGMaintenanceTests.onePassAtATime`, 120 s sur simulateur).
+    private let passPriority: TaskPriority
 
     /// Passage en cours, `nil` au repos. Lecture exposée pour les tests.
     private(set) var inFlight: Task<Void, Never>?
@@ -65,17 +70,20 @@ final class SearXNGMaintenance {
     ///   - makeFailoverManager: voir la propriété du même nom.
     ///   - isOffline: voir la propriété du même nom ; `{ false }` par défaut (comportement d'avant 1.16).
     ///   - isAutoUpdateEnabled: voir la propriété du même nom ; lit le réglage de l'app par défaut.
+    ///   - passPriority: voir la propriété du même nom ; `.background` par défaut.
     init(
         refresher: any SearXNGDirectoryRefreshing,
         prober: any InstanceProbing = SearXNGInstanceHealthProbe(),
         isOffline: @escaping @MainActor () -> Bool = { false },
         isAutoUpdateEnabled: @escaping @MainActor () -> Bool = { InstanceAutoUpdatePolicy.isEnabled() },
+        passPriority: TaskPriority = .background,
         makeFailoverManager: @escaping @MainActor () -> FailoverManager
     ) {
         self.refresher = refresher
         self.prober = prober
         self.isOffline = isOffline
         self.isAutoUpdateEnabled = isAutoUpdateEnabled
+        self.passPriority = passPriority
         self.makeFailoverManager = makeFailoverManager
     }
 
@@ -104,7 +112,7 @@ final class SearXNGMaintenance {
         // un appel « lancé puis oublié » ne ferait rien du tout, puisque la tâche ne démarre
         // qu'après le retour de cette fonction. Aucun cycle durable : `runPass` remet `inFlight`
         // à `nil` en sortant, et la tâche terminée libère sa closure.
-        let pass = Task(priority: .background) {
+        let pass = Task(priority: passPriority) {
             await self.runPass()
         }
         inFlight = pass

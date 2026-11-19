@@ -104,14 +104,16 @@ private final class ManagerBuildLog {
     var refreshCallsSeen: [Int] = []
 }
 
+/// Attend `condition` pendant 30 s d'horloge au plus. Un nombre d'essais fixe (2 000 × 1 ms) ne
+/// bornait pas le temps réel : sous forte charge de la machine, chaque pause durait des dizaines de
+/// millisecondes et le test dépassait son délai de 120 s sans message (mission T1, 2026-11-19).
 @MainActor
 private func waitForWiringCondition(_ condition: () -> Bool) async throws {
-    var attempts = 0
-    while !condition(), attempts < 2_000 {
-        attempts += 1
+    let deadline = ContinuousClock.now + .seconds(30)
+    while !condition(), ContinuousClock.now < deadline {
         try await Task.sleep(for: .milliseconds(1))
     }
-    #expect(condition(), "Condition jamais remplie en ~2 s")
+    #expect(condition(), "Condition jamais remplie en 30 s")
 }
 
 /// Annuaire searx.space minimal : une instance qui passe tous les critères (forme de
@@ -261,7 +263,7 @@ struct SearXNGMaintenanceTests {
         F.makePoor(F.publicA, in: reliability)
         let prober = ScriptedProber(healthy: [F.publicA])
         let log = ManagerBuildLog()
-        let maintenance = SearXNGMaintenance(refresher: refresher, prober: prober) {
+        let maintenance = SearXNGMaintenance(refresher: refresher, prober: prober, passPriority: .userInitiated) {
             log.refreshCallsSeen.append(refresher.calls)
             return FailoverManager(client: ScriptedInstanceClient(), instances: [F.publicA], reliability: reliability)
         }
@@ -279,7 +281,7 @@ struct SearXNGMaintenanceTests {
     @Test("Une activation pendant un passage ne relance rien ; une fois le passage fini, si")
     func onePassAtATime() async throws {
         let refresher = GatedDirectoryRefresher(isOpen: false)
-        let maintenance = SearXNGMaintenance(refresher: refresher, prober: ScriptedProber(healthy: [])) {
+        let maintenance = SearXNGMaintenance(refresher: refresher, prober: ScriptedProber(healthy: []), passPriority: .userInitiated) {
             FailoverManager(client: ScriptedInstanceClient(), instances: [])
         }
 
@@ -304,7 +306,7 @@ struct SearXNGMaintenanceTests {
     func passOutlivesItsOwner() async throws {
         let refresher = GatedDirectoryRefresher(isOpen: true)
         let pass = try #require(
-            SearXNGMaintenance(refresher: refresher, prober: ScriptedProber(healthy: [])) {
+            SearXNGMaintenance(refresher: refresher, prober: ScriptedProber(healthy: []), passPriority: .userInitiated) {
                 FailoverManager(client: ScriptedInstanceClient(), instances: [])
             }.sceneDidBecomeActive()
         )
