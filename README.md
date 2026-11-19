@@ -64,7 +64,8 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 
 **V2 en cours : ce qu'une app native permet et pas le web**
 - L'iPhone Duo : en plié, l'écran s'adapte à la place disponible et un bouton ferme le clavier ; en déplié et en paysage, la conversation et ses sources s'affichent côte à côte (les Favoris aussi : liste et détail). Le brouillon, la position de lecture et la réponse en cours sont gardés quand on plie ou déplie
-- À venir : le Mac approfondi (une recherche par fenêtre, raccourcis, Services, glisser-déposer, Coup d'œil), Siri, Raccourcis, widgets, Spotlight, Activité en direct, la voix, la synchronisation iCloud et la traduction en anglais et en espagnol
+- Le Mac approfondi : une recherche par fenêtre, les menus et raccourcis clavier complets, « Rechercher avec Triva » depuis n'importe quelle app (Services), une barre des menus et un menu du Dock en option, le glisser-déposer de fichiers et d'images (texte lu sur l'appareil) dans les deux sens, et Coup d'œil sur les pièces jointes (aussi sur iPad et iPhone)
+- À venir : Siri, Raccourcis, widgets, Spotlight, Activité en direct, la voix, la synchronisation iCloud et la traduction en anglais et en espagnol
 
 **Plus tard**
 - La publication sur l'App Store

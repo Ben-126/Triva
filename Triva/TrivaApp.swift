@@ -44,6 +44,8 @@ import SwiftData
 struct TrivaSharedStores {
     let engineSettings: AIEngineSettingsStore
     let mlxSelection: MLXModelSelectionStore
+    /// Le modèle MLX partagé par toutes les fenêtres et sa file d'attente (2.2, mission M3).
+    let mlxProviderPool: MLXProviderPool
     let cloudSelection: CloudProviderSelectionStore
     let customProviders: CustomProviderStore
     let searchInstances: CustomInstanceStore
@@ -138,7 +140,9 @@ struct TrivaSharedStores {
     ) {
         let cloudSelection = CloudProviderSelectionStore(userDefaults: userDefaults)
         self.engineSettings = AIEngineSettingsStore(userDefaults: userDefaults)
-        self.mlxSelection = MLXModelSelectionStore(userDefaults: userDefaults)
+        let mlxSelection = MLXModelSelectionStore(userDefaults: userDefaults)
+        self.mlxSelection = mlxSelection
+        self.mlxProviderPool = MLXProviderPool(selection: mlxSelection)
         self.cloudSelection = cloudSelection
         self.customProviders = CustomProviderStore(
             userDefaults: userDefaults,
@@ -164,9 +168,13 @@ struct TrivaSharedStores {
     ///
     /// `beforeErase` : l'app y arrête la génération du chat et attend sa fin
     /// avant l'effacement (voir `LocalDataEraser`).
+    ///
+    /// `attachmentVaultRoot` : dossier des copies temporaires de pièces jointes à vider
+    /// aussi (l'app passe `AttachmentFileVault.defaultRootDirectory` ; les tests, rien).
     func makeLocalDataEraser(
         urlCache: URLCache = .shared,
-        beforeErase: (@MainActor () async -> Void)? = nil
+        beforeErase: (@MainActor () async -> Void)? = nil,
+        attachmentVaultRoot: URL? = nil
     ) -> LocalDataEraser {
         LocalDataEraser(
             chatHistory: chatHistory,
@@ -174,7 +182,8 @@ struct TrivaSharedStores {
             discoverCache: discoverCache,
             urlCache: urlCache,
             storage: storage,
-            beforeErase: beforeErase
+            beforeErase: beforeErase,
+            attachmentVaultRoot: attachmentVaultRoot
         )
     }
 
@@ -354,6 +363,15 @@ struct TrivaApp: App {
     /// Lue au niveau de l'`App`, la phase est celle de l'ENSEMBLE des scènes :
     /// `.active` dès qu'une fenêtre de l'app est au premier plan.
     @Environment(\.scenePhase) private var scenePhase
+    #if os(macOS)
+    /// Mac : Services (« Rechercher avec Triva ») et menu du Dock, ce que SwiftUI ne couvre pas (chantier 2.2, M7).
+    @NSApplicationDelegateAdaptor(TrivaMacAppDelegate.self) private var macAppDelegate
+    /// Ouvre les fenêtres demandées de l'extérieur quand AUCUNE fenêtre n'est affichée (Dock, Service, barre des menus).
+    @Environment(\.openWindow) private var openWindow
+    /// Icône de la barre des menus : désactivée par défaut, activée dans Réglages > Mac.
+    @AppStorage(MenuBarItemPreference.defaultsKey) private var showsMenuBarItem = MenuBarItemPreference.defaultValue
+    private let externalSearch = ExternalSearchLauncher.shared
+    #endif
 
     /// Initialiseur explicite plutôt que deux valeurs par défaut : l'entretien
     /// doit être branché sur les MÊMES stores que les fenêtres, et une valeur
@@ -363,6 +381,14 @@ struct TrivaApp: App {
         _stores = State(initialValue: stores)
         _searXNGMaintenance = State(initialValue: stores.makeSearXNGMaintenance())
         Self.purgeLegacyURLCacheOnce()
+        Self.purgeAttachmentCopies()
+    }
+
+    /// Copies temporaires de pièces jointes (Coup d'œil, glisser-déposer) laissées par un lancement précédent : ce sont
+    /// des documents de l'utilisateur, aucune fenêtre n'existe encore pour en dépendre. Jamais sous les tests.
+    private static func purgeAttachmentCopies() {
+        guard !TrivaTestHost.isHostingUnitTests() else { return }
+        AttachmentFileVault.purgeAll()
     }
 
     /// Purge UNIQUE du cache HTTP hérité (voir `URLCachePurger`), en tâche de
@@ -381,9 +407,28 @@ struct TrivaApp: App {
         // elle arbitre entre l'écran de choix du moteur IA et les 5
         // destinations. Voir le commentaire de tête de `ContentView.swift`, qui
         // garde son nom mais n'héberge plus que la destination "Recherche".
-        WindowGroup {
-            TrivaRootView(stores: stores)
+        //
+        // « Une recherche = une fenêtre » (chantier 2.2, Mac et iPad) : la valeur de la scène dit ce que la
+        // fenêtre montre (`TrivaWindowTarget`, identifiants seulement), SwiftUI l'écrit sur disque et la
+        // restaure au relancement. `defaultValue` : « Fichier > Nouvelle fenêtre » (⌘N) et le lancement
+        // ouvrent chaque fois une recherche NEUVE (identifiant neuf, sinon SwiftUI ramènerait la fenêtre
+        // existante au lieu d'en ouvrir une autre).
+        WindowGroup("Triva", id: TrivaWindowTarget.sceneID, for: TrivaWindowTarget.self) { $target in
+            TrivaRootView(stores: stores, windowTarget: $target)
+                .environment(\.externalQueryInbox, ExternalSearchLauncher.shared.inbox)
+        } defaultValue: {
+            TrivaWindowTarget.freshSearch()
         }
+        // Barre de menus du Mac et menu clavier de l'iPad (chantier 2.2, M4).
+        .commands { TrivaCommands() }
+        #if os(macOS)
+        // Aucune fenêtre affichée (toutes fermées) : les demandes du Dock, du Service et de la barre des menus
+        // n'ont plus d'observateur dans une fenêtre ; la scène prend le relais (`ExternalSearchWindowOpener`).
+        .onChange(of: externalSearch.revision, initial: true) {
+            ExternalSearchWindowOpener(launcher: externalSearch, openWindow: openWindow, onlyWhenNoWindow: true)
+                .openPending()
+        }
+        #endif
         // SearXNG fiabilisé (R3) : à chaque passage au premier plan, lancement
         // compris (`initial: true`), rafraîchit l'annuaire s'il est dû puis
         // re-sonde les instances écartées dont le délai a expiré — en tâche de
@@ -427,10 +472,19 @@ struct TrivaApp: App {
         }
         .defaultSize(width: 960, height: 720)
         .restorationBehavior(.disabled)
+        // Pas d'item « Nouvelle fenêtre Navigateur » dans le menu Fichier : cette scène n'ouvre que des pages.
+        .commandsRemoved()
 
         Settings {
             TrivaSettingsWindow(stores: stores)
         }
+
+        // Icône de la barre des menus (chantier 2.2, M7), à la demande de l'utilisateur seulement. Style fenêtre :
+        // il faut un champ de saisie. Retirée à la main de la barre, le réglage repasse tout seul à « non ».
+        MenuBarExtra("Triva", systemImage: "magnifyingglass", isInserted: $showsMenuBarItem) {
+            MenuBarSearchPanel(stores: stores, launcher: externalSearch)
+        }
+        .menuBarExtraStyle(.window)
         #endif
     }
 }
@@ -457,7 +511,7 @@ private struct TrivaSettingsWindow: View {
             customProviderStore: stores.customProviders,
             cloudConsentStore: stores.cloudConsent,
             instanceStore: stores.searchInstances,
-            localDataEraser: stores.makeLocalDataEraser()
+            localDataEraser: stores.makeLocalDataEraser(attachmentVaultRoot: AttachmentFileVault.defaultRootDirectory)
         )
         // Taille minimale : en dessous, les écrans poussés depuis les Réglages
         // (liste d'instances SearXNG, modèles MLX) deviennent illisibles.

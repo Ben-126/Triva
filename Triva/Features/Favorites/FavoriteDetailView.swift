@@ -164,6 +164,8 @@ struct FavoriteDetailContentView: View {
 
     @Environment(\.calendar) private var calendar
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// `nil` sur iPhone : pas d'entrée « Ouvrir dans une nouvelle fenêtre ».
+    @Environment(\.openConversationInNewWindow) private var openInNewWindow
 
     /// Colonne de lecture de 640 pt hors `compact`, comme la réponse dans la Recherche
     /// (`ChatView.contentMaxWidth`) : sans elle, le texte s'étirait sur toute la largeur d'un iPad ou
@@ -212,6 +214,13 @@ struct FavoriteDetailContentView: View {
                 if let onOpenConversation {
                     Button("Ouvrir la conversation", systemImage: "bubble.left.and.bubble.right", action: onOpenConversation)
                         .buttonStyle(.glass)
+                        .contextMenu {
+                            if let openInNewWindow, let conversationID = content.conversationID {
+                                Button(NewWindowMenuLabel.title, systemImage: NewWindowMenuLabel.systemImage) {
+                                    openInNewWindow(conversationID)
+                                }
+                            }
+                        }
                 }
             }
             .padding(.horizontal, 20)

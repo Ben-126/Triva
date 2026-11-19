@@ -48,6 +48,8 @@ extension FavoritesStore: AllDeleting {}
 ///   demande, refus des sites et règles robots.txt gardés en mémoire, et — sur iPhone et iPad —
 ///   cookies, stockage local et cache du navigateur intégré (`SFSafariViewController.DataStore`).
 ///   Sur Mac, la fenêtre du navigateur intégré utilise un stockage non persistant : rien à effacer.
+///   Copies temporaires de pièces jointes (dossier `tmp/TrivaAttachments`, Coup d'œil et glisser-déposer),
+///   quand l'app lui donne leur dossier (`attachmentVaultRoot`).
 /// - JAMAIS TOUCHÉ : clés API (Trousseau), choix du moteur IA, fournisseur et
 ///   modèle choisis, instances SearXNG, modèles MLX téléchargés. Cet objet ne
 ///   reçoit d'ailleurs ni le trousseau ni aucun store de réglages : il ne peut
@@ -90,12 +92,16 @@ struct LocalDataEraser {
     private let storage: TrivaStorage?
     private let beforeErase: (@MainActor () async -> Void)?
     private let clearBrowserData: @MainActor () async -> Void
+    private let attachmentVaultRoot: URL?
 
     /// - Parameters:
     ///   - storage: stockage à effacer d'un coup (`deleteAllData()` puis
     ///     conteneur neuf). `nil` : suppression objet par objet seulement.
     ///   - beforeErase: appelée avant tout effacement ; l'app y arrête la
     ///     génération en cours et attend sa fin.
+    ///   - attachmentVaultRoot: dossier des copies temporaires de pièces jointes
+    ///     (Coup d'œil, glisser-déposer), vidé en entier. `nil` : rien n'est
+    ///     touché (tests : ne jamais effacer le vrai coffre de la machine).
     init(
         chatHistory: any AllDeleting,
         favorites: any AllDeleting,
@@ -103,7 +109,8 @@ struct LocalDataEraser {
         urlCache: URLCache = .shared,
         storage: TrivaStorage? = nil,
         beforeErase: (@MainActor () async -> Void)? = nil,
-        clearBrowserData: @escaping @MainActor () async -> Void = LocalDataEraser.clearEmbeddedBrowserData
+        clearBrowserData: @escaping @MainActor () async -> Void = LocalDataEraser.clearEmbeddedBrowserData,
+        attachmentVaultRoot: URL? = nil
     ) {
         self.chatHistory = chatHistory
         self.favorites = favorites
@@ -112,6 +119,7 @@ struct LocalDataEraser {
         self.storage = storage
         self.beforeErase = beforeErase
         self.clearBrowserData = clearBrowserData
+        self.attachmentVaultRoot = attachmentVaultRoot
     }
 
     /// Joue toutes les étapes puis lève `LocalDataEraseError.incomplete` si une
@@ -126,6 +134,10 @@ struct LocalDataEraser {
         SiteReadRefusals.shared.removeAll()
         await RobotsRulesCache.shared.removeAll()
         await clearBrowserData()
+        // Copies temporaires de documents joints (chantier 2.2) : ce sont des données de l'utilisateur aussi.
+        if let attachmentVaultRoot {
+            AttachmentFileVault.purgeAll(rootDirectory: attachmentVaultRoot)
+        }
 
         if !failed.isEmpty {
             throw .incomplete(failedSteps: failed)

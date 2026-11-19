@@ -203,12 +203,12 @@ final class SearchSession {
     /// (`appleIntelligenceError == nil` ne peut pas servir de drapeau, c'est
     /// justement la valeur du cas "disponible").
     @ObservationIgnored private var didCheckAppleIntelligenceAvailability = false
-    /// `MLXProvider` déjà préparé, avec l'id du modèle pour lequel il l'a été —
-    /// évite de refaire un `prepare()` coûteux (chargement de plusieurs Go) à
-    /// chaque échange du chat. Revalidé à chaque envoi contre
-    /// `stores.mlxSelection` : un modèle changé ailleurs (autre fenêtre,
-    /// Réglages) est donc pris en compte au prochain envoi.
+    /// Modèle MLX préparé pour le DERNIER envoi de cette session, avec son budget. Le modèle
+    /// lui-même vit dans le pool partagé (`stores.mlxProviderPool`, mission M3) : un seul en
+    /// mémoire pour toutes les fenêtres. Revalidé à chaque envoi contre `stores.mlxSelection`.
     @ObservationIgnored var preparedMLXProvider: PreparedMLXProvider?
+    /// Identité de cette session auprès du pool MLX (file d'attente, fenêtres encore ouvertes).
+    let mlxRequesterID = UUID()
     /// `FailoverManager` de la session, avec la liste d'instances qui l'a
     /// construit. En recréer un à chaque recherche jetterait son cache de
     /// dernière instance fonctionnelle ; le garder quand la liste a changé
@@ -241,6 +241,10 @@ final class SearchSession {
         self.connectivity = connectivity
         self.hasMLXWeights = hasMLXWeights
         self.appleModel = appleModel
+        // Fenêtre MLX : elle compte dès sa création pour garder le modèle partagé en mémoire (M3).
+        if engine == .mlxLocal {
+            stores.mlxProviderPool.register(mlxRequesterID)
+        }
     }
 
     /// Fin de session (changement de moteur, fenêtre fermée) : la génération en cours appartient au
@@ -249,6 +253,13 @@ final class SearchSession {
     /// jamais la session (closures `[weak self]`), donc ce `deinit` s'exécute bien.
     isolated deinit {
         chatViewModel?.stop()
+        // Dernière fenêtre MLX fermée (ou moteur changé) : le pool libère le modèle (mission M3).
+        stores.mlxProviderPool.unregister(mlxRequesterID)
+    }
+
+    /// Cette fenêtre attend qu'une autre ait fini avec le modèle local (mission M3).
+    var isWaitingForLocalModel: Bool {
+        engine == .mlxLocal && stores.mlxProviderPool.isWaitingForAnotherWindow(mlxRequesterID)
     }
 
     /// Modèle MLX validé (0.5) pour la sélection courante, `nil` tant qu'aucun
@@ -314,9 +325,9 @@ final class SearchSession {
     }
 
     /// Enregistre le modèle MLX que l'utilisateur vient de valider, dans le
-    /// store PARTAGÉ (toutes les fenêtres le voient). Le provider préparé pour
-    /// l'ancien modèle est relâché tout de suite plutôt qu'au prochain envoi :
-    /// c'est de la mémoire (plusieurs Go) rendue sans attendre.
+    /// store PARTAGÉ (toutes les fenêtres le voient). Le pool MLX suit ce store
+    /// et décharge l'ancien modèle aussitôt (à son tour dans la file) : c'est
+    /// de la mémoire (plusieurs Go) rendue sans attendre le prochain envoi.
     func selectMLXModel(_ chosen: MLXModelCatalogEntry) {
         stores.mlxSelection.selectedModelID = chosen.id
         preparedMLXProvider = nil
@@ -495,23 +506,15 @@ final class SearchSession {
         DiscoverLanguage.preferred(for: Locale(identifier: preferredLanguages.first ?? "en")).rawValue
     }
 
-    /// Provider MLX préparé pour le modèle ACTUELLEMENT sélectionné.
+    /// Générateur MLX pour le modèle ACTUELLEMENT sélectionné, tiré du pool PARTAGÉ de l'app
+    /// (mission M3) : un seul modèle en mémoire pour toutes les fenêtres, chargé une seule fois,
+    /// et chaque génération attend son tour dans la file commune.
     ///
-    /// L'id est lu juste avant la résolution, sans suspension entre les deux
-    /// (main actor) : le cache est donc rangé sous l'id réellement préparé. Si
-    /// une autre fenêtre change de modèle PENDANT un `prepare()`, l'envoi en
-    /// cours utilise le modèle qu'il a commencé à charger, et le suivant
-    /// détecte l'écart et prépare le nouveau. Écart transitoire assumé : les
-    /// deux modèles sont locaux, la promesse « sur l'appareil » tient.
+    /// L'id est lu juste avant la résolution, sans suspension entre les deux (main actor). Si la
+    /// sélection change PENDANT le chargement, le pool l'abandonne (`modelNotLoaded`) plutôt que de
+    /// garder deux modèles : la question suivante part sur le nouveau.
     private func preparedMLXProviderForCurrentSelection() async throws -> any AIGenerating {
         let modelID = stores.mlxSelection.selectedModelID
-        if let preparedMLXProvider, preparedMLXProvider.modelID == modelID {
-            return preparedMLXProvider.provider
-        }
-        // Relâché AVANT de charger le suivant : jamais deux modèles en mémoire
-        // pour une même session.
-        preparedMLXProvider = nil
-
         // Sans modèle choisi, le résolveur lève `noMLXModelSelected` (message
         // actionnable) sans consulter le catalogue : ne pas le lire évite
         // qu'un fichier de catalogue illisible masque cette erreur-là.
@@ -530,25 +533,22 @@ final class SearchSession {
             keyStore: stores.keyStore
         )
         // Le résolveur renvoie toujours un `MLXProvider` pour `.mlxLocal` ;
-        // le cas contraire n'a rien à préparer ni à mettre en cache.
-        guard let mlxProvider = provider as? MLXProvider else { return provider }
+        // le cas contraire n'a rien à préparer ni à partager.
+        guard let modelID, let mlxProvider = provider as? MLXProvider else { return provider }
 
-        // Budget calculé AVANT la suspension de `prepare()`, sur le même
+        // Budget calculé AVANT la suspension du chargement, sur le même
         // instantané (`modelID`, catalogue) que le provider : voir
         // `pipelineConfigurationForSending()`.
         let configuration = SearchPipelineConfiguration.preset(
             for: .mlxLocal,
             mlxModel: catalog.first { $0.id == modelID }
         )
-        try await mlxProvider.prepare()
-        if let modelID {
-            preparedMLXProvider = PreparedMLXProvider(
-                modelID: modelID,
-                provider: mlxProvider,
-                configuration: configuration
-            )
-        }
-        return mlxProvider
+        preparedMLXProvider = nil
+        let pool = stores.mlxProviderPool
+        // `mlxProvider` ne sert que si le pool n'a pas déjà ce modèle (instance neuve, chargée une fois).
+        let model = try await pool.preparedModel(id: modelID, requester: mlxRequesterID) { mlxProvider }
+        preparedMLXProvider = PreparedMLXProvider(modelID: modelID, configuration: configuration)
+        return pool.generator(for: model, requester: mlxRequesterID)
     }
 
     /// Catalogue MLX, lu dans le bundle au premier besoin puis gardé (le
@@ -564,11 +564,10 @@ final class SearchSession {
     }
 }
 
-/// Provider MLX préparé, l'id du modèle qu'il porte et le budget de ce modèle
-/// (cache de `SearchSession`) : les trois viennent du même instantané.
+/// Modèle MLX du dernier envoi de `SearchSession` et budget de ce modèle : les deux viennent du
+/// même instantané. Le modèle lui-même vit dans `MLXProviderPool` (partagé entre fenêtres).
 struct PreparedMLXProvider {
     let modelID: String
-    let provider: MLXProvider
     let configuration: SearchPipelineConfiguration
 }
 

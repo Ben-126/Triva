@@ -18,7 +18,7 @@ extension SearchSession {
     /// `prepare()` peut charger sans réseau :
     /// - aucun modèle choisi : vrai. L'erreur d'origine (« Aucun modèle local choisi », actionnable) est
     ///   plus juste qu'un message sur la connexion ;
-    /// - modèle déjà en mémoire (provider préparé pour CE modèle) : vrai, sans toucher au disque ;
+    /// - modèle déjà en mémoire (pool partagé, n'importe quelle fenêtre) : vrai, sans toucher au disque ;
     /// - sinon : poids entièrement présents sur le disque (`MLXProvider.hasDownloadedWeights`).
     func resolveOfflinePlan() -> OfflinePlan? {
         guard connectivity.isOffline else { return nil }
@@ -27,7 +27,7 @@ extension SearchSession {
 
     private func isMLXModelAvailableOffline() -> Bool {
         guard let modelID = stores.mlxSelection.selectedModelID else { return true }
-        if preparedMLXProvider?.modelID == modelID { return true }
+        if stores.mlxProviderPool.isResident(modelID) { return true }
         return hasMLXWeights(modelID)
     }
 }

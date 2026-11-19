@@ -625,6 +625,18 @@ final class ChatViewModel {
         attachmentController.removeAll()
     }
 
+    /// Nombre de fois où l'utilisateur a demandé une nouvelle conversation (bouton de la barre d'outils ou
+    /// menu ⇧⌘O), par opposition à celles que l'app remet à zéro d'elle-même (conversation supprimée).
+    /// `ChatView` l'observe pour ramener le curseur dans le champ de saisie, sans que ces remises à zéro
+    /// automatiques n'ouvrent le clavier.
+    private(set) var userNewConversationCount = 0
+
+    /// « Nouvelle conversation » demandée par l'utilisateur : comme `startNewConversation()`, puis avertit la vue.
+    func startNewConversationFromUser() {
+        startNewConversation()
+        userNewConversationCount += 1
+    }
+
     /// Rouvre une conversation de la Bibliothèque (ou d'un favori,
     /// `StoredFavorite.conversationID`) ; les envois suivants s'y ajoutent.
     /// Sans effet si c'est déjà celle du fil. `false` si elle n'existe plus ou

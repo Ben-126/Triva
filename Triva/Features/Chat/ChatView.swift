@@ -132,6 +132,10 @@ struct ChatView: View {
         .environment(\.readPageAction, ReadPageAction(isEnabled: viewModel.canReadPage) { url in
             await readPageAndRegenerate(url: url)
         })
+        // Coup d'œil sur les sources tirées d'une pièce jointe (chantier 2.2, M5).
+        .environment(\.attachmentFileLookup, AttachmentFileLookup { [attachments = viewModel.attachmentController] in
+            attachments.previewURL(for: $0)
+        })
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { availableHeight = $0 }
         .sheet(item: pendingConsentBinding) { pending in
             CloudConsentSheet(
@@ -144,17 +148,19 @@ struct ChatView: View {
                 onCancel: { viewModel.declinePendingConsent() }
             )
         }
+        .onChange(of: viewModel.userNewConversationCount) { userStartedNewConversation() }
         .toolbar {
             // Décision 1 de Ben : les questions s'enchaînent dans la même
             // conversation jusqu'à ce bouton ; l'ancienne reste dans la
-            // Bibliothèque. ⇧⌘O plutôt que ⌘N, qui ouvre une nouvelle
-            // fenêtre sur Mac et iPad.
+            // Bibliothèque. Raccourci ⇧⌘O (menu Fichier) plutôt que ⌘N,
+            // qui ouvre une nouvelle fenêtre sur Mac et iPad.
             ToolbarItem(placement: .primaryAction) {
                 Button("Nouvelle conversation", systemImage: "square.and.pencil") {
-                    startNewConversation()
+                    viewModel.startNewConversationFromUser()
                 }
                 .disabled(viewModel.messages.isEmpty)
-                .keyboardShortcut("o", modifiers: [.command, .shift])
+                // ⇧⌘O est déclaré UNE seule fois, dans le menu Fichier (`TrivaCommands`) : deux
+                // déclarations du même raccourci se disputaient la touche.
                 .accessibilityIdentifier("chat.newConversation")
                 #if os(macOS)
                 .help("Nouvelle conversation")
@@ -526,9 +532,9 @@ struct ChatView: View {
         request(.retryAfterOffline(quickMode: quickMode))
     }
 
-    /// Le brouillon en cours est gardé : il servira de première question.
-    private func startNewConversation() {
-        viewModel.startNewConversation()
+    /// L'utilisateur vient de demander une nouvelle conversation (bouton ou menu ⇧⌘O). Le brouillon en cours
+    /// est gardé : il servira de première question.
+    private func userStartedNewConversation() {
         // Le volet de sources (Duo déplié) repart sur la dernière réponse de la conversation qui commence.
         scroll.focusedAnswerID = nil
         isDraftFocused = true

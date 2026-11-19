@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
 
@@ -26,6 +27,12 @@ nonisolated enum AttachmentKind: String, Sendable, Equatable, CaseIterable {
     case markdown
     case csv
     case json
+    /// Image dont le texte est lu EN LOCAL par Vision (chantier 2.2, M6) : capture d'écran, photo de page.
+    case image
+
+    /// Formats d'image acceptés : ceux que le système décode et que Vision lit. Liste explicite, pas
+    /// `.image` : SVG (du XML), RAW ou ICNS y sont conformes mais ne se lisent pas de la même façon.
+    static let imageTypes: [UTType] = [.png, .jpeg, .heic, .heif, .tiff, .gif, .bmp, .webP]
 
     /// Identifiant système du Markdown. Pas de constante `UTType.markdown`
     /// dans le SDK : on passe par l'identifiant, déclaré par le système
@@ -62,6 +69,8 @@ nonisolated enum AttachmentKind: String, Sendable, Equatable, CaseIterable {
 
         if type.conforms(to: .pdf) {
             self = .pdf
+        } else if Self.imageTypes.contains(where: { type.conforms(to: $0) }) {
+            self = .image
         } else if type.conforms(to: .json) {
             self = .json
         } else if type.conforms(to: .commaSeparatedText) || type.conforms(to: .tabSeparatedText) {
@@ -112,6 +121,15 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
     /// PDF lisible mais sans couche texte : document scanné, ou pages
     /// composées uniquement d'images.
     case noExtractableText(pageCount: Int)
+    /// Octets qui ne sont pas une image lisible (fichier tronqué, renommé…).
+    case invalidImage
+    /// Image au-delà de `maxImageByteCount`.
+    case imageTooLarge(byteCount: Int, maximumByteCount: Int)
+    /// Image dont les dimensions dépassent `maxImagePixelCount` : quelques Mo de PNG ou de GIF peuvent se
+    /// décoder en plusieurs Go de pixels (bombe de décompression), que Vision ne doit jamais recevoir.
+    case imageDimensionsTooLarge
+    /// Image lue, mais aucun texte reconnu (photo de paysage, image vide).
+    case noTextInImage
 
     /// Message court en français, tutoiement, sans jargon, prêt pour l'UI.
     /// Aucune interpolation de donnée issue du fichier (seule la limite de
@@ -119,7 +137,7 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
     var userFacingMessage: String {
         switch self {
         case .unsupportedFileType:
-            return "Ce type de fichier n'est pas pris en charge. Joins un PDF ou un fichier texte (TXT, Markdown, CSV, JSON)."
+            return "Ce type de fichier n'est pas pris en charge. Joins un PDF, une image ou un fichier texte (TXT, Markdown, CSV, JSON)."
         case .fileUnreadable:
             return "Impossible d'ouvrir ce fichier. Vérifie qu'il est disponible sur l'appareil, puis réessaie."
         case let .fileTooLarge(_, maximumByteCount):
@@ -140,6 +158,16 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
             return PDFCopyPolicy.refusalMessage
         case .noExtractableText:
             return "Ce PDF ne contient aucun texte sélectionnable. C'est sans doute un document scanné."
+        case .invalidImage:
+            return "Cette image est illisible ou endommagée."
+        case let .imageTooLarge(_, maximumByteCount):
+            let megabytes = max(1, maximumByteCount / (1_024 * 1_024))
+            return "Cette image est trop volumineuse : \(megabytes) Mo maximum."
+        case .imageDimensionsTooLarge:
+            // À valider par Ben.
+            return "Cette image est trop grande (en pixels). Réduis-la, puis joins-la à nouveau."
+        case .noTextInImage:
+            return "Triva ne trouve aucun texte dans cette image."
         }
     }
 }
@@ -293,9 +321,21 @@ nonisolated struct AttachmentTextExtractor: Sendable {
         ("\u{FB04}", "ffl"), ("\u{FB05}", "st"), ("\u{FB06}", "st"),
     ]
 
+    /// 50 Mo : une photo de 48 millions de pixels en HEIC en pèse ~10, une capture Retina en PNG ~15. Au-delà, ce
+    /// n'est plus une capture mais un fichier à ne pas charger en mémoire pour y chercher du texte.
+    static let defaultMaxImageByteCount = 50 * 1_024 * 1_024
+
+    /// 100 millions de pixels (10 000 × 10 000) : au-delà de tout appareil photo courant (48 à 50 millions de pixels)
+    /// et d'une capture d'écran, même panoramique. Décoder davantage coûterait plusieurs centaines de Mo de mémoire.
+    static let defaultMaxImagePixelCount = 100_000_000
+
     let maxCharacterCount: Int
     let maxPDFPageCount: Int
     let maxTextFileByteCount: Int
+    let maxImageByteCount: Int
+    let maxImagePixelCount: Int
+    /// Lecture du texte des images (Vision par défaut ; un faux dans les tests).
+    let imageRecognizer: any ImageTextRecognizing
 
     /// Bornes ramenées à au moins 1 : une borne nulle ou négative est une
     /// erreur de configuration, pas une entrée utilisateur — on la neutralise
@@ -303,11 +343,17 @@ nonisolated struct AttachmentTextExtractor: Sendable {
     init(
         maxCharacterCount: Int = AttachmentTextExtractor.defaultMaxCharacterCount,
         maxPDFPageCount: Int = AttachmentTextExtractor.defaultMaxPDFPageCount,
-        maxTextFileByteCount: Int = AttachmentTextExtractor.defaultMaxTextFileByteCount
+        maxTextFileByteCount: Int = AttachmentTextExtractor.defaultMaxTextFileByteCount,
+        maxImageByteCount: Int = AttachmentTextExtractor.defaultMaxImageByteCount,
+        maxImagePixelCount: Int = AttachmentTextExtractor.defaultMaxImagePixelCount,
+        imageRecognizer: any ImageTextRecognizing = VisionImageTextRecognizer()
     ) {
         self.maxCharacterCount = max(1, maxCharacterCount)
         self.maxPDFPageCount = max(1, maxPDFPageCount)
         self.maxTextFileByteCount = max(1, maxTextFileByteCount)
+        self.maxImageByteCount = max(1, maxImageByteCount)
+        self.maxImagePixelCount = max(1, maxImagePixelCount)
+        self.imageRecognizer = imageRecognizer
     }
 
     // MARK: - Points d'entrée
@@ -363,9 +409,42 @@ nonisolated struct AttachmentTextExtractor: Sendable {
             }
         }
 
+        if kind == .image {
+            // Octets lus sous coordination (comme tout fichier), puis reconnaissance hors du main actor.
+            let data = try Self.readCoordinated(url) { try imageData(at: $0) }
+            return try await extractImage(data: data, fileName: fileName, characterLimit: limit)
+        }
         return try Self.readCoordinated(url) { readableURL in
             try extractContents(of: readableURL, fileName: fileName, kind: kind, characterLimit: limit)
         }
+    }
+
+    /// Texte d'une image déjà en mémoire, reconnu EN LOCAL (Vision). Une seule section, sans page. Lève
+    /// `noTextInImage` si rien de lisible, `invalidImage` si les octets ne sont pas une image.
+    @concurrent
+    func extractImage(data: Data, fileName: String, characterLimit: Int? = nil) async throws -> ExtractedAttachment {
+        guard !data.isEmpty else { throw AttachmentExtractionError.emptyFile }
+        guard data.count <= maxImageByteCount else {
+            throw AttachmentExtractionError.imageTooLarge(byteCount: data.count, maximumByteCount: maxImageByteCount)
+        }
+        // Dimensions lues dans l'en-tête, sans décoder l'image : une petite image peut cacher des milliards de pixels.
+        if let pixelCount = Self.pixelCount(ofImageData: data), pixelCount > maxImagePixelCount {
+            throw AttachmentExtractionError.imageDimensionsTooLarge
+        }
+        let recognized = try await imageRecognizer.recognizeText(inImageData: data)
+        let text = Self.normalizedText(recognized)
+        guard !text.isEmpty else { throw AttachmentExtractionError.noTextInImage }
+
+        let bounded = Self.truncatedAtWordBoundary(text, maxCharacterCount: effectiveCharacterLimit(characterLimit))
+        return ExtractedAttachment(
+            fileName: fileName,
+            kind: .image,
+            sections: [ExtractedTextSection(pageNumber: nil, text: bounded.text)],
+            pageCount: nil,
+            isTruncated: bounded.wasTruncated,
+            isCopyRestricted: false,
+            textEncoding: nil
+        )
     }
 
     /// Même extraction, depuis des octets déjà en mémoire (tests, données
@@ -384,6 +463,9 @@ nonisolated struct AttachmentTextExtractor: Sendable {
             return try extractPDF(document, fileName: fileName, characterLimit: limit)
         case .plainText, .markdown, .csv, .json:
             return try extractText(data, fileName: fileName, kind: kind, characterLimit: limit)
+        case .image:
+            // La reconnaissance est asynchrone : voir `extractImage(data:fileName:characterLimit:)`.
+            throw AttachmentExtractionError.unsupportedFileType(fileExtension: (fileName as NSString).pathExtension.lowercased())
         }
     }
 
@@ -397,12 +479,12 @@ nonisolated struct AttachmentTextExtractor: Sendable {
     /// de façon synchrone, avant le retour de `coordinate` ; s'il ne l'a pas
     /// été, la coordination a échoué (l'erreur d'origine, système, n'apporte
     /// rien de plus à l'utilisateur que `fileUnreadable`).
-    private static func readCoordinated(
+    private static func readCoordinated<Output>(
         _ url: URL,
-        _ body: (URL) throws -> ExtractedAttachment
-    ) throws -> ExtractedAttachment {
+        _ body: (URL) throws -> Output
+    ) throws -> Output {
         var coordinationError: NSError?
-        var outcome: Result<ExtractedAttachment, any Error>?
+        var outcome: Result<Output, any Error>?
 
         NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &coordinationError) { readableURL in
             outcome = Result { try body(readableURL) }
@@ -439,6 +521,34 @@ nonisolated struct AttachmentTextExtractor: Sendable {
                 throw AttachmentExtractionError.fileUnreadable
             }
             return try extractText(data, fileName: fileName, kind: kind, characterLimit: characterLimit)
+        case .image:
+            // Inatteignable : `extract(from:)` traite les images avant (la reconnaissance est asynchrone).
+            throw AttachmentExtractionError.unsupportedFileType(fileExtension: url.pathExtension.lowercased())
+        }
+    }
+
+    /// Largeur × hauteur d'après l'en-tête de l'image (ImageIO ne décode pas les pixels), ou `nil` si les octets ne
+    /// sont pas une image reconnue : la reconnaissance rendra alors son propre verdict (`invalidImage`).
+    static func pixelCount(ofImageData data: Data) -> Int? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        let (product, overflow) = width.multipliedReportingOverflow(by: height)
+        return overflow ? Int.max : product
+    }
+
+    /// Octets d'une image, après contrôle de la taille dans les métadonnées (jamais chargée si trop grosse).
+    private func imageData(at url: URL) throws -> Data {
+        let byteCount = try Self.fileSize(of: url)
+        guard byteCount > 0 else { throw AttachmentExtractionError.emptyFile }
+        guard byteCount <= maxImageByteCount else {
+            throw AttachmentExtractionError.imageTooLarge(byteCount: byteCount, maximumByteCount: maxImageByteCount)
+        }
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            throw AttachmentExtractionError.fileUnreadable
         }
     }
 

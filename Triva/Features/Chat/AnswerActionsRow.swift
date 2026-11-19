@@ -4,16 +4,11 @@
 //
 //  Copier et Partager sous une réponse terminée (mission C5, décision de Ben). Discrets, au style
 //  du bouton favori (icône seule, encre secondaire, cible 44 pt sur iOS) ; libellés VoiceOver.
-//  Le texte a déjà reçu la mention « générée par IA » (`AnswerShareText`).
+//  Le texte a déjà reçu la mention « générée par IA » (`AnswerShareText`). Mac et iPad : une poignée de
+//  glisser (`AnswerDragHandle`) emporte ce même texte vers une autre app.
 //
 
 import SwiftUI
-#if os(iOS)
-import UIKit
-import UniformTypeIdentifiers
-#else
-import AppKit
-#endif
 
 struct AnswerActionsRow: View {
     /// Texte déjà marqué (`AnswerShareText.text`).
@@ -48,6 +43,9 @@ struct AnswerActionsRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("chat.shareAnswer")
+
+            // Glisser vers une autre app (Mac, iPad) : même texte marqué que Copier et Partager (mission G2).
+            AnswerDragHandle(text: text)
         }
         .foregroundStyle(.secondary)
         #if os(macOS)
@@ -56,21 +54,7 @@ struct AnswerActionsRow: View {
     }
 
     private func copy() {
-        #if os(iOS)
-        // Un seul élément à deux représentations : le texte marqué (principal) et la métadonnée
-        // « généré par IA » lisible par une machine (AI Act art. 50(2)).
-        UIPasteboard.general.setItems([[
-            UTType.utf8PlainText.identifier: text,
-            AIProvenanceMetadata.pasteboardType: AIProvenanceMetadata.jsonData(),
-        ]])
-        #else
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        NSPasteboard.general.setData(
-            AIProvenanceMetadata.jsonData(),
-            forType: NSPasteboard.PasteboardType(AIProvenanceMetadata.pasteboardType)
-        )
-        #endif
+        AnswerPasteboard.copy(text)
         justCopied = true
         Task {
             try? await Task.sleep(for: .seconds(1.5))

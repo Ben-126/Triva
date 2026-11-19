@@ -34,14 +34,17 @@ struct MLXModelSelectionView: View {
         horizontalSizeClass == .regular ? 640 : nil
     }
 
+    /// `pool` : le modèle MLX partagé de l'app (`TrivaSharedStores.mlxProviderPool`). L'essai y passe : même
+    /// file que les réponses des fenêtres, et jamais d'éviction d'un modèle qu'une fenêtre utilise.
     init(
+        pool: MLXProviderPool,
         capabilityProvider: any MLXDeviceCapabilityProviding = SystemMLXDeviceCapabilityProvider(),
         onValidated: @escaping (MLXModelCatalogEntry) -> Void
     ) {
         let loadedCatalog = (try? MLXModelCatalog.load()) ?? []
         catalog = loadedCatalog
         recommendation = MLXModelRecommender.recommend(from: loadedCatalog, for: capabilityProvider)
-        _coordinator = State(initialValue: MLXModelSelectionCoordinator(onValidated: onValidated))
+        _coordinator = State(initialValue: MLXModelSelectionCoordinator(pool: pool, onValidated: onValidated))
     }
 
     /// `NavigationStack` ET non une seconde feuille pour « Voir tous les modèles » : deux feuilles
@@ -387,5 +390,5 @@ struct MLXModelSelectionView: View {
 }
 
 #Preview {
-    MLXModelSelectionView { _ in }
+    MLXModelSelectionView(pool: TrivaSharedStores.preview().mlxProviderPool) { _ in }
 }

@@ -159,7 +159,7 @@ struct EngineStatusView: View {
             session.transcriptScroll.noteLastAnswer(newValue)
         }
         .sheet(isPresented: $bindableSession.isChoosingMLXModel) {
-            MLXModelSelectionView { chosen in
+            MLXModelSelectionView(pool: session.stores.mlxProviderPool) { chosen in
                 session.selectMLXModel(chosen)
                 session.isChoosingMLXModel = false
             }
@@ -201,6 +201,14 @@ struct EngineStatusView: View {
 
             if let plan = session.resolveOfflinePlan() {
                 OfflineStatusLine(text: plan.statusText)
+                    .frame(maxWidth: contentMaxWidth ?? .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+            }
+
+            if session.isWaitingForLocalModel {
+                // Pool MLX partagé (mission M3) : une autre fenêtre répond, celle-ci attend son tour.
+                LocalModelQueueLine()
                     .frame(maxWidth: contentMaxWidth ?? .infinity, alignment: .leading)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 20)

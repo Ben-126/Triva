@@ -357,7 +357,7 @@ struct AttachmentExtractorTextTests {
 @Suite("Extraction — types de fichiers")
 struct AttachmentExtractorTypeTests {
     @Test("Types refusés explicitement, avec leur extension", arguments: [
-        "rapport.docx", "photo.png", "page.html", "lettre.rtf", "archive.zip", "données.xml", "sans_extension",
+        "rapport.docx", "dessin.svg", "page.html", "lettre.rtf", "archive.zip", "données.xml", "sans_extension",
     ])
     func unsupportedTypes(fileName: String) {
         let fileExtension = (fileName as NSString).pathExtension.lowercased()
@@ -495,6 +495,7 @@ struct AttachmentExtractorMessageTests {
             .unsupportedFileType(fileExtension: "docx"), .fileUnreadable,
             .fileTooLarge(byteCount: 20_971_520, maximumByteCount: 10_485_760), .emptyFile, .binaryContent,
             .undecodableText, .invalidPDF, .passwordProtectedPDF, .noExtractableText(pageCount: 3),
+            .invalidImage, .imageTooLarge(byteCount: 60_000_000, maximumByteCount: 52_428_800), .imageDimensionsTooLarge, .noTextInImage,
         ]
 
         for error in errors {

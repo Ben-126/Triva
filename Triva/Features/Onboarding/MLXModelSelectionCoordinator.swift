@@ -12,6 +12,12 @@ import Foundation
 /// le modèle comme choix par défaut. S'applique à n'importe quel modèle du
 /// catalogue, pas seulement au modèle recommandé — un utilisateur qui choisit
 /// un autre modèle dans la liste complète passe par le même garde-fou.
+///
+/// L'ESSAI passe par le pool partagé (`MLXProviderPool`, chantier 2.2, mission G1) : ses questions attendent
+/// leur tour dans la même file que les réponses des fenêtres (une seule génération MLX à la fois), et
+/// l'abandonner ne retire JAMAIS un modèle que le pool utilise (voir `MLXProviderPool.discardTrialModel`).
+/// Le téléchargement, lui, reste hors de la file : il dure plusieurs minutes et ferait attendre toutes les
+/// fenêtres pour rien.
 @MainActor
 @Observable
 final class MLXModelSelectionCoordinator {
@@ -40,7 +46,10 @@ final class MLXModelSelectionCoordinator {
     private(set) var trialAnswers: [String] = []
     private(set) var isGeneratingTrialAnswer = false
 
-    private var provider: MLXProvider?
+    /// Modèle d'essai et identifiant du modèle qu'il porte (`nil` ensemble). Jamais déchargé directement :
+    /// toujours par le pool, qui sait si la fenêtre d'une autre conversation s'en sert.
+    private var provider: (any TrialLocalModel)?
+    private var providerModelID: String?
     private var downloadTask: Task<Void, Never>?
     /// Incrémenté à chaque abandon (annulation, changement de modèle) pour
     /// invalider toute Task de téléchargement encore en vol : `prepare()`
@@ -51,9 +60,27 @@ final class MLXModelSelectionCoordinator {
     private var downloadGeneration = 0
 
     private let onValidated: (MLXModelCatalogEntry) -> Void
+    private let pool: MLXProviderPool
+    private let makeModel: (MLXModelCatalogEntry) -> any TrialLocalModel
+    /// Identité de l'essai dans la file du pool (jamais confondue avec une fenêtre).
+    private let requesterID = UUID()
 
-    init(onValidated: @escaping (MLXModelCatalogEntry) -> Void) {
+    /// - Parameters:
+    ///   - pool: le pool partagé de l'app (`TrivaSharedStores.mlxProviderPool`).
+    ///   - makeModel: fabrique du modèle d'essai ; les tests y mettent un double.
+    init(
+        pool: MLXProviderPool,
+        makeModel: @escaping (MLXModelCatalogEntry) -> any TrialLocalModel = { MLXProvider(entry: $0) },
+        onValidated: @escaping (MLXModelCatalogEntry) -> Void
+    ) {
+        self.pool = pool
+        self.makeModel = makeModel
         self.onValidated = onValidated
+    }
+
+    /// Fenêtre fermée sans avoir choisi (« Fermer », geste de la feuille) : le modèle d'essai ne reste pas en mémoire.
+    isolated deinit {
+        discardProvider()
     }
 
     var nextTrialQuestion: String? {
@@ -78,12 +105,13 @@ final class MLXModelSelectionCoordinator {
         trialAnswers = []
         phase = .downloading(fractionCompleted: 0)
 
-        let provider = MLXProvider(entry: entry)
+        let provider = makeModel(entry)
         self.provider = provider
+        providerModelID = entry.id
 
         downloadTask = Task { [weak self] in
             do {
-                try await provider.prepare { progress in
+                try await provider.loadIntoMemory { progress in
                     Task { @MainActor in
                         // Un `prepare()` annulé continue de télécharger en
                         // tâche de fond côté module mlx-swift-lm (voir le
@@ -133,7 +161,8 @@ final class MLXModelSelectionCoordinator {
         }
 
         do {
-            let answer = try await provider.generate(prompt: question)
+            let generator = pool.trialGenerator(for: provider, requester: requesterID)
+            let answer = try await generator.generate(prompt: question)
             guard downloadGeneration == generation else { return }
             trialAnswers.append(answer)
         } catch {
@@ -142,10 +171,19 @@ final class MLXModelSelectionCoordinator {
         }
     }
 
+    /// Le modèle essayé devient le modèle de l'app. Le modèle d'essai, déjà chargé, est confié au pool APRÈS
+    /// l'écriture de la sélection (`onValidated`) : il devient le modèle résident si une fenêtre l'utilise
+    /// (aucun rechargement à la première question), sinon il est libéré. Il n'est jamais « annulé » ici :
+    /// `MLXProvider.cancel()` évincerait du cache les poids que l'app va utiliser.
     func validateAsDefault() {
         guard let selectedEntry else { return }
         phase = .ready
         onValidated(selectedEntry)
+        if let provider, let providerModelID {
+            pool.adoptTrialModel(provider, id: providerModelID)
+        }
+        provider = nil
+        providerModelID = nil
     }
 
     func chooseAnotherModel() {
@@ -162,14 +200,22 @@ final class MLXModelSelectionCoordinator {
     private func invalidateCurrentDownload() {
         downloadGeneration += 1
         downloadTask?.cancel()
-        Task { [provider] in
-            await provider?.cancel()
+        discardProvider()
+    }
+
+    /// Abandonne le modèle d'essai par le pool : il n'est déchargé que si le pool ne s'en sert pas (même
+    /// identifiant que le modèle résident ou en cours de chargement).
+    private func discardProvider() {
+        if let provider, let providerModelID {
+            pool.discardTrialModel(provider, id: providerModelID)
         }
+        provider = nil
+        providerModelID = nil
     }
 
     private func reset() {
         downloadTask = nil
-        provider = nil
+        discardProvider()
         selectedEntry = nil
         trialAnswers = []
         isGeneratingTrialAnswer = false

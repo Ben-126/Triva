@@ -100,6 +100,22 @@ final class TrivaRootCoordinator {
     /// documentation de `DiscoverViewModel`).
     let discover: DiscoverViewModel
 
+    /// Ce que montre cette fenêtre, pour `WindowGroup(for:)` (chantier 2.2, « une recherche = une
+    /// fenêtre »). Suit la session dans les deux sens : voir `TrivaRootCoordinator+Windows.swift`.
+    /// Jamais de texte de question ici, seulement des identifiants.
+    var windowTarget: TrivaWindowTarget = .freshSearch()
+
+    /// Édition > « Rechercher dans l'historique » (⌘F) demandé : la Bibliothèque met le curseur dans son champ
+    /// de recherche puis remet ce drapeau à `false` (voir `TrivaRootCoordinator+Commands.swift`).
+    var isHistorySearchRequested = false
+
+    /// Titre de la fenêtre de recherche : celui de la conversation affichée, « Nouvelle recherche » sinon.
+    var searchTitle = TrivaRootCoordinator.newSearchTitle
+
+    /// Identité de CETTE fenêtre dans le registre des conversations affichées.
+    @ObservationIgnored let windowID = UUID()
+    @ObservationIgnored let windowRegistry: WindowConversationRegistry
+
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "Triva",
         category: "TrivaRootCoordinator"
@@ -109,9 +125,21 @@ final class TrivaRootCoordinator {
     ///   - engine: moteur de la fenêtre, figé dans la session (bug 10).
     ///   - stores: instances UNIQUES de l'app, jamais recréées ici.
     ///   - discoverFetcher: lecteur de flux de Découvrir ; les tests y mettent un faux (aucun réseau).
-    init(engine: AIEngineOption, stores: TrivaSharedStores, discoverFetcher: any FeedFetching = HTTPFeedFetcher()) {
+    ///   - windowRegistry: registre des conversations affichées par les fenêtres de l'app ; les tests passent le leur.
+    init(
+        engine: AIEngineOption,
+        stores: TrivaSharedStores,
+        discoverFetcher: any FeedFetching = HTTPFeedFetcher(),
+        windowRegistry: WindowConversationRegistry = .shared
+    ) {
+        self.windowRegistry = windowRegistry
         let session = SearchSession(engine: engine, stores: stores)
         self.session = session
+        // Une réponse qui continue en arrière-plan écrit encore dans SA conversation : le registre la
+        // compte comme tenue par cette fenêtre (voir `WindowConversationRegistry`).
+        windowRegistry.setBackgroundConversation({ [weak session] in
+            session?.chatViewModel?.backgroundExchange?.conversationID
+        }, in: windowID)
         // Découvrir lit des flux RSS/Atom publics (plus de SearXNG : le budget des
         // instances publiques ne suffisait pas, mesure T1). Il ne dépend plus de la
         // liste d'instances, seulement de la session pour savoir quand elle se termine.
@@ -152,6 +180,7 @@ final class TrivaRootCoordinator {
         session.ensureChatViewModel()
         session.chatViewModel?.loadConversation(id: id)
         selection = .search
+        syncWindowTarget()
     }
 
     /// Découvrir > « Chercher dans Triva » : remplit la barre de saisie de la
@@ -215,6 +244,8 @@ final class TrivaRootCoordinator {
     /// lire. L'erreur est journalisée, et le prochain envoi la remontera dans
     /// le chat s'il échoue à son tour (`persistenceErrorDescription`).
     func historyDidChange() {
+        // Quoi qu'il arrive ci-dessous (fil vidé, titre renommé), la cible de la fenêtre doit suivre.
+        defer { syncWindowTarget(refreshTitle: true) }
         guard let chatViewModel = session.chatViewModel,
               let conversationID = chatViewModel.currentConversationID else { return }
         let stillExists: Bool
@@ -250,6 +281,11 @@ final class TrivaRootCoordinator {
         didApplyInitialSidebar = true
         columnVisibility = .detailOnly
         return true
+    }
+
+    /// Fenêtre fermée ou coquille reconstruite : elle n'affiche plus rien.
+    isolated deinit {
+        windowRegistry.remove(window: windowID)
     }
 
     // MARK: - Règles pures

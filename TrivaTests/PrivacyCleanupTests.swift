@@ -234,6 +234,25 @@ struct LocalDataEraserTests {
         #expect(discover.clearCount == 1)
     }
 
+    @Test("Tout effacer vide aussi les copies temporaires de pièces jointes (dossier donné), et rien d'autre sans dossier")
+    func erasesAttachmentCopies() async throws {
+        let (stores, _) = try makeDictionaryStores()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("EraserVault-\(UUID().uuidString)", isDirectory: true)
+        let copy = root.appendingPathComponent("session/id/notes.txt")
+        try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("document privé".utf8).write(to: copy)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // Sans dossier donné (le cas des tests) : le coffre n'est pas touché.
+        try await stores.makeLocalDataEraser(urlCache: URLCache(memoryCapacity: 0, diskCapacity: 0)).eraseAll()
+        #expect(FileManager.default.fileExists(atPath: copy.path))
+
+        try await stores.makeLocalDataEraser(
+            urlCache: URLCache(memoryCapacity: 0, diskCapacity: 0), attachmentVaultRoot: root
+        ).eraseAll()
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
     @Test("L'effacement incrémente la révision de l'historique (le chat ouvert se vide)")
     func bumpsHistoryRevision() async throws {
         let (stores, _) = try makeDictionaryStores()

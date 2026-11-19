@@ -289,6 +289,8 @@ struct CitationSourceCard: View {
             }
         }
         .accessibilityElement(children: .combine)
+        // Glisser la source vers Safari, Notes, le bureau (Mac, iPad) : son adresse web (mission G2).
+        .sourceDraggable(SourceDragPayload.url(for: selection.source))
     }
 }
 

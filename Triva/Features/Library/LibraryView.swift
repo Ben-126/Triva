@@ -169,6 +169,10 @@ struct LibraryView: View {
     @State private var excerptCache = AnswerExcerptCache()
     @State private var pendingDeletion: LibraryConversationSummary?
     @State private var deletionErrorMessage: String?
+    /// Édition > Rechercher dans l'historique (⌘F) : le coordinateur lève ce drapeau, la vue met le curseur dans
+    /// son champ de recherche puis le rabaisse. Constant faux dans les aperçus.
+    private let focusSearchRequest: Binding<Bool>
+    @FocusState private var isSearchFocused: Bool
 
     @Environment(\.calendar) private var calendar
 
@@ -183,9 +187,11 @@ struct LibraryView: View {
     init(
         store: ChatHistoryStore,
         onOpenConversation: (@MainActor (UUID) -> Void)? = nil,
-        onConversationDeleted: @escaping @MainActor (UUID) -> Void = { _ in }
+        onConversationDeleted: @escaping @MainActor (UUID) -> Void = { _ in },
+        focusSearchRequest: Binding<Bool> = .constant(false)
     ) {
         _store = State(initialValue: store)
+        self.focusSearchRequest = focusSearchRequest
         self.onOpenConversation = onOpenConversation
         self.onConversationDeleted = onConversationDeleted
     }
@@ -211,6 +217,14 @@ struct LibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .searchable(text: $query, prompt: Text("Rechercher dans l'historique"))
+            .searchFocused($isSearchFocused)
+            // Un court délai : à l'arrivée sur la Bibliothèque, le champ n'existe pas encore au premier passage.
+            .task(id: focusSearchRequest.wrappedValue) {
+                guard focusSearchRequest.wrappedValue else { return }
+                try? await Task.sleep(for: .milliseconds(150))
+                isSearchFocused = true
+                focusSearchRequest.wrappedValue = false
+            }
             .task(id: LibraryLoadKey(query: query, revision: store.revision, retry: retryCount)) {
                 await reload()
             }
@@ -353,6 +367,9 @@ private struct LibraryContentView: View {
     let onRequestDeletion: @MainActor (LibraryConversationSummary) -> Void
     let onRetry: @MainActor () -> Void
 
+    /// `nil` sur iPhone (une seule fenêtre) : l'entrée « Ouvrir dans une nouvelle fenêtre » n'existe alors pas.
+    @Environment(\.openConversationInNewWindow) private var openInNewWindow
+
     var body: some View {
         List {
             if let snapshot {
@@ -391,6 +408,12 @@ private struct LibraryContentView: View {
                 deleteButton(for: conversation)
             }
             .contextMenu {
+                if onOpen != nil, let openInNewWindow {
+                    Button(NewWindowMenuLabel.title, systemImage: NewWindowMenuLabel.systemImage) {
+                        openInNewWindow(conversation.id)
+                    }
+                    Divider()
+                }
                 deleteButton(for: conversation)
             }
     }

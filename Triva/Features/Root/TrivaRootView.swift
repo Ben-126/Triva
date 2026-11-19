@@ -118,16 +118,30 @@ struct TrivaRootView: View {
     /// quelqu'un qui avait déjà choisi un moteur avant cette version.
     @AppStorage(AIUseNoticeStore.defaultsKey) private var aiNoticeAcknowledged = false
 
+    /// Ce que montre la fenêtre (chantier 2.2) : valeur de `WindowGroup(for:)`, restaurée au relancement.
+    /// La coquille la tient à jour (conversation affichée) ; aperçus et tests passent une valeur constante.
+    private let windowTarget: Binding<TrivaWindowTarget>
+
+    /// Cible à restaurer, remise UNE seule fois à la première coquille de la fenêtre (voir `WindowRestoration`).
+    @State private var restoration: WindowRestoration
+
     /// Pas de valeur par défaut pour `stores` : seul `TrivaApp` crée les
     /// instances de l'app, les aperçus passent `TrivaSharedStores.preview()`.
-    init(stores: TrivaSharedStores) {
+    init(
+        stores: TrivaSharedStores,
+        windowTarget: Binding<TrivaWindowTarget> = .constant(TrivaWindowTarget.freshSearch())
+    ) {
         self.stores = stores
+        self.windowTarget = windowTarget
+        _restoration = State(initialValue: WindowRestoration(initial: windowTarget.wrappedValue))
     }
 
     var body: some View {
         root
             // Tous les liens web de la fenêtre s'ouvrent dans le navigateur intégré (mission C3).
             .opensLinksInApp()
+            // Mac : cette fenêtre ouvre les recherches demandées par le Service, le Dock ou la barre des menus.
+            .opensExternalSearchWindows()
             // Posé AUTOUR de la coquille, hors de son `.id(selected)` : la
             // présentation survit à la reconstruction qu'un nouveau moteur
             // déclenche, au lieu d'être arrachée avec l'ancienne identité.
@@ -149,7 +163,9 @@ struct TrivaRootView: View {
             TrivaRootShell(
                 engine: selected,
                 onChangeEngine: { isChoosingEngine = true },
-                stores: stores
+                stores: stores,
+                windowTarget: windowTarget,
+                restoration: restoration
             )
             // Identité liée au moteur : un changement de moteur — depuis
             // l'écran de choix, les Réglages de n'importe quelle fenêtre ou la
@@ -266,6 +282,9 @@ private extension View {
 private struct TrivaRootShell: View {
     let onChangeEngine: () -> Void
     let stores: TrivaSharedStores
+    /// Valeur de la fenêtre (`WindowGroup(for:)`) et cible de restauration à consommer, voir `TrivaRootView`.
+    let windowTarget: Binding<TrivaWindowTarget>
+    let restoration: WindowRestoration
 
     /// Un seul état pour toute la coquille : destination, session et
     /// Découvrir changent ENSEMBLE lors d'une action entre espaces (ouvrir
@@ -280,6 +299,13 @@ private struct TrivaRootShell: View {
     @State private var coordinator: TrivaRootCoordinator
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Plusieurs fenêtres possibles : vrai sur Mac et sur iPad (clé multi-scènes), faux sur iPhone, où
+    /// aucune entrée « nouvelle fenêtre » ne doit apparaître.
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
+    @Environment(\.openWindow) private var openWindow
+    /// Questions venues de l'extérieur (Service, barre des menus) : voir `receiveExternalQuery`.
+    @Environment(\.externalQueryInbox) private var externalQueryInbox
 
     /// Charnière imposée par l'extérieur (les aperçus du Duo déplié forcent `\.trivaHasHinge`). Sur appareil, la
     /// valeur est faux ici : c'est `observesDeviceHinge` qui renseigne le coordinateur.
@@ -303,9 +329,17 @@ private struct TrivaRootShell: View {
     /// coûtent rien (init sans effet de bord) : c'est le `.id(selected)` posé
     /// par `TrivaRootView` qui garantit qu'un autre moteur produit une autre
     /// identité, donc une autre session.
-    init(engine: AIEngineOption, onChangeEngine: @escaping () -> Void, stores: TrivaSharedStores) {
+    init(
+        engine: AIEngineOption,
+        onChangeEngine: @escaping () -> Void,
+        stores: TrivaSharedStores,
+        windowTarget: Binding<TrivaWindowTarget>,
+        restoration: WindowRestoration
+    ) {
         self.onChangeEngine = onChangeEngine
         self.stores = stores
+        self.windowTarget = windowTarget
+        self.restoration = restoration
         _coordinator = State(initialValue: TrivaRootCoordinator(engine: engine, stores: stores))
     }
 
@@ -347,6 +381,20 @@ private struct TrivaRootShell: View {
         .onChange(of: stores.chatHistory.revision) {
             coordinator.historyDidChange()
         }
+        // « Une recherche = une fenêtre » (chantier 2.2) : la valeur de la fenêtre suit le fil affiché.
+        .onAppear { adoptWindowTarget() }
+        .onDisappear { coordinator.windowRegistry.remove(window: coordinator.windowID) }
+        .onChange(of: coordinator.session.chatViewModel?.currentConversationID) {
+            coordinator.syncWindowTarget()
+        }
+        .onChange(of: coordinator.windowTarget) { _, newTarget in
+            publish(newTarget)
+        }
+        .environment(\.openConversationInNewWindow, newWindowAction)
+        // La barre de menus (`TrivaCommands`) agit sur la fenêtre au premier plan : elle lit ce coordinateur.
+        .focusedSceneValue(coordinator)
+        // Glisser-déposer sur toute la fenêtre : fichiers, texte, adresses (chantier 2.2, M5).
+        .acceptsSearchDrops(on: coordinator)
         #if DEBUG
         .onAppear {
             Self.logger.debug("Coquille apparue, coordinateur \(ObjectIdentifier(coordinator).hashValue, privacy: .public)")
@@ -357,6 +405,43 @@ private struct TrivaRootShell: View {
             #if DEBUG
             Self.logger.debug("Classe de largeur : \(String(describing: newValue), privacy: .public), coordinateur \(ObjectIdentifier(coordinator).hashValue, privacy: .public)")
             #endif
+        }
+    }
+
+    // MARK: Fenêtres (chantier 2.2)
+
+    /// Première apparition : restaure la cible mémorisée (une seule fois par fenêtre), puis écrit dans la
+    /// valeur de la fenêtre ce que celle-ci affiche vraiment. Une coquille reconstruite par un changement de
+    /// moteur ne reçoit plus de cible : elle repart à zéro et la valeur de la fenêtre le dit.
+    private func adoptWindowTarget() {
+        if let initial = restoration.take() {
+            coordinator.restoreWindowTarget(initial)
+        } else {
+            coordinator.syncWindowTarget()
+        }
+        coordinator.receiveExternalQuery(from: externalQueryInbox)
+        publish(coordinator.windowTarget)
+    }
+
+    /// N'écrit que si la valeur change : chaque écriture est enregistrée par SwiftUI pour la restauration.
+    private func publish(_ target: TrivaWindowTarget) {
+        guard windowTarget.wrappedValue != target else { return }
+        windowTarget.wrappedValue = target
+    }
+
+    /// `nil` sur iPhone : l'entrée de menu n'existe alors pas.
+    private var newWindowAction: OpenConversationInNewWindowAction? {
+        guard supportsMultipleWindows else { return nil }
+        return OpenConversationInNewWindowAction(owner: coordinator) { id in
+            openWindow(id: TrivaWindowTarget.sceneID, value: TrivaWindowTarget.conversation(id))
+        }
+    }
+
+    /// Bibliothèque et favoris : une conversation déjà affichée dans une autre fenêtre est ramenée au
+    /// premier plan au lieu d'être chargée une seconde fois.
+    private func openFromHistory(_ id: UUID) {
+        coordinator.openConversationFromHistory(id: id, canUseOtherWindows: supportsMultipleWindows) { id in
+            openWindow(id: TrivaWindowTarget.sceneID, value: TrivaWindowTarget.conversation(id))
         }
     }
 
@@ -451,7 +536,8 @@ private struct TrivaRootShell: View {
                     onOpenSettings: { coordinator.showSettings() },
                     session: coordinator.session
                 )
-                .navigationTitle(destination.title)
+                // Mac et iPad : titre de la fenêtre = conversation affichée. iPhone : « Recherche », comme avant.
+                .navigationTitle(supportsMultipleWindows ? coordinator.searchTitle : destination.title)
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
@@ -468,14 +554,15 @@ private struct TrivaRootShell: View {
         case .library:
             LibraryView(
                 store: stores.chatHistory,
-                onOpenConversation: { coordinator.openConversation(id: $0) },
-                onConversationDeleted: { coordinator.conversationWasDeleted(id: $0) }
+                onOpenConversation: { openFromHistory($0) },
+                onConversationDeleted: { coordinator.conversationWasDeleted(id: $0) },
+                focusSearchRequest: $coordinator.isHistorySearchRequested
             )
         case .favorites:
             FavoritesView(
                 store: stores.favorites,
                 historyStore: stores.chatHistory,
-                onOpenConversation: { coordinator.openConversation(id: $0) },
+                onOpenConversation: { openFromHistory($0) },
                 navigationPath: $coordinator.favoritesPath,
                 selection: $coordinator.favoritesSelection
             )
@@ -494,9 +581,12 @@ private struct TrivaRootShell: View {
                 customProviderStore: stores.customProviders,
                 cloudConsentStore: stores.cloudConsent,
                 instanceStore: stores.searchInstances,
-                localDataEraser: stores.makeLocalDataEraser(beforeErase: { [coordinator] in
-                    await coordinator.session.chatViewModel?.stopAndWait()
-                }),
+                localDataEraser: stores.makeLocalDataEraser(
+                    beforeErase: { [coordinator] in
+                        await coordinator.session.chatViewModel?.stopAndWait()
+                    },
+                    attachmentVaultRoot: AttachmentFileVault.defaultRootDirectory
+                ),
                 navigationPath: $coordinator.settingsPath,
                 presentedSheet: $coordinator.settingsSheet,
                 pendingEngine: $coordinator.settingsPendingEngine

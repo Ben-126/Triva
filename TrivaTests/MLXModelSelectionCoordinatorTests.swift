@@ -9,19 +9,20 @@ import Foundation
 import Testing
 @testable import Triva
 
-/// `select()` construit directement un `MLXProvider(entry:)` (pas
-/// d'injection de dépendance), donc les chemins de téléchargement et
-/// d'essai ne sont PAS exerçables ici sans lancer un vrai téléchargement
-/// réseau — hors de portée d'un test unitaire. Ces tests couvrent l'état
-/// initial et les transitions atteignables sans provider actif ; la machine
-/// à états `downloading` → `trial` → `ready` reste non couverte, ce qui
-/// nécessiterait une seam de DI (V1).
+/// Ces tests couvrent l'état initial et les transitions atteignables sans modèle d'essai actif. Les chemins
+/// de téléchargement, d'essai, d'annulation et de validation (par le pool, avec des doubles) sont dans
+/// `MLXModelTrialPoolTests`.
+@MainActor
+private func makeCoordinatorTestPool() -> MLXProviderPool {
+    MLXProviderPool(selection: makePoolSelection(selected: nil))
+}
+
 @MainActor
 @Suite("MLXModelSelectionCoordinator")
 struct MLXModelSelectionCoordinatorTests {
     @Test("État initial : idle, sans modèle sélectionné, première question d'essai")
     func initialState() {
-        let coordinator = MLXModelSelectionCoordinator { _ in }
+        let coordinator = MLXModelSelectionCoordinator(pool: makeCoordinatorTestPool()) { _ in }
 
         #expect(coordinator.phase == .idle)
         #expect(coordinator.selectedEntry == nil)
@@ -39,7 +40,7 @@ struct MLXModelSelectionCoordinatorTests {
     @Test("validateAsDefault() sans sélection ne fait rien : ni callback, ni changement de phase")
     func validateAsDefaultWithoutSelectionIsNoOp() {
         var validatedEntry: MLXModelCatalogEntry?
-        let coordinator = MLXModelSelectionCoordinator { entry in
+        let coordinator = MLXModelSelectionCoordinator(pool: makeCoordinatorTestPool()) { entry in
             validatedEntry = entry
         }
 
@@ -51,7 +52,7 @@ struct MLXModelSelectionCoordinatorTests {
 
     @Test("cancelDownload() sur un coordinateur neuf reste idempotent")
     func cancelDownloadOnFreshCoordinatorIsIdempotent() {
-        let coordinator = MLXModelSelectionCoordinator { _ in }
+        let coordinator = MLXModelSelectionCoordinator(pool: makeCoordinatorTestPool()) { _ in }
 
         coordinator.cancelDownload()
 
@@ -62,7 +63,7 @@ struct MLXModelSelectionCoordinatorTests {
 
     @Test("chooseAnotherModel() sur un coordinateur neuf reste idempotent")
     func chooseAnotherModelOnFreshCoordinatorIsIdempotent() {
-        let coordinator = MLXModelSelectionCoordinator { _ in }
+        let coordinator = MLXModelSelectionCoordinator(pool: makeCoordinatorTestPool()) { _ in }
 
         coordinator.chooseAnotherModel()
 

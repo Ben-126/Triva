@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -56,6 +57,7 @@ nonisolated enum FileAttachmentRules {
             return [UTType("net.daringfireball.markdown"), UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown")].compactMap { $0 }
         case .csv: return [.commaSeparatedText, .tabSeparatedText]
         case .json: return [.json]
+        case .image: return AttachmentKind.imageTypes
         }
     }
 
@@ -113,8 +115,8 @@ nonisolated struct FileAttachmentTruncationNote: Sendable, Equatable {
 /// (décision de Ben, 2026-11-17) ; les autres PDF à copie interdite sont lus sans message.
 nonisolated enum FileAttachmentPresentation {
     static let pickerAccessibilityLabel = "Joindre un fichier"
-    static let pickerAccessibilityHint = "PDF, texte, Markdown, CSV ou JSON."
-    static let pickerHelpText = "Joindre un fichier : PDF, texte, Markdown, CSV ou JSON"
+    static let pickerAccessibilityHint = "PDF, image, texte, Markdown, CSV ou JSON."
+    static let pickerHelpText = "Joindre un fichier : PDF, image, texte, Markdown, CSV ou JSON"
     static let dialogConfirmationLabel = "Joindre"
     static let trayAccessibilityLabel = "Pièces jointes"
     static let dismissNoticeLabel = "Masquer ce message"
@@ -136,7 +138,7 @@ nonisolated enum FileAttachmentPresentation {
     static func dialogMessage(remainingSlots: Int) -> String {
         let slots = max(1, remainingSlots)
         let count = slots == 1 ? "un document" : "jusqu'à \(slots) documents"
-        return "Choisis \(count) : PDF, texte, Markdown, CSV ou JSON."
+        return "Choisis \(count) : PDF, image, texte, Markdown, CSV ou JSON."
     }
 
     /// Sans accord en nombre : la ligne au-dessus nomme le ou les fichiers.
@@ -210,6 +212,7 @@ nonisolated enum FileAttachmentPresentation {
         case .markdown: return "doc.text"
         case .csv: return "tablecells"
         case .json: return "curlybraces"
+        case .image: return "photo"
         }
     }
 
@@ -283,6 +286,8 @@ nonisolated struct FileAttachmentNotice: Sendable, Equatable, Identifiable {
 nonisolated private struct QueuedFile: Sendable {
     let id = UUID()
     let url: URL
+    /// Fichier reçu par glisser-déposer, déjà copié dans les dépôts du coffre (déplacé, pas recopié).
+    var isDeposit = false
     var fileName: String { url.lastPathComponent }
 }
 
@@ -318,15 +323,35 @@ final class FileAttachmentController {
     let maxAttachmentCount: Int
     private(set) var pendingAttachments: [PendingFileAttachment] = []
     private(set) var notices: [FileAttachmentNotice] = []
+    /// Sélecteur de fichiers présenté : posé par le bouton trombone ET par le menu Fichier > « Joindre des
+    /// fichiers… » (⇧⌘A), qui passent tous deux par `requestPicker()`. Ici et non dans la vue : le menu n'a
+    /// aucune vue sous la main.
+    var isPickerPresented = false
+    /// Copies conservées par le coffre, par pièce jointe : de quoi proposer le Coup d'œil (chantier 2.2, M5).
+    /// Absent pour un fichier trop gros ou dont la copie a échoué.
+    private(set) var storedFileURLs: [UUID: URL] = [:]
 
+    @ObservationIgnored private let vault: AttachmentFileVault
     @ObservationIgnored private var queue: [QueuedFile] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var currentFileID: UUID?
     @ObservationIgnored private var discardsCurrentResult = false
 
-    init(store: AttachmentStore, maxAttachmentCount: Int = FileAttachmentRules.maxAttachmentCount) {
+    init(
+        store: AttachmentStore,
+        maxAttachmentCount: Int = FileAttachmentRules.maxAttachmentCount,
+        vault: AttachmentFileVault = AttachmentFileVault()
+    ) {
         self.store = store
         self.maxAttachmentCount = max(1, maxAttachmentCount)
+        self.vault = vault
+    }
+
+    /// Fenêtre fermée : les copies de documents de l'utilisateur ne doivent pas lui survivre, y compris les dépôts
+    /// encore en file, jamais lus.
+    deinit {
+        Self.discardDeposits(in: queue, rootDirectory: vault.rootDirectory)
+        vault.removeAll()
     }
 
     var attachments: [IndexedAttachment] { store.attachments }
@@ -349,6 +374,15 @@ final class FileAttachmentController {
         show(FileAttachmentNotice(fileNames: [], message: message))
     }
 
+    /// Ouvre le sélecteur, ou explique pourquoi on ne peut plus rien joindre (même règle pour le bouton et le menu).
+    func requestPicker() {
+        if canAttachMore {
+            isPickerPresented = true
+        } else {
+            explainAttachmentLimit()
+        }
+    }
+
     /// Résultat brut de `.fileImporter`.
     func handlePickerResult(_ result: Result<[URL], any Error>) {
         switch result {
@@ -362,11 +396,16 @@ final class FileAttachmentController {
     }
 
     /// Met des fichiers en file ; les messages précédents, caducs, sont effacés.
-    func enqueue(_ urls: [URL]) {
+    /// - Parameter areDeposits : `true` pour des fichiers reçus par glisser-déposer, déjà copiés dans les dépôts du
+    ///   coffre : ceux qui ne sont pas retenus (doublon, excédent) y sont effacés.
+    func enqueue(_ urls: [URL], areDeposits: Bool = false) {
         guard !urls.isEmpty else { return }
         let existingNames = store.attachments.map(\.fileName) + pendingAttachments.map(\.fileName)
         let plan = FileAttachmentRules.plan(for: urls, existingFileNames: existingNames, availableSlots: remainingSlots)
-        let files = plan.accepted.map(QueuedFile.init(url:))
+        let files = plan.accepted.map { QueuedFile(url: $0, isDeposit: areDeposits) }
+        if areDeposits {
+            urls.filter { !plan.accepted.contains($0) }.forEach { AttachmentFileVault.discardDeposit($0, rootDirectory: vault.rootDirectory) }
+        }
         notices = []
         if !plan.duplicateFileNames.isEmpty {
             show(FileAttachmentNotice(fileNames: plan.duplicateFileNames, message: FileAttachmentPresentation.alreadyAttachedMessage))
@@ -379,11 +418,28 @@ final class FileAttachmentController {
         startWorkerIfNeeded()
     }
 
-    func removeAttachment(id: UUID) { store.remove(id: id) }
+    func removeAttachment(id: UUID) {
+        store.remove(id: id)
+        vault.remove(storedURL: storedFileURLs.removeValue(forKey: id))
+    }
+
+    /// Message sous les capsules pour un dépôt refusé (type inconnu, trop gros…). Texte fermé, sans nom de fichier.
+    func reportRefusal(_ message: String) {
+        show(FileAttachmentNotice(fileNames: [], message: message))
+    }
+
+    /// Copie à montrer au Coup d'œil, tant qu'elle existe encore sur le disque (le système peut vider le
+    /// dossier temporaire d'une app restée longtemps ouverte).
+    func previewURL(for attachmentID: UUID) -> URL? {
+        guard let url = storedFileURLs[attachmentID],
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
     func dismissNotice(id: UUID) { notices.removeAll { $0.id == id } }
 
     func removePendingAttachment(id: UUID) {
         pendingAttachments.removeAll { $0.id == id }
+        Self.discardDeposits(in: queue.filter { $0.id == id }, rootDirectory: vault.rootDirectory)
         queue.removeAll { $0.id == id }
         if currentFileID == id { discardsCurrentResult = true }
     }
@@ -395,11 +451,22 @@ final class FileAttachmentController {
     /// fichier en attente ne démarre après coup. La lecture en cours échoue en
     /// `CancellationError` (génération du store), sans message.
     func removeAll() {
+        Self.discardDeposits(in: queue, rootDirectory: vault.rootDirectory)
         queue.removeAll()
         pendingAttachments.removeAll()
         notices = []
         if currentFileID != nil { discardsCurrentResult = true }
         store.removeAll()
+        storedFileURLs = [:]
+        vault.removeAll()
+    }
+
+    /// Efface les copies des dépôts qui ne seront jamais lus (retirés, file vidée, budget épuisé, fenêtre fermée) :
+    /// des documents de l'utilisateur ne doivent pas attendre le prochain lancement dans `tmp`.
+    nonisolated private static func discardDeposits(in files: [QueuedFile], rootDirectory: URL) {
+        for file in files where file.isDeposit {
+            AttachmentFileVault.discardDeposit(file.url, rootDirectory: rootDirectory)
+        }
     }
 
     // MARK: File de lecture
@@ -428,18 +495,25 @@ final class FileAttachmentController {
         currentFileID = file.id
         discardsCurrentResult = false
         defer { currentFileID = nil }
+        // La lecture se fait sur la copie du coffre (hors du main actor) : le fichier d'origine n'est ouvert qu'une fois.
+        let placement = await vault.place(file.url, isDeposit: file.isDeposit)
         do {
-            let attachment = try await store.attach(fileAt: file.url)
+            let attachment = try await store.attach(fileAt: placement.readURL)
             pendingAttachments.removeAll { $0.id == file.id }
             if discardsCurrentResult {
                 store.remove(id: attachment.id)
+                vault.remove(storedURL: placement.storedURL)
             } else {
+                if let storedURL = placement.storedURL { storedFileURLs[attachment.id] = storedURL }
                 announce(FileAttachmentPresentation.attachedAnnouncement(for: attachment))
             }
         } catch {
             pendingAttachments.removeAll { $0.id == file.id }
+            vault.remove(storedURL: placement.storedURL)
             handleFailure(error, for: file)
         }
+        // Dépôt que le coffre n'a pas pu adopter : lu en place, puis effacé (jamais laissé dans les dépôts).
+        if file.isDeposit, placement.storedURL == nil { AttachmentFileVault.discardDeposit(file.url, rootDirectory: vault.rootDirectory) }
     }
 
     /// Fichier retiré pendant sa lecture, ou conversation vidée : son échec ne
@@ -451,6 +525,7 @@ final class FileAttachmentController {
         if let storeError = error as? AttachmentStoreError, storeError == .characterBudgetExhausted {
             let abandoned = queue
             let abandonedIDs = Set(abandoned.map(\.id))
+            Self.discardDeposits(in: abandoned, rootDirectory: vault.rootDirectory)
             queue.removeAll()
             pendingAttachments.removeAll { abandonedIDs.contains($0.id) }
             show(FileAttachmentNotice(fileNames: [file.fileName] + abandoned.map(\.fileName), message: storeError.userFacingMessage))
@@ -476,17 +551,16 @@ final class FileAttachmentController {
 /// - À poser DANS le `GlassEffectContainer` de la barre, frère du champ et du
 ///   bouton d'envoi. Les capsules sont une autre vue (`FileAttachmentTray`).
 /// - `.fileImporter` plutôt que le `PhotosPicker` évoqué par le plan :
-///   l'extracteur ne lit aucune image. La borne s'applique après le choix.
+///   l'extracteur lit aussi le texte des images, en local (Vision, M6). La borne s'applique après le choix.
 /// - Limite atteinte : le bouton reste actif et en explique la raison sous
 ///   les capsules ; grisé, il ne dirait rien sur iPhone.
 /// - La closure de `.fileImporter`, non `@Sendable` et formée dans `body`,
 ///   hérite du main actor : elle se réduit à un appel synchrone.
 struct FileAttachmentPicker: View {
     let controller: FileAttachmentController
-    @State private var isImporterPresented = false
 
     var body: some View {
-        Button(action: openImporter) {
+        Button(action: controller.requestPicker) {
             Image(systemName: "paperclip")
         }
         .buttonStyle(.glass)
@@ -496,7 +570,7 @@ struct FileAttachmentPicker: View {
         .help(FileAttachmentPresentation.pickerHelpText)
         #endif
         .fileImporter(
-            isPresented: $isImporterPresented,
+            isPresented: Bindable(controller).isPickerPresented,
             allowedContentTypes: FileAttachmentRules.allowedContentTypes,
             allowsMultipleSelection: true
         ) { result in
@@ -504,14 +578,6 @@ struct FileAttachmentPicker: View {
         }
         .fileDialogMessage(FileAttachmentPresentation.dialogMessage(remainingSlots: controller.remainingSlots))
         .fileDialogConfirmationLabel(FileAttachmentPresentation.dialogConfirmationLabel)
-    }
-
-    private func openImporter() {
-        if controller.canAttachMore {
-            isImporterPresented = true
-        } else {
-            controller.explainAttachmentLimit()
-        }
     }
 }
 
@@ -528,6 +594,8 @@ struct FileAttachmentPicker: View {
 ///   molette d'une souris ne faisant défiler que verticalement.
 struct FileAttachmentTray: View {
     let controller: FileAttachmentController
+    /// Pièce jointe montrée par Coup d'œil (Quick Look), chantier 2.2 (M5).
+    @State private var previewedURL: URL?
 
     var body: some View {
         if !controller.isEmpty {
@@ -544,6 +612,7 @@ struct FileAttachmentTray: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(FileAttachmentPresentation.trayAccessibilityLabel)
+            .quickLookPreview($previewedURL)
         }
     }
 
@@ -567,12 +636,17 @@ struct FileAttachmentTray: View {
     @ViewBuilder
     private var capsuleItems: some View {
         ForEach(controller.attachments) { attachment in
-            FileCapsule(fileName: attachment.fileName, kind: attachment.kind, note: FileAttachmentPresentation.truncationNote(for: attachment)) {
+            FileCapsule(
+                fileName: attachment.fileName, kind: attachment.kind,
+                note: FileAttachmentPresentation.truncationNote(for: attachment),
+                canPreview: controller.storedFileURLs[attachment.id] != nil,
+                onPreview: { previewedURL = controller.previewURL(for: attachment.id) }
+            ) {
                 controller.removeAttachment(id: attachment.id)
             }
         }
         ForEach(controller.pendingAttachments) { pending in
-            FileCapsule(fileName: pending.fileName, kind: nil, note: nil) {
+            FileCapsule(fileName: pending.fileName, kind: nil, note: nil, canPreview: false, onPreview: {}) {
                 controller.removePendingAttachment(id: pending.id)
             }
         }
@@ -589,6 +663,9 @@ private struct FileCapsule: View {
     let fileName: String
     let kind: AttachmentKind?
     let note: FileAttachmentTruncationNote?
+    /// Une copie du fichier existe : Coup d'œil proposé (menu contextuel, barre d'espace sur Mac).
+    let canPreview: Bool
+    let onPreview: () -> Void
     let onRemove: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -637,6 +714,7 @@ private struct FileCapsule: View {
         #if os(macOS)
         .help(accessibilityLabel)
         #endif
+        .attachmentPreviewActions(canPreview: canPreview, onPreview: onPreview)
     }
 
     @ViewBuilder

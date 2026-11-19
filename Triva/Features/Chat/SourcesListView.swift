@@ -143,6 +143,8 @@ struct SourcesListView: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(sources.enumerated()), id: \.offset) { offset, source in
                 sourceRow(source, number: offset + 1)
+                    // « Coup d'œil » (chantier 2.2, M5) : la copie d'une pièce jointe, ou la page dans le navigateur intégré.
+                    .sourcePreviewAction(for: source)
             }
         }
     }
@@ -220,6 +222,8 @@ struct SourcesListView: View {
                     ))
                     .accessibilityAddTraits(.isLink)
                     .accessibilityIdentifier("source.link")
+                    // Glisser vers Safari, Notes, le bureau (Mac, iPad) : l'adresse de la source (mission G2).
+                    .sourceDraggable(SourceDragPayload.url(for: source))
             } else {
                 // URL sans hôte lisible ou hors http(s) : du texte plutôt qu'un lien mort ou une autre app.
                 content

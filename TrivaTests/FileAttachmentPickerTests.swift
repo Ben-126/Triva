@@ -107,8 +107,8 @@ struct FileAttachmentRulesTests {
         #expect(AttachmentKind(fileName: "fichier.\(fileExtension)") == kind)
     }
 
-    @Test("Balisage, documents Office, images et archives ne sont pas proposés", arguments: [
-        "html", "rtf", "xml", "docx", "png", "zip",
+    @Test("Balisage, documents Office, dessins vectoriels et archives ne sont pas proposés", arguments: [
+        "html", "rtf", "xml", "docx", "svg", "zip",
     ])
     func unreadableTypesAreNotSelectable(fileExtension: String) throws {
         let type = try #require(UTType(filenameExtension: fileExtension))

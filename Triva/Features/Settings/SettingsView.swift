@@ -126,6 +126,9 @@ struct SettingsView: View {
                 apiKeySection
                 searchSection
                 storageSection
+                #if os(macOS)
+                MacSettingsSection()
+                #endif
                 if let localDataEraser {
                     LocalDataEraseSection(eraser: localDataEraser)
                 }
