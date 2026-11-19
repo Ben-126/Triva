@@ -41,9 +41,9 @@ Tout ce travail d'analyse et de lecture tourne dans l'app elle-même. Quand les 
 
 ## Où en est le projet
 
-Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1**, qui en fait un vrai produit, est écrite et intégrée : il reste à la vérifier sur le terrain et à la relire en profondeur avant de la déclarer terminée.
+Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1**, qui en fait un vrai produit, est terminée. La **V2**, qui exploite ce que seule une app native permet, est en cours.
 
-**Dans l'app (V1 intégrée)**
+**Dans l'app (V1)**
 - Le choix du moteur IA (Apple Intelligence, MLX local, clé API perso), avec catalogue MLX, téléchargement et essai
 - La configuration BYOK multi-fournisseurs, fournisseurs personnalisés compris
 - La recherche de bout en bout : analyse de la question, recherche multi-étapes, tri fin des sources (une langue à la fois), lecture des pages, réponse en streaming
@@ -62,9 +62,12 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Avant le premier envoi à une IA en ligne, une feuille dit exactement ce qui part et chez qui, et Triva demande ton accord
 - Dans les Réglages : la confidentialité, les conditions d'utilisation, les mentions légales, les licences de tous les logiciels, modèles et sources utilisés, et un bouton « Signaler un problème »
 
-**En cours (fin de V1)**
-- Les essais sur le terrain et la relecture finale
-- La partie légale est prête ; la publication sur l'App Store viendra plus tard
+**V2 en cours : ce qu'une app native permet et pas le web**
+- L'iPhone Duo : en plié, l'écran s'adapte à la place disponible et un bouton ferme le clavier ; en déplié et en paysage, la conversation et ses sources s'affichent côte à côte (les Favoris aussi : liste et détail). Le brouillon, la position de lecture et la réponse en cours sont gardés quand on plie ou déplie
+- À venir : le Mac approfondi (une recherche par fenêtre, raccourcis, Services, glisser-déposer, Coup d'œil), Siri, Raccourcis, widgets, Spotlight, Activité en direct, la voix, la synchronisation iCloud et la traduction en anglais et en espagnol
+
+**Plus tard**
+- La publication sur l'App Store
 
 ## Configuration requise
 

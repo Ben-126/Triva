@@ -54,7 +54,6 @@ struct EngineStatusView: View {
         self.session = session
     }
 
-    @State private var showingMLXSelection = false
     /// Force une relecture du `body` une fois le chat préparé. Constaté sur Mac au lancement : la
     /// création de `chatViewModel` ne relançait pas toujours le `body`, et seul le badge restait,
     /// sans barre de saisie, jusqu'au moindre autre changement d'état.
@@ -65,6 +64,8 @@ struct EngineStatusView: View {
     @State private var availableHeight: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Charnière (iPhone Duo) : réserve le seuil compact au Duo plié (voir `EngineHeaderLayout.isCollapsed`).
+    @Environment(\.trivaHasHinge) private var hasHinge
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -90,7 +91,9 @@ struct EngineStatusView: View {
             availableHeight: availableHeight,
             hasMessages: session.chatViewModel?.messages.isEmpty == false,
             needsSetup: session.setupRequirement != nil,
-            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
+            horizontalSizeClass: horizontalSizeClass,
+            hasHinge: hasHinge
         )
     }
 
@@ -127,8 +130,59 @@ struct EngineStatusView: View {
         horizontalSizeClass == .regular ? 640 : nil
     }
 
+    /// Dernière réponse (rôle assistant) du fil : sert au volet de sources (`TranscriptScrollState.noteLastAnswer`).
+    private var lastAnswerID: UUID? {
+        session.chatViewModel?.messages.last(where: { $0.role == .assistant })?.id
+    }
+
     var body: some View {
         let _ = chatPrepared
+        @Bindable var bindableSession = session
+        // Duo déplié en paysage : conversation à gauche, sources à droite (mission I2). Partout ailleurs, une
+        // seule colonne, exactement comme avant (voir `DuoPaneLayout`).
+        DuoPaneContainer { columnCount in
+            if columnCount == 2 {
+                DuoTwoPanes {
+                    conversationColumn(sourcesShownInPane: true)
+                } secondary: {
+                    SearchSourcesPane(
+                        messages: session.chatViewModel?.messages ?? [],
+                        focusedAnswerID: session.transcriptScroll.focusedAnswerID
+                    )
+                }
+            } else {
+                conversationColumn(sourcesShownInPane: false)
+            }
+        }
+        // Le volet de sources suit la dernière réponse quand une nouvelle arrive (revue R1, C3).
+        .onChange(of: lastAnswerID, initial: true) { _, newValue in
+            session.transcriptScroll.noteLastAnswer(newValue)
+        }
+        .sheet(isPresented: $bindableSession.isChoosingMLXModel) {
+            MLXModelSelectionView { chosen in
+                session.selectMLXModel(chosen)
+                session.isChoosingMLXModel = false
+            }
+            #if os(macOS)
+            // Une feuille Mac ne se ferme ni d'un geste ni d'un clic à côté : sans ce bouton, seul
+            // Échap permettait d'en sortir sans choisir de modèle (constaté, mission Q2).
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                mlxSelectionCloseBar
+            }
+            #endif
+        }
+        .task {
+            session.refreshAppleIntelligenceAvailabilityIfNeeded()
+            if engine == .appleIntelligence { session.appleModel.refreshStatus() }
+            session.loadMLXCatalogIfNeeded()
+            session.ensureChatViewModel()
+            chatPrepared = true
+        }
+    }
+
+    /// En-tête moteur, messages d'état et chat : la colonne « conversation ». `sourcesShownInPane` : les bulles
+    /// ne répètent pas leur liste de sources, le volet de droite les montre.
+    private func conversationColumn(sourcesShownInPane: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if !engineRowIsInComposer {
                 header
@@ -159,6 +213,8 @@ struct EngineStatusView: View {
                     // démontage de `ChatView` et reçoit le texte de
                     // Découvrir > « Chercher dans Triva ».
                     .environment(session.draft)
+                    // Position de lecture de la session (mission I1), pour la même raison.
+                    .environment(session.transcriptScroll)
             }
         }
         // `minHeight: 0` ET `maxHeight` : avec les deux bornes, le cadre prend TOUJOURS la
@@ -170,26 +226,7 @@ struct EngineStatusView: View {
         // Mesure qui ne dépend PAS de l'en-tête (le cadre remplit l'espace offert) : replier
         // l'en-tête ne change pas cette hauteur, donc aucune oscillation replié/déplié.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { availableHeight = $0 }
-        .sheet(isPresented: $showingMLXSelection) {
-            MLXModelSelectionView { chosen in
-                session.selectMLXModel(chosen)
-                showingMLXSelection = false
-            }
-            #if os(macOS)
-            // Une feuille Mac ne se ferme ni d'un geste ni d'un clic à côté : sans ce bouton, seul
-            // Échap permettait d'en sortir sans choisir de modèle (constaté, mission Q2).
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                mlxSelectionCloseBar
-            }
-            #endif
-        }
-        .task {
-            session.refreshAppleIntelligenceAvailabilityIfNeeded()
-            if engine == .appleIntelligence { session.appleModel.refreshStatus() }
-            session.loadMLXCatalogIfNeeded()
-            session.ensureChatViewModel()
-            chatPrepared = true
-        }
+        .environment(\.sourcesShownInPane, sourcesShownInPane)
     }
 
     #if os(macOS)
@@ -202,7 +239,7 @@ struct EngineStatusView: View {
             HStack {
                 Spacer()
                 Button("Fermer") {
-                    showingMLXSelection = false
+                    session.isChoosingMLXModel = false
                 }
                 .keyboardShortcut(.cancelAction)
             }
@@ -256,7 +293,7 @@ struct EngineStatusView: View {
 
                 if engine == .mlxLocal, session.validatedMLXModel == nil {
                     Button("Choisir un modèle MLX") {
-                        showingMLXSelection = true
+                        session.isChoosingMLXModel = true
                     }
                     .buttonStyle(.glassProminent)
                     .fixedSize(horizontal: false, vertical: true)
@@ -281,7 +318,7 @@ struct EngineStatusView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .glassEffect(.regular, in: .rect(cornerRadius: 20))
                         Button("Changer de modèle MLX") {
-                            showingMLXSelection = true
+                            session.isChoosingMLXModel = true
                         }
                         .buttonStyle(.glass)
                     }
@@ -340,6 +377,15 @@ nonisolated enum EngineHeaderLayout {
     /// clavier ouvert environ 400 pt (replié : le fil passe avant une action rare).
     static let conversationMinimumHeight: CGFloat = 560
 
+    /// Même repère en largeur `compact` AVEC charnière (l'écran extérieur de l'iPhone Duo plié, 466 x 678 pt ; un
+    /// iPhone ordinaire ou un iPad en largeur compacte gardent `conversationMinimumHeight`) :
+    /// le Duo plié offre 562 pt (mesuré, mission I1), un peu plus que 560 : l'en-tête déplié restait épinglé et
+    /// coupait le fil (mission D0 : « toureiffel.paris » coupé net). L'iPhone 18 Pro offre 675 pt (mesuré).
+    /// 620 pt tombe entre les deux, avec environ 55 pt de marge de chaque côté : le Duo replie, l'iPhone 18 Pro
+    /// ne change pas.
+    /// En `regular` (iPad, Mac, Duo déplié) et sans classe (`nil`), c'est `conversationMinimumHeight`.
+    static let compactConversationMinimumHeight: CGFloat = 620
+
     /// En dessous, même un écran vide replie l'en-tête : il ne resterait sinon presque rien
     /// pour la barre de saisie et les exemples (Duo plié, clavier ouvert).
     static let emptyScreenMinimumHeight: CGFloat = 360
@@ -394,15 +440,23 @@ nonisolated enum EngineHeaderLayout {
     ///   - needsSetup: le moteur attend une action (choisir un modèle MLX, configurer une clé) :
     ///     jamais replié, c'est l'action sans laquelle rien ne répond.
     ///   - isAccessibilitySize: taille de texte AX1 à AX5 : une conversation replie toujours.
+    ///   - horizontalSizeClass: `.compact` relève le seuil d'une conversation, mais SEULEMENT avec une charnière
+    ///     (Duo plié) ; `.regular` et `nil` (Mac) gardent `conversationMinimumHeight`.
+    ///   - hasHinge: l'appareil a une charnière (`\.trivaHasHinge`). Faux sur iPhone ordinaire, iPad (Split View,
+    ///     Slide Over, Stage Manager en largeur compacte) et Mac : leur seuil reste celui d'avant (correction C6
+    ///     de la revue R1). Sans valeur par défaut : chaque appelant le dit.
     static func isCollapsed(
         availableHeight: CGFloat,
         hasMessages: Bool,
         needsSetup: Bool,
-        isAccessibilitySize: Bool
+        isAccessibilitySize: Bool,
+        horizontalSizeClass: UserInterfaceSizeClass?,
+        hasHinge: Bool
     ) -> Bool {
         guard !needsSetup, availableHeight >= minimumMeasuredHeight else { return false }
         if hasMessages {
-            return isAccessibilitySize || availableHeight < conversationMinimumHeight
+            let minimumHeight = hasHinge && horizontalSizeClass == .compact ? compactConversationMinimumHeight : conversationMinimumHeight
+            return isAccessibilitySize || availableHeight < minimumHeight
         }
         return availableHeight < (isAccessibilitySize ? emptyScreenAccessibilityMinimumHeight : emptyScreenMinimumHeight)
     }

@@ -5,6 +5,7 @@
 //  Created by ben podrojsky on 16/09/2026.
 //
 
+import OSLog
 import SwiftUI
 
 /// Les espaces de premier niveau de l'app (V1). L'ordre des `allCases` est
@@ -280,6 +281,22 @@ private struct TrivaRootShell: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    /// Charnière imposée par l'extérieur (les aperçus du Duo déplié forcent `\.trivaHasHinge`). Sur appareil, la
+    /// valeur est faux ici : c'est `observesDeviceHinge` qui renseigne le coordinateur.
+    #if DEBUG
+    @Environment(\.trivaHasHinge) private var inheritedHasHinge
+    #endif
+
+    /// Taille de la fenêtre, pour masquer la barre latérale à l'arrivée du Duo déplié en paysage (mission I2).
+    @State private var windowSize: CGSize = .zero
+
+    #if DEBUG
+    /// Journal de vérification (mission I1), compilé seulement en DEBUG : plier ou déplier l'iPhone Duo garde-t-il
+    /// la MÊME scène (donc le même coordinateur) ? Si `apparue` reparaît avec un autre identifiant de
+    /// coordinateur, la scène a été recréée et l'état de la fenêtre perdu : il faudrait `@SceneStorage`.
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "TrivaRootShell")
+    #endif
+
     /// `engine` ne sert qu'à construire le coordinateur (et sa session).
     /// `State(initialValue:)` ne retient que le PREMIER pour une identité
     /// donnée — les suivants, construits à chaque réévaluation du parent, ne
@@ -301,12 +318,45 @@ private struct TrivaRootShell: View {
                 splitView
             }
         }
+        // Charnière (iPhone Duo) : posée AUTOUR du choix onglets / sidebar, comme le reste, pour continuer de
+        // jouer quand la classe de taille bascule. Les écrans la lisent par `\.trivaHasHinge`.
+        .observesDeviceHinge($coordinator.hasHinge)
+        .environment(\.trivaHasHinge, coordinator.hasHinge)
+        #if DEBUG
+        // Aperçus du Duo déplié seulement : ils forcent la charnière par l'environnement (revue R1, M5).
+        .onAppear { if inheritedHasHinge { coordinator.hasHinge = true } }
+        #endif
+        // Fenêtre mesurée par un fond qui IGNORE les zones sûres, clavier compris : sur la racine, la taille suit la
+        // zone sûre et se réduit quand le clavier s'ouvre, ce qui ferait passer un portrait pour un paysage
+        // (revue R1, C5).
+        .background {
+            Color.clear
+                .ignoresSafeArea()
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { newSize in
+                    windowSize = newSize
+                    coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: horizontalSizeClass, windowSize: newSize)
+                }
+        }
+        .onChange(of: coordinator.hasHinge) {
+            coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: horizontalSizeClass, windowSize: windowSize)
+        }
         // Posé AUTOUR du choix onglets / sidebar, pas dans une seule branche :
         // il doit continuer de jouer quand la classe de taille bascule. Une
         // conversation supprimée dans une AUTRE fenêtre (ou par « Tout
         // effacer ») vide ici le fil qui l'affichait.
         .onChange(of: stores.chatHistory.revision) {
             coordinator.historyDidChange()
+        }
+        #if DEBUG
+        .onAppear {
+            Self.logger.debug("Coquille apparue, coordinateur \(ObjectIdentifier(coordinator).hashValue, privacy: .public)")
+        }
+        #endif
+        .onChange(of: horizontalSizeClass) { _, newValue in
+            coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: newValue, windowSize: windowSize)
+            #if DEBUG
+            Self.logger.debug("Classe de largeur : \(String(describing: newValue), privacy: .public), coordinateur \(ObjectIdentifier(coordinator).hashValue, privacy: .public)")
+            #endif
         }
     }
 
@@ -332,23 +382,38 @@ private struct TrivaRootShell: View {
     }
 
     /// iPad en `regular` et macOS : sidebar + détail.
+    ///
+    /// UNE SEULE `NavigationSplitView`, quelle que soit la charnière (revue R1, C4) : changer d'arbre quand
+    /// `hasHinge` bascule remontait tout le détail (ChatView, FavoritesView…) au lancement du Duo déplié. La
+    /// visibilité est donc toujours liée au coordinateur, qui la démarre à `.all` (barre latérale visible, comme
+    /// l'iPad en portrait sans liaison) ; seul le Duo déplié en paysage la masque, une fois
+    /// (`applyInitialSidebarIfNeeded`). Un `.automatic` lié masquait la barre latérale de l'iPad en portrait
+    /// (constaté par la mission I2), d'où `.all`.
     private var splitView: some View {
-        NavigationSplitView {
-            List(selection: sidebarSelection) {
-                ForEach(TrivaRootDestination.allCases) { destination in
-                    Label(destination.title, systemImage: destination.systemImage)
-                        .tag(destination)
-                }
-            }
-            .navigationTitle("Triva")
+        NavigationSplitView(columnVisibility: $coordinator.columnVisibility) {
+            sidebar
         } detail: {
-            // Chaque espace a sa pile, mais toutes partagent cette colonne : leurs chemins doivent
-            // être du même type, `NavigationPath`. Quitter un écran poussé compare l'ancien chemin au
-            // nouveau, et deux types différents font planter SwiftUI sur un `try!`
-            // (`AnyNavigationPath.Error.comparisonTypeMismatch`, constaté sur iPad, QA Q1 ; un
-            // `.id` sur ce détail n'y change rien).
-            content(for: coordinator.selection)
+            splitDetail
         }
+    }
+
+    private var sidebar: some View {
+        List(selection: sidebarSelection) {
+            ForEach(TrivaRootDestination.allCases) { destination in
+                Label(destination.title, systemImage: destination.systemImage)
+                    .tag(destination)
+            }
+        }
+        .navigationTitle("Triva")
+    }
+
+    /// Chaque espace a sa pile, mais toutes partagent cette colonne : leurs chemins doivent
+    /// être du même type, `NavigationPath`. Quitter un écran poussé compare l'ancien chemin au
+    /// nouveau, et deux types différents font planter SwiftUI sur un `try!`
+    /// (`AnyNavigationPath.Error.comparisonTypeMismatch`, constaté sur iPad, QA Q1 ; un
+    /// `.id` sur ce détail n'y change rien).
+    private var splitDetail: some View {
+        content(for: coordinator.selection)
     }
 
     /// `List` travaille avec une sélection optionnelle (elle peut être vidée,
@@ -410,7 +475,9 @@ private struct TrivaRootShell: View {
             FavoritesView(
                 store: stores.favorites,
                 historyStore: stores.chatHistory,
-                onOpenConversation: { coordinator.openConversation(id: $0) }
+                onOpenConversation: { coordinator.openConversation(id: $0) },
+                navigationPath: $coordinator.favoritesPath,
+                selection: $coordinator.favoritesSelection
             )
         case .settings:
             // Moteur de la SESSION (celui du badge de la Recherche) et stores
@@ -430,7 +497,9 @@ private struct TrivaRootShell: View {
                 localDataEraser: stores.makeLocalDataEraser(beforeErase: { [coordinator] in
                     await coordinator.session.chatViewModel?.stopAndWait()
                 }),
-                navigationPath: $coordinator.settingsPath
+                navigationPath: $coordinator.settingsPath,
+                presentedSheet: $coordinator.settingsSheet,
+                pendingEngine: $coordinator.settingsPendingEngine
             )
         }
     }
@@ -442,4 +511,24 @@ private struct TrivaRootShell: View {
 
 #Preview("Moteur choisi — Apple Intelligence") {
     TrivaRootView(stores: .preview(engine: .appleIntelligence))
+}
+
+// MARK: - Aperçus du Duo déplié (mission I2)
+
+// Ces aperçus prouvent la MISE EN PAGE à la taille de l'écran intérieur (951 x 669 en paysage, 669 x 951 en
+// portrait) avec la charnière et les classes de taille forcées par l'environnement. Ils ne prouvent ni
+// l'adaptation au pli, ni les barres posées sur le côté par le système, ni l'appel réel de `onHingeChange`.
+
+#Preview("Duo déplié — paysage (951 x 669)", traits: .fixedLayout(width: 951, height: 669)) {
+    TrivaRootView(stores: .preview(engine: .appleIntelligence))
+        .environment(\.trivaHasHinge, true)
+        .environment(\.horizontalSizeClass, .regular)
+        .environment(\.verticalSizeClass, .regular)
+}
+
+#Preview("Duo déplié — portrait (669 x 951)", traits: .fixedLayout(width: 669, height: 951)) {
+    TrivaRootView(stores: .preview(engine: .appleIntelligence))
+        .environment(\.trivaHasHinge, true)
+        .environment(\.horizontalSizeClass, .regular)
+        .environment(\.verticalSizeClass, .regular)
 }

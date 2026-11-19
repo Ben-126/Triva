@@ -507,6 +507,18 @@ private struct AnswerBubble: View {
     let canToggleFavorite: Bool
     let onToggleFavorite: @MainActor () -> Void
 
+    /// Position de lecture de la session (aussi porteuse de la réponse ciblée par le volet de sources) : lecture
+    /// OPTIONNELLE, les aperçus n'en injectent pas.
+    @Environment(TranscriptScrollState.self) private var transcriptState: TranscriptScrollState?
+    @Environment(\.sourcesShownInPane) private var sourcesShownInPane
+
+    /// Une citation touchée cible CETTE réponse dans le volet de sources (Duo déplié). `nil` sans état de session.
+    private var focusThisAnswer: (@MainActor () -> Void)? {
+        guard let transcriptState else { return nil }
+        let messageID = message.id
+        return { transcriptState.focusedAnswerID = messageID }
+    }
+
     /// Légendes sous la réponse (« Réponse sans recherche », « Sources probablement hors
     /// sujet », origine des résultats, étape de génération). En `.secondary`, elles mesuraient
     /// 2,88:1 sur le verre en clair (QA Q3, finding 8) ; décision de Ben (2026-11-11) : plus
@@ -533,7 +545,8 @@ private struct AnswerBubble: View {
                     text: MessageBubblePresentation.protectingArithmetic(tldr),
                     sources: message.sources,
                     unreadNumbers: message.uncitableSourceNumbers,
-                    isStreaming: message.isStreaming
+                    isStreaming: message.isStreaming,
+                    onCitationSelected: focusThisAnswer
                 )
                 .equatable()
                 .font(.headline)
@@ -563,7 +576,8 @@ private struct AnswerBubble: View {
                     text: bodyText,
                     sources: message.sources,
                     unreadNumbers: message.uncitableSourceNumbers,
-                    isStreaming: message.isStreaming
+                    isStreaming: message.isStreaming,
+                    onCitationSelected: focusThisAnswer
                 )
                 .equatable()
             }
@@ -576,23 +590,9 @@ private struct AnswerBubble: View {
                 AIDisclaimerLine()
             }
 
-            if !message.sources.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Même label que le détail d'un favori (FavoritesView, finding 32) : même
-                    // contenu, même présentation des deux côtés.
-                    HistorySectionHeader(title: "Sources")
-                    SourcesListView(sources: message.sources, unreadNumbers: message.uncitableSourceNumbers)
-
-                    OffTopicSourcesNote(answer: answer)
-
-                    // Rôle de la légende de confidentialité (DESIGN.md) : une
-                    // précision factuelle, sans verre ni icône.
-                    if let origin = MessageBubblePresentation.resultsOriginLabel(answer) {
-                        Text(origin)
-                            .font(.caption)
-                            .foregroundStyle(Self.legendStyle)
-                    }
-                }
+            // Duo déplié : la liste vit dans le volet de droite (`SearchSourcesPane`), pas dans la bulle.
+            if !message.sources.isEmpty, !sourcesShownInPane {
+                AnswerSourcesSection(message: message, answer: answer)
             }
 
             // Copier / Partager (mission C5) : texte marqué « généré par IA », réponse terminée seulement.
@@ -626,9 +626,20 @@ private struct AnswerText: View, Equatable {
     let sources: [SearXNGSearchResult]
     var unreadNumbers: Set<Int> = []
     let isStreaming: Bool
+    /// Appelée quand une citation est touchée (mission I2). Ignorée par `==` : elle ne capture que la session
+    /// et l'identifiant du message, stables pour une même bulle (même raison que `onToggleFavorite`).
+    var onCitationSelected: (@MainActor () -> Void)?
+
+    static func == (lhs: AnswerText, rhs: AnswerText) -> Bool {
+        lhs.text == rhs.text && lhs.sources == rhs.sources
+            && lhs.unreadNumbers == rhs.unreadNumbers && lhs.isStreaming == rhs.isStreaming
+    }
 
     var body: some View {
-        CitationView(text: text, sources: sources, isStreaming: isStreaming, unreadSourceNumbers: unreadNumbers)
+        CitationView(
+            text: text, sources: sources, isStreaming: isStreaming,
+            unreadSourceNumbers: unreadNumbers, onCitationSelected: onCitationSelected
+        )
     }
 }
 

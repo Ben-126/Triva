@@ -71,11 +71,18 @@ struct SettingsView: View {
     @State private var cloudConsentStore: CloudAIConsentStore
     @State private var instanceStore: CustomInstanceStore
 
-    @State private var presentedSheet: SettingsSheet?
-    /// Moteur confirmé dans la feuille, appliqué à sa fermeture seulement :
-    /// l'appliquer pendant que la feuille est encore à l'écran reconstruirait
-    /// la coquille sous elle, en pleine animation.
-    @State private var pendingEngine: AIEngineOption?
+    /// Feuille présentée et moteur confirmé dans la feuille (appliqué à sa fermeture seulement :
+    /// l'appliquer pendant que la feuille est encore à l'écran reconstruirait la coquille sous
+    /// elle, en pleine animation). INJECTÉS par le coordinateur de la fenêtre quand il y en a un
+    /// (`TrivaRootCoordinator.settingsSheet`) : plier ou déplier l'iPhone Duo remplace cette vue, et
+    /// la feuille ouverte doit rester ouverte (mission I1). Sans injection : état local.
+    private let injectedSheet: Binding<SettingsSheet?>?
+    private let injectedPendingEngine: Binding<AIEngineOption?>?
+    @State private var localSheet: SettingsSheet?
+    @State private var localPendingEngine: AIEngineOption?
+
+    private var presentedSheet: Binding<SettingsSheet?> { injectedSheet ?? $localSheet }
+    private var pendingEngine: Binding<AIEngineOption?> { injectedPendingEngine ?? $localPendingEngine }
     /// Pile injectée, `nil` : `localNavigationPath`. Voir le commentaire de tête.
     private let injectedNavigationPath: Binding<NavigationPath>?
     @State private var localNavigationPath = NavigationPath()
@@ -90,6 +97,8 @@ struct SettingsView: View {
         instanceStore: CustomInstanceStore = CustomInstanceStore(),
         localDataEraser: LocalDataEraser? = nil,
         navigationPath: Binding<NavigationPath>? = nil,
+        presentedSheet: Binding<SettingsSheet?>? = nil,
+        pendingEngine: Binding<AIEngineOption?>? = nil,
         appleModel: AppleIntelligenceModelCoordinator = .shared,
         connectivity: ConnectivityMonitor = .shared
     ) {
@@ -104,6 +113,8 @@ struct SettingsView: View {
         _cloudConsentStore = State(initialValue: cloudConsentStore)
         _instanceStore = State(initialValue: instanceStore)
         injectedNavigationPath = navigationPath
+        injectedSheet = presentedSheet
+        injectedPendingEngine = pendingEngine
     }
 
     var body: some View {
@@ -129,7 +140,7 @@ struct SettingsView: View {
         }
         // Une seule feuille, pilotée par un enum : deux modificateurs `.sheet`
         // sur la même vue sont une source connue de présentations ignorées.
-        .sheet(item: $presentedSheet, onDismiss: { applyPendingEngine() }) { sheet in
+        .sheet(item: presentedSheet, onDismiss: { applyPendingEngine() }) { sheet in
             sheetContent(for: sheet)
         }
         .task {
@@ -156,7 +167,7 @@ struct SettingsView: View {
             }
             if onSelectEngine != nil {
                 Button("Changer de moteur") {
-                    presentedSheet = .engineSelection
+                    presentedSheet.wrappedValue = .engineSelection
                 }
                 .accessibilityIdentifier("settings.changeEngine")
             }
@@ -181,7 +192,7 @@ struct SettingsView: View {
     private var apiKeySection: some View {
         Section {
             Button("Gérer les clés API") {
-                presentedSheet = .apiKeys
+                presentedSheet.wrappedValue = .apiKeys
             }
             .accessibilityIdentifier("settings.apiKeys")
             NavigationLink("Fournisseur et modèle", value: SettingsRoute.cloudModelPicker)
@@ -235,7 +246,7 @@ struct SettingsView: View {
             CloudModelPickerScreen(
                 customPresets: customProviderStore.customPresets,
                 selectionStore: cloudSelectionStore,
-                onOpenAPIKeys: { presentedSheet = .apiKeys }
+                onOpenAPIKeys: { presentedSheet.wrappedValue = .apiKeys }
             )
         case .mlxStorage:
             MLXStorageView(mlxSelectionStore: mlxSelectionStore, activeEngine: selectedEngine)
@@ -263,8 +274,8 @@ struct SettingsView: View {
     private var engineSelectionSheet: some View {
         NavigationStack {
             AIEngineSelectionView(currentSelection: selectedEngine) { chosen in
-                pendingEngine = chosen
-                presentedSheet = nil
+                pendingEngine.wrappedValue = chosen
+                presentedSheet.wrappedValue = nil
             }
             // Un vrai titre de barre : sans lui, « Annuler » flottait sur le contenu, qui passait
             // dessous quand on défilait (AX3, Duo plié ; findings Q3 n°19 et 20).
@@ -277,7 +288,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     // Explicite : celui du système sortirait en anglais.
                     Button("Annuler") {
-                        presentedSheet = nil
+                        presentedSheet.wrappedValue = nil
                     }
                     .keyboardShortcut(.cancelAction)
                 }
@@ -294,7 +305,7 @@ struct SettingsView: View {
             customStore: customProviderStore,
             selectionStore: cloudSelectionStore,
             consentStore: cloudConsentStore,
-            onClose: { presentedSheet = nil }
+            onClose: { presentedSheet.wrappedValue = nil }
         )
         #if os(iOS)
         .presentationDragIndicator(.visible)
@@ -307,8 +318,8 @@ struct SettingsView: View {
     /// le même moteur ne doit pas reconstruire la coquille (conversation en
     /// cours perdue pour rien).
     private func applyPendingEngine() {
-        guard let chosen = pendingEngine else { return }
-        pendingEngine = nil
+        guard let chosen = pendingEngine.wrappedValue else { return }
+        pendingEngine.wrappedValue = nil
         guard chosen != selectedEngine else { return }
         onSelectEngine?(chosen)
     }
@@ -331,8 +342,9 @@ nonisolated enum SettingsRoute: Hashable {
 
 // MARK: - Types internes à l'écran
 
-/// Feuilles présentées par les Réglages (une à la fois).
-private nonisolated enum SettingsSheet: String, Identifiable {
+/// Feuilles présentées par les Réglages (une à la fois). Interne : le coordinateur de la fenêtre en détient
+/// la valeur courante (mission I1).
+nonisolated enum SettingsSheet: String, Identifiable {
     case engineSelection
     case apiKeys
 

@@ -64,6 +64,31 @@ final class TrivaRootCoordinator {
     /// `TrivaRootShell.splitView`.
     var settingsPath = NavigationPath()
 
+    /// Pile des Favoris (détail ouvert), détenue ici pour la même raison que `settingsPath` : plier
+    /// ou déplier l'iPhone Duo remplace `FavoritesView` (onglets <-> barre latérale), et le favori
+    /// ouvert doit le rester (mission I1). `NavigationPath`, comme `settingsPath`.
+    var favoritesPath = NavigationPath()
+
+    /// Feuille des Réglages ouverte (choix du moteur, clés API) et moteur confirmé dans cette
+    /// feuille, pas encore appliqué : mêmes raisons que `favoritesPath` (mission I1).
+    var settingsSheet: SettingsSheet?
+    var settingsPendingEngine: AIEngineOption?
+
+    /// L'appareil a une charnière (iPhone Duo), tenu à jour par `observesDeviceHinge` (mission I2). Faux sur
+    /// iPad, Mac et iPhone ordinaire : rien ne change alors, quelle que soit la largeur.
+    var hasHinge = false
+
+    /// Barre latérale visible ou non (`NavigationSplitView(columnVisibility:)`). Détenue ici : un pliage
+    /// remplace la coquille, le choix de l'utilisateur doit survivre.
+    var columnVisibility: NavigationSplitViewVisibility = .all
+
+    /// Favori affiché dans le volet de droite (Duo déplié), `nil` : aucun. Gardé en phase avec `favoritesPath`
+    /// par `FavoritesView` : la route poussée et ce volet sont la MÊME sélection, vue de deux manières.
+    var favoritesSelection: UUID?
+
+    /// Faux tant que la barre latérale n'a pas été masquée à l'arrivée en paysage déplié : ne se fait qu'UNE fois.
+    @ObservationIgnored private var didApplyInitialSidebar = false
+
     /// Session de la Recherche (conversation en cours, brouillon de la barre
     /// de saisie, caches du moteur). Une seule pour toute la vie du
     /// coordinateur : voir « Durée de vie ».
@@ -208,6 +233,23 @@ final class TrivaRootCoordinator {
         }
         guard !stillExists else { return }
         chatViewModel.conversationWasDeleted(id: conversationID)
+    }
+
+    /// Masque la barre latérale à l'arrivée du Duo déplié en paysage (`DuoPaneLayout.initialSidebarHidden`),
+    /// UNE seule fois : ensuite le choix de l'utilisateur est respecté, même si l'appareil pivote.
+    /// - Returns: `true` quand la barre vient d'être masquée (pour les tests).
+    @discardableResult
+    func applyInitialSidebarIfNeeded(horizontalSizeClass: UserInterfaceSizeClass?, windowSize: CGSize) -> Bool {
+        guard !didApplyInitialSidebar,
+              DuoPaneLayout.initialSidebarHidden(
+                  hasHinge: hasHinge,
+                  horizontalSizeClass: horizontalSizeClass,
+                  windowWidth: windowSize.width,
+                  windowHeight: windowSize.height
+              ) else { return false }
+        didApplyInitialSidebar = true
+        columnVisibility = .detailOnly
+        return true
     }
 
     // MARK: - Règles pures

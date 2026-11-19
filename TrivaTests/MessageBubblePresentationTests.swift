@@ -14,7 +14,7 @@ import SwiftUI
 /// - `MessageBubblePresentation` (`Triva/Features/Chat/MessageBubbleView.swift`) :
 ///   bug 13 de la revue (Markdown et VoiceOver), révélation par paliers
 ///   pendant le streaming, ce que montre une réponse ;
-/// - `ChatScrollFollowing` (`Triva/Features/Chat/ChatView.swift`) : bug 7
+/// - `ChatScrollFollowing` (`Triva/Features/Chat/ChatScrollFollowing.swift`) : bug 7
 ///   (suivi du bas de liste déduit du geste, pas de la position).
 ///
 /// Suites NON isolées : tout ce qu'elles testent est `nonisolated`, et la

@@ -165,6 +165,14 @@ final class SearchSession {
     /// longtemps que la conversation, pas que la vue qui l'affiche.
     let draft: SearchDraft
 
+    /// Position de lecture du fil (mission I1) : détenue ici, comme le brouillon, pour survivre au
+    /// remontage de `ChatView` quand l'iPhone Duo se plie ou se déplie. Voir `TranscriptScrollState`.
+    let transcriptScroll = TranscriptScrollState()
+
+    /// La feuille de choix du modèle MLX est ouverte (mission I1) : détenue ici plutôt qu'en `@State`
+    /// dans `EngineStatusView`, qui est remplacée au pliage ou au dépliage de l'iPhone Duo.
+    var isChoosingMLXModel = false
+
     /// Clés de recherche personnelles (Brave, Tavily), lues à chaque envoi par
     /// `resolveWebSearchChain(failoverManager:)`. Service Keychain SÉPARÉ de
     /// `stores.keyStore` (clés IA, `SearchKeyStore.keychainService`).

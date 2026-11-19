@@ -1,143 +1,5 @@
 import SwiftUI
 
-// MARK: - Suivi du bas de liste (bug 7)
-
-/// Quand le fil suit-il le bas de la liste ? Logique pure, testée dans
-/// `MessageBubblePresentationTests.swift`.
-///
-/// ## Le bug 7 de la revue
-/// L'ancrage était DÉDUIT DE LA POSITION (« à moins de 80 pt du bas »), alors
-/// que la croissance du contenu déplace elle-même le bas : pendant un
-/// streaming, l'utilisateur qui remontait doucement était ramené en bas à
-/// chaque morceau, et un gros saut de contenu (5 sources d'un coup, une
-/// réponse arrivée en un bloc) pouvait au contraire faire décrocher le suivi,
-/// la réponse s'écrivant alors sous la zone visible.
-///
-/// ## La règle
-/// L'intention se lit dans le GESTE (`ScrollPhase`), pas dans la position :
-/// - le doigt (ou le trackpad) fait défiler → le suivi s'arrête aussitôt ;
-/// - le geste se termine (lâcher, fin d'inertie) → le suivi reprend si l'on
-///   s'est arrêté près du bas, sinon la vue reste où l'utilisateur l'a
-///   laissée ;
-/// - un simple toucher (`.tracking`, par exemple sur un badge de citation) ne
-///   compte pas comme un geste de défilement ;
-/// - un défilement sans phase de geste (molette de souris, flèches du
-///   clavier) se reconnaît à l'offset qui remonte : même effet ;
-/// - jamais de défilement programmatique pendant un geste ;
-/// - le suivi se déclenche après la mise en page (`onScrollGeometryChange`),
-///   quand la hauteur défilable augmente : contenu qui grandit OU conteneur
-///   qui rétrécit (clavier iPhone, fenêtre Mac raccourcie).
-nonisolated enum ChatScrollFollowing {
-    /// Distance au bas (pt) sous laquelle on est « en bas » à la fin d'un
-    /// geste. Même valeur que l'ancien seuil validé à la main.
-    static let nearBottomThreshold: CGFloat = 80
-    /// Écarts d'offset ignorés : arrondis de mise en page, pas un geste.
-    static let offsetTolerance: CGFloat = 1
-
-    /// Les trois mesures utiles d'une `ScrollGeometry`.
-    nonisolated struct Metrics: Sendable, Equatable {
-        var offsetY: CGFloat
-        var contentHeight: CGFloat
-        var containerHeight: CGFloat
-
-        init(offsetY: CGFloat, contentHeight: CGFloat, containerHeight: CGFloat) {
-            self.offsetY = offsetY
-            self.contentHeight = contentHeight
-            self.containerHeight = containerHeight
-        }
-
-        /// Même calcul que l'ancien observateur, validé à la main.
-        init(_ geometry: ScrollGeometry) {
-            self.init(
-                offsetY: geometry.contentOffset.y,
-                contentHeight: geometry.contentSize.height,
-                containerHeight: geometry.containerSize.height
-            )
-        }
-
-        var distanceFromBottom: CGFloat { contentHeight - offsetY - containerHeight }
-        /// Défilement maximal : grandit quand le contenu grandit, ou quand le
-        /// conteneur rétrécit.
-        var scrollableHeight: CGFloat { contentHeight - containerHeight }
-    }
-
-    /// Changement de phase de défilement.
-    static func isPinnedAfterPhaseChange(
-        from oldPhase: ScrollPhase,
-        to newPhase: ScrollPhase,
-        distanceFromBottom: CGFloat,
-        wasPinned: Bool
-    ) -> Bool {
-        switch newPhase {
-        case .interacting:
-            return false
-        case .idle where oldPhase == .interacting || oldPhase == .decelerating:
-            return distanceFromBottom < nearBottomThreshold
-        default:
-            // `.animating` -> `.idle` (fin d'un `scrollTo` animé) : rien ne
-            // change. Réévaluer ici décrocherait un échange tout neuf dont le
-            // contenu grandit pendant l'animation.
-            return wasPinned
-        }
-    }
-
-    /// Fin d'un toucher ou d'une animation alors que le suivi est actif :
-    /// le contenu a pu grandir pendant ce temps sans être suivi (le suivi est
-    /// suspendu pendant `.tracking`) — sans ce rattrapage, le DERNIER morceau
-    /// d'une réponse reçu pendant un toucher resterait sous la zone visible.
-    static func needsCatchUp(
-        from oldPhase: ScrollPhase,
-        to newPhase: ScrollPhase,
-        isPinned: Bool,
-        distanceFromBottom: CGFloat
-    ) -> Bool {
-        isPinned
-            && newPhase == .idle
-            && (oldPhase == .tracking || oldPhase == .animating)
-            && distanceFromBottom > offsetTolerance
-    }
-
-    /// Défilement sans phase de geste (molette, clavier). Un offset qui
-    /// remonte loin du bas ne vient que de l'utilisateur : la croissance du
-    /// contenu ne déplace pas l'offset, et un contenu qui rétrécit le ramène
-    /// au bas, distance nulle.
-    static func isPinnedAfterGeometryChange(
-        from old: Metrics,
-        to new: Metrics,
-        phase: ScrollPhase,
-        wasPinned: Bool
-    ) -> Bool {
-        let offsetDelta = new.offsetY - old.offsetY
-        if wasPinned {
-            let scrolledAway = offsetDelta < -offsetTolerance && new.distanceFromBottom > nearBottomThreshold
-            return !scrolledAway
-        }
-        return phase == .idle && offsetDelta > offsetTolerance && new.distanceFromBottom < nearBottomThreshold
-    }
-
-    /// LE déclencheur du suivi, unique et après mise en page.
-    static func shouldFollowContent(from old: Metrics, to new: Metrics, phase: ScrollPhase, isPinned: Bool) -> Bool {
-        guard isPinned, allowsProgrammaticScroll(during: phase) else { return false }
-        return new.scrollableHeight > old.scrollableHeight
-    }
-
-    /// `onAppear` ne recentre sur le début de la dernière réponse que pour une conversation que la vue
-    /// n'a pas encore positionnée (ouverture depuis la Bibliothèque ou un favori). Un simple retour sur
-    /// l'onglet Recherche garde la position de lecture.
-    static func shouldPositionOnAppear(current: UUID?, lastPositioned: UUID?) -> Bool {
-        current != lastPositioned
-    }
-
-    static func allowsProgrammaticScroll(during phase: ScrollPhase) -> Bool {
-        switch phase {
-        case .idle, .animating:
-            true
-        case .tracking, .interacting, .decelerating:
-            false
-        }
-    }
-}
-
 // MARK: - Vue
 
 /// Écran de chat complet : le fil (une `MessageBubbleView` par message, avec
@@ -192,22 +54,29 @@ struct ChatView: View {
     // La `Task` de la génération n'est PAS ici : `ChatViewModel.startSend` la garde (voir « La
     // génération appartient au modèle »). Cette vue est démontée à chaque bascule de classe de taille
     // et à chaque changement de destination ; une génération liée à elle s'arrêtait à chaque fois.
-    /// Dernière conversation dont le début de réponse a été montré (`showLastAnswerStart`), pour ne
-    /// recentrer qu'à l'OUVERTURE d'une autre conversation et pas à chaque retour sur l'onglet.
-    @State private var lastPositionedConversationID: UUID?
-    /// Le fil suit-il le bas de la liste ? Voir `ChatScrollFollowing`.
-    @State private var isPinnedToBottom = true
+    /// Position de lecture de la session (`TranscriptScrollState`, mission I1) : dernière conversation dont
+    /// le début de réponse a été montré, le fil suit-il le bas (`ChatScrollFollowing`), message en haut de
+    /// la zone visible. Elle survit au démontage de cette vue (iPhone Duo plié / déplié). Lecture OPTIONNELLE
+    /// comme `SearchDraft` : les aperçus n'en injectent pas, repli sur `localScroll`.
+    @Environment(TranscriptScrollState.self) private var sessionScroll: TranscriptScrollState?
+    @State private var localScroll = TranscriptScrollState()
+    private var scroll: TranscriptScrollState { sessionScroll ?? localScroll }
     /// Dernière phase de défilement connue, lue par l'observateur de
     /// géométrie (aucun défilement programmatique pendant un geste).
     @State private var scrollPhase: ScrollPhase = .idle
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Charnière (iPhone Duo) : « Fermer le clavier » n'existe que là (`ComposerKeyboardLayout`).
+    @Environment(\.trivaHasHinge) private var hasHinge
     /// Voir `EnvironmentValues.openSearchKeySettings`.
     @Environment(\.openSearchKeySettings) private var openSearchKeySettings
     @FocusState private var isDraftFocused: Bool
-    /// Consentement cloud en attente (mission C2) : la feuille est montrée, `afterConsent` repart
-    /// avec l'envoi interrompu une fois « Autoriser » touché.
-    @State private var consentRequest: CloudAIConsentRequest?
-    @State private var afterConsent: (() -> Void)?
+    /// Hauteur offerte à ce chat (baisse quand le clavier s'ouvre) : voir `ComposerKeyboardLayout`.
+    @State private var availableHeight: CGFloat = 0
+    #if os(iOS)
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    #endif
+    // Le consentement cloud en attente (mission C2) vit dans `ChatViewModel.pendingConsent` depuis la
+    // mission I1 : une feuille et un envoi tenus par la vue étaient perdus au pliage de l'iPhone Duo.
 
     /// Repli tant que `TrivaSharedStores` ne porte pas le store du mode :
     /// UNE instance par processus, partagée par toutes les fenêtres (iPad,
@@ -263,21 +132,16 @@ struct ChatView: View {
         .environment(\.readPageAction, ReadPageAction(isEnabled: viewModel.canReadPage) { url in
             await readPageAndRegenerate(url: url)
         })
-        .sheet(item: $consentRequest) { request in
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { availableHeight = $0 }
+        .sheet(item: pendingConsentBinding) { pending in
             CloudConsentSheet(
-                request: request,
+                request: pending.request,
                 onAllow: {
-                    viewModel.allowCloudConsent(request)
-                    let action = afterConsent
-                    afterConsent = nil
-                    consentRequest = nil
-                    action?()
+                    // L'accord repart avec l'envoi interrompu (porté par le modèle) ; seul le brouillon,
+                    // qui appartient à la session, est vidé ici.
+                    if case .send? = viewModel.allowPendingConsent() { clearDraft() }
                 },
-                onCancel: {
-                    afterConsent = nil
-                    consentRequest = nil
-                    viewModel.declineCloudConsent()
-                }
+                onCancel: { viewModel.declinePendingConsent() }
             )
         }
         .toolbar {
@@ -307,6 +171,9 @@ struct ChatView: View {
     /// rester au-dessus de la zone visible (le bandeau était auparavant en
     /// TÊTE de liste, hors du chemin du scroll qui, lui, ancre en bas).
     private static let bottomAnchorID = "chat-bottom-anchor"
+
+    /// Nom du repère du contenu défilant, voir `TranscriptScrollState.rowTops`.
+    private static let contentSpace = "chat-transcript-content"
 
     /// Hauteur de l'ancre de bas de liste — porte elle-même la marge visuelle
     /// sous la dernière bulle (bug corrigé le 2026-09-15 : cette marge vivait
@@ -345,7 +212,9 @@ struct ChatView: View {
                                 ChatTranscriptRow(
                                     message: message,
                                     viewModel: viewModel,
-                                    onRetry: { messageID in retryInQuickMode(messageID: messageID) }
+                                    onRetry: { messageID in retryInQuickMode(messageID: messageID) },
+                                    onTopChange: { [scroll] top in scroll.rowTops[message.id] = top },
+                                    topCoordinateSpace: Self.contentSpace
                                 )
                             }
                         }
@@ -393,6 +262,9 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
+                // Repère du contenu défilant (après la marge haute, donc origine = décalage 0 du défilement) :
+                // les hauts des messages y sont indépendants du défilement (`TranscriptScrollState`).
+                .coordinateSpace(.named(Self.contentSpace))
             }
             // Une conversation rouverte (Bibliothèque, favori) s'ouvre au DÉBUT de sa dernière
             // réponse (`showLastAnswerStart`, mission C1) : sur sa fin, on tombait sur les
@@ -403,11 +275,19 @@ struct ChatView: View {
             // se rejoue à chaque retour sur l'onglet, et ramenait au début de la réponse un lecteur
             // descendu jusqu'aux sources (revue R3-5).
             .onAppear {
-                guard ChatScrollFollowing.shouldPositionOnAppear(
-                    current: viewModel.currentConversationID,
-                    lastPositioned: lastPositionedConversationID
-                ) else { return }
-                showLastAnswerStart(proxy: proxy)
+                switch TranscriptScrollState.appearanceAction(
+                    currentConversationID: viewModel.currentConversationID,
+                    lastPositionedConversationID: scroll.lastPositionedConversationID,
+                    isPinnedToBottom: scroll.isPinnedToBottom,
+                    anchorMessageID: scroll.anchorMessageID
+                ) {
+                case .showLastAnswerStart:
+                    showLastAnswerStart(proxy: proxy)
+                case .stayAtBottom:
+                    break
+                case .restore(let messageID):
+                    restorePosition(of: messageID, proxy: proxy)
+                }
             }
             // Sur iPhone, le clavier cache la barre d'onglets, et Retour ENVOIE dès qu'un brouillon
             // existe : sans ces gestes, impossible de quitter l'écran sans envoyer ni tout effacer,
@@ -428,7 +308,7 @@ struct ChatView: View {
                     from: oldPhase,
                     to: newPhase,
                     distanceFromBottom: distance,
-                    wasPinned: isPinnedToBottom
+                    wasPinned: scroll.isPinnedToBottom
                 )
                 setPinned(pinned)
                 if ChatScrollFollowing.needsCatchUp(from: oldPhase, to: newPhase, isPinned: pinned, distanceFromBottom: distance) {
@@ -450,9 +330,13 @@ struct ChatView: View {
                     from: oldMetrics,
                     to: newMetrics,
                     phase: scrollPhase,
-                    wasPinned: isPinnedToBottom
+                    wasPinned: scroll.isPinnedToBottom
                 )
                 setPinned(pinned)
+                // La position ne sert qu'à un lecteur qui a remonté : collé en bas, il y retourne de lui-même.
+                if !scroll.isPinnedToBottom {
+                    scroll.recordPosition(orderedIDs: viewModel.messages.map(\.id), offsetY: newMetrics.offsetY)
+                }
                 if ChatScrollFollowing.shouldFollowContent(from: oldMetrics, to: newMetrics, phase: scrollPhase, isPinned: pinned) {
                     scrollToBottom(proxy: proxy, animated: false)
                 }
@@ -462,7 +346,7 @@ struct ChatView: View {
                 // si l'utilisateur avait remonté pour relire. Une conversation rouverte (aucune
                 // génération en cours) s'ouvre au début de sa dernière réponse.
                 if viewModel.isGenerating || viewModel.messages.isEmpty {
-                    lastPositionedConversationID = viewModel.currentConversationID
+                    scroll.lastPositionedConversationID = viewModel.currentConversationID
                     setPinned(true)
                     scrollToBottom(proxy: proxy)
                 } else {
@@ -507,19 +391,26 @@ struct ChatView: View {
     }
 
     private func setPinned(_ pinned: Bool) {
-        if isPinnedToBottom != pinned {
-            isPinnedToBottom = pinned
+        if scroll.isPinnedToBottom != pinned {
+            scroll.isPinnedToBottom = pinned
         }
     }
 
     /// Conversation rouverte, rien en cours : début de la dernière réponse en haut de l'écran,
     /// suivi du bas coupé (sinon le premier changement de géométrie ramènerait aux sources).
     private func showLastAnswerStart(proxy: ScrollViewProxy) {
-        lastPositionedConversationID = viewModel.currentConversationID
+        scroll.lastPositionedConversationID = viewModel.currentConversationID
         guard !viewModel.isGenerating,
               let last = viewModel.messages.last(where: { $0.role == .assistant }) else { return }
         setPinned(false)
         proxy.scrollTo(ChatTranscriptRow.answerStartID(last.id), anchor: .top)
+    }
+
+    /// Remontage de la même conversation avec un lecteur qui avait remonté (iPhone Duo plié / déplié, mission
+    /// I1) : retour au message qui était en haut de la zone visible. Message disparu : on reste en bas.
+    private func restorePosition(of messageID: UUID, proxy: ScrollViewProxy) {
+        guard let message = viewModel.messages.first(where: { $0.id == messageID }) else { return }
+        proxy.scrollTo(ChatTranscriptRow.scrollID(for: message), anchor: .top)
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
@@ -554,8 +445,17 @@ struct ChatView: View {
             contentMaxWidth: contentMaxWidth,
             onSend: send,
             onStop: { viewModel.stop() },
-            engineAccessory: engineAccessory
+            engineAccessory: engineAccessory,
+            showsKeyboardDismissButton: showsKeyboardDismissButton
         )
+    }
+
+    private var showsKeyboardDismissButton: Bool {
+        #if os(iOS)
+        ComposerKeyboardLayout.showsDismissButton(hasHinge: hasHinge, isVerticallyCompact: verticalSizeClass == .compact, availableHeight: availableHeight)
+        #else
+        false
+        #endif
     }
 
     // MARK: Actions
@@ -563,36 +463,42 @@ struct ChatView: View {
     private func send() {
         guard !isSendDisabled else { return }
         // Avant de vider le brouillon : si l'utilisateur annule la feuille, sa saisie reste.
-        whenConsented { performSend() }
+        request(.send(query: draftText))
     }
 
-    private func performSend() {
-        let query = draftText
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    private func clearDraft() {
         if let sessionDraft {
             sessionDraft.text = ""
         } else {
             localDraft = ""
         }
-        // `Task.immediate` dans `startSend` (pourquoi : son commentaire).
-        viewModel.startSend(query: query)
     }
 
-    /// Exécute `action` tout de suite, ou après l'accord de l'utilisateur si un envoi à une IA cloud
-    /// n'a pas encore été autorisé pour ce fournisseur (aucun envoi sans accord).
-    private func whenConsented(_ action: @escaping () -> Void) {
-        if let request = viewModel.consentRequestBeforeSending() {
-            afterConsent = action
-            consentRequest = request
-        } else {
-            action()
-        }
+    /// Lance `action` tout de suite, ou après l'accord de l'utilisateur si un envoi à une IA cloud n'a pas
+    /// encore été autorisé pour ce fournisseur (aucun envoi sans accord). L'attente est tenue par le modèle
+    /// (`ChatViewModel.pendingConsent`), pas par cette vue.
+    private func request(_ action: PendingSendAction) {
+        if case .send(let query) = action, query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
+        if viewModel.requestConsent(resuming: action) { return }
+        if case .send = action { clearDraft() }
+        // `Task.immediate` pour `.send` dans `startSend` (pourquoi : son commentaire).
+        viewModel.start(action)
+    }
+
+    private var pendingConsentBinding: Binding<PendingCloudConsent?> {
+        Binding(
+            get: { viewModel.pendingConsent },
+            // Volontairement sans effet : « Autoriser » et « Annuler » vident eux-mêmes l'attente du modèle, et la
+            // feuille refuse le geste de fermeture. Une écriture de `nil` à la destruction de la vue (pliage de
+            // l'iPhone Duo) ne doit surtout pas annuler l'envoi en attente.
+            set: { _ in }
+        )
     }
 
     /// Suggestion touchée : envoyée comme une nouvelle question (le bouton Stop l'arrête comme un
     /// envoi tapé).
     private func sendSuggestion(_ suggestion: String) {
-        whenConsented { viewModel.startSuggestion(suggestion) }
+        request(.suggestion(suggestion))
     }
 
     /// Décision (c) : même question, en mode Rapide, à la place de la réponse
@@ -601,7 +507,7 @@ struct ChatView: View {
     private func retryInQuickMode(messageID: UUID) {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
-        whenConsented { viewModel.startRetryInQuickMode(messageID: messageID) }
+        request(.retryInQuickMode(messageID: messageID))
     }
 
     /// « Lire cette page » (mission C5) : la page lue, la réponse est refaite avec elle, comme pour toute
@@ -609,7 +515,7 @@ struct ChatView: View {
     private func readPageAndRegenerate(url: String) async {
         guard await viewModel.readPage(url: url) == .readyToRegenerate else { return }
         setPinned(true)
-        whenConsented { viewModel.startRegenerationWithReadPages() }
+        request(.regenerateWithReadPages)
     }
 
     /// Envoi bloqué hors connexion (tâche 1.16) : même question, relancée (le bouton Stop l'arrête
@@ -617,12 +523,14 @@ struct ChatView: View {
     private func relaunchAfterOffline(quickMode: Bool) {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
-        whenConsented { viewModel.startRetryAfterOffline(quickMode: quickMode) }
+        request(.retryAfterOffline(quickMode: quickMode))
     }
 
     /// Le brouillon en cours est gardé : il servira de première question.
     private func startNewConversation() {
         viewModel.startNewConversation()
+        // Le volet de sources (Duo déplié) repart sur la dernière réponse de la conversation qui commence.
+        scroll.focusedAnswerID = nil
         isDraftFocused = true
     }
 }
@@ -776,4 +684,57 @@ private final class FlakyFailoverManagerFactory: @unchecked Sendable {
             await viewModel.send(query: "Première question, qui réussit.")
             await viewModel.send(query: "Deuxième question, qui échoue.")
         }
+}
+
+// MARK: - Duo déplié (mission I2)
+
+/// Recherche à l'écran intérieur du Duo déplié en paysage (951 x 669) : la conversation à gauche, les sources de
+/// la réponse à droite. Mêmes briques que `EngineStatusView` (`DuoTwoPanes`, `SearchSourcesPane`, bulles sans
+/// leur liste de sources), sans l'en-tête moteur ni la session, qui demandent un vrai moteur.
+private struct DuoUnfoldedSearchPreview: View {
+    let viewModel: ChatViewModel
+
+    var body: some View {
+        NavigationStack {
+            DuoTwoPanes {
+                ChatView(viewModel: viewModel)
+                    .environment(\.sourcesShownInPane, true)
+            } secondary: {
+                SearchSourcesPane(messages: viewModel.messages, focusedAnswerID: nil)
+            }
+        }
+        .environment(\.trivaHasHinge, true)
+        .environment(\.horizontalSizeClass, .regular)
+    }
+}
+
+#Preview("Duo déplié — Recherche, conversation | sources (951 x 669)", traits: .fixedLayout(width: 951, height: 669)) {
+    let viewModel = previewViewModel(
+        response: "Voici un résumé basé sur plusieurs sources récentes[1], dont la documentation officielle[2].",
+        sources: PreviewSearXNGClient.sampleResults
+    )
+    DuoUnfoldedSearchPreview(viewModel: viewModel)
+        .task { await viewModel.send(query: "Résume l'actualité tech d'aujourd'hui.") }
+}
+
+#Preview("Duo déplié — Recherche, sources à droite, sombre", traits: .fixedLayout(width: 951, height: 669)) {
+    let viewModel = previewViewModel(
+        response: "Réponse directe, sans recherche associée.",
+        sources: []
+    )
+    DuoUnfoldedSearchPreview(viewModel: viewModel)
+        .task { await viewModel.send(query: "Explique-moi un concept.") }
+        .preferredColorScheme(.dark)
+}
+
+/// Portrait déplié (669 x 951) : une seule colonne, les sources restent sous la réponse.
+#Preview("Duo déplié — Recherche, portrait (669 x 951)", traits: .fixedLayout(width: 669, height: 951)) {
+    let viewModel = previewViewModel(
+        response: "Voici un résumé basé sur plusieurs sources récentes[1].",
+        sources: PreviewSearXNGClient.sampleResults
+    )
+    NavigationStack { ChatView(viewModel: viewModel) }
+        .environment(\.trivaHasHinge, true)
+        .environment(\.horizontalSizeClass, .regular)
+        .task { await viewModel.send(query: "Résume l'actualité tech d'aujourd'hui.") }
 }

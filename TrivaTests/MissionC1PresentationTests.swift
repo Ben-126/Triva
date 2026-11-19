@@ -78,33 +78,33 @@ struct MissionC1PresentationTests {
 
     @Test("Hauteur pas encore mesurée, ou moteur à configurer : l'en-tête reste déplié")
     func headerStaysExpandedWithoutMeasureOrWhenSetupIsNeeded() {
-        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 0, hasMessages: true, needsSetup: false, isAccessibilitySize: true))
-        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 200, hasMessages: true, needsSetup: true, isAccessibilitySize: true))
+        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 0, hasMessages: true, needsSetup: false, isAccessibilitySize: true, horizontalSizeClass: nil, hasHinge: false))
+        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 200, hasMessages: true, needsSetup: true, isAccessibilitySize: true, horizontalSizeClass: nil, hasHinge: false))
     }
 
     @Test("Hauteurs transitoires de la première mise en page (24 pt, 12 pt) : jamais prises pour une mesure")
     func headerIgnoresTransientFirstLayoutHeights() {
         for height in [CGFloat(1), 12, 24, EngineHeaderLayout.minimumMeasuredHeight - 1] {
-            #expect(!EngineHeaderLayout.isCollapsed(availableHeight: height, hasMessages: false, needsSetup: false, isAccessibilitySize: false))
-            #expect(!EngineHeaderLayout.isCollapsed(availableHeight: height, hasMessages: true, needsSetup: false, isAccessibilitySize: true))
+            #expect(!EngineHeaderLayout.isCollapsed(availableHeight: height, hasMessages: false, needsSetup: false, isAccessibilitySize: false, horizontalSizeClass: nil, hasHinge: false))
+            #expect(!EngineHeaderLayout.isCollapsed(availableHeight: height, hasMessages: true, needsSetup: false, isAccessibilitySize: true, horizontalSizeClass: nil, hasHinge: false))
         }
-        #expect(EngineHeaderLayout.isCollapsed(availableHeight: EngineHeaderLayout.minimumMeasuredHeight, hasMessages: false, needsSetup: false, isAccessibilitySize: false))
+        #expect(EngineHeaderLayout.isCollapsed(availableHeight: EngineHeaderLayout.minimumMeasuredHeight, hasMessages: false, needsSetup: false, isAccessibilitySize: false, horizontalSizeClass: nil, hasHinge: false))
     }
 
     @Test("Conversation : repliée à AX, ou quand la hauteur manque (clavier ouvert, Duo plié)")
     func conversationCollapsesOnAccessibilityOrShortHeight() {
-        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 780, hasMessages: true, needsSetup: false, isAccessibilitySize: true))
-        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 400, hasMessages: true, needsSetup: false, isAccessibilitySize: false))
-        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 700, hasMessages: true, needsSetup: false, isAccessibilitySize: false))
+        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 780, hasMessages: true, needsSetup: false, isAccessibilitySize: true, horizontalSizeClass: nil, hasHinge: false))
+        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 400, hasMessages: true, needsSetup: false, isAccessibilitySize: false, horizontalSizeClass: nil, hasHinge: false))
+        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 700, hasMessages: true, needsSetup: false, isAccessibilitySize: false, horizontalSizeClass: nil, hasHinge: false))
     }
 
     @Test("Écran vide : replié seulement quand il ne reste presque rien")
     func emptyScreenCollapsesOnlyWhenTiny() {
-        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 400, hasMessages: false, needsSetup: false, isAccessibilitySize: false))
+        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 400, hasMessages: false, needsSetup: false, isAccessibilitySize: false, horizontalSizeClass: nil, hasHinge: false))
         // Texte AX : l'en-tête déplié chasserait la barre de saisie sous le clavier (mission AX3).
-        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 440, hasMessages: false, needsSetup: false, isAccessibilitySize: true))
-        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 700, hasMessages: false, needsSetup: false, isAccessibilitySize: true))
-        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 300, hasMessages: false, needsSetup: false, isAccessibilitySize: false))
+        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 440, hasMessages: false, needsSetup: false, isAccessibilitySize: true, horizontalSizeClass: nil, hasHinge: false))
+        #expect(!EngineHeaderLayout.isCollapsed(availableHeight: 700, hasMessages: false, needsSetup: false, isAccessibilitySize: true, horizontalSizeClass: nil, hasHinge: false))
+        #expect(EngineHeaderLayout.isCollapsed(availableHeight: 300, hasMessages: false, needsSetup: false, isAccessibilitySize: false, horizontalSizeClass: nil, hasHinge: false))
     }
 
     // MARK: - Sources

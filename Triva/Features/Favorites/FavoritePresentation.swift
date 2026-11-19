@@ -31,6 +31,23 @@ nonisolated struct FavoriteSummary: Identifiable, Hashable, Sendable {
     let savedAt: Date
 }
 
+/// Retirer un favori referme-t-il le détail affiché ? Règle pure, testée sans interface (revue R1, C1).
+///
+/// Avec deux volets (Duo déplié), la liste reste visible à côté du détail : on peut retirer UN AUTRE favori
+/// que celui qui est ouvert, et le détail ouvert doit alors rester en place. Avec la pile (une colonne), le
+/// détail occupe l'écran : le seul favori retirable est celui qui est ouvert.
+nonisolated enum FavoriteDetailClosing {
+    /// - Parameters:
+    ///   - messageID: favori retiré.
+    ///   - opened: favori ouvert (sélection du volet de droite, recopiée à l'ouverture d'une route de la pile).
+    ///   - hasPushedRoute: la pile a un détail poussé. `opened` vaut `nil` un instant après la poussée, avant
+    ///     que le détail n'apparaisse : un détail poussé sans sélection est forcément celui du favori retiré.
+    static func closesDetail(removing messageID: UUID, opened: UUID?, hasPushedRoute: Bool) -> Bool {
+        if let opened { return opened == messageID }
+        return hasPushedRoute
+    }
+}
+
 /// Contenu complet d'un favori pour le détail, copié UNE fois du modèle :
 /// aucune référence SwiftData ne vit dans l'état d'une vue.
 nonisolated struct FavoriteDetailContent: Sendable, Equatable {

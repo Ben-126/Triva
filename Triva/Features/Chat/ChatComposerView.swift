@@ -84,6 +84,11 @@ struct ChatComposerView: View {
     let onStop: () -> Void
     /// Non `nil` : la rangée moteur de l'en-tête vit ici (voir `ComposerEngineAccessory`).
     var engineAccessory: ComposerEngineAccessory?
+    /// Montre « Fermer le clavier » dans la barre de saisie (voir `ComposerKeyboardLayout`) : iPhone Duo plié,
+    /// où la barre d'onglets et le fil ne laissent aucun autre moyen de le fermer sans envoyer. Dans la barre
+    /// et pas en `ToolbarItem(placement: .keyboard)` : sur iOS 27 le système pose cet élément en pastille
+    /// flottante sur le bord du clavier, qui recouvrait le bouton d'envoi (constaté sur le Duo plié).
+    var showsKeyboardDismissButton = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
@@ -138,6 +143,7 @@ struct ChatComposerView: View {
                 HStack(spacing: 12) {
                     secondaryActions
                     Spacer(minLength: 0)
+                    dismissKeyboardButton
                     sendButton
                 }
             }
@@ -146,8 +152,22 @@ struct ChatComposerView: View {
                 engineControls
                 secondaryActions
                 field
+                dismissKeyboardButton
                 sendButton
             }
+        }
+    }
+
+    /// Ferme le clavier SANS envoyer : le brouillon reste dans la barre de saisie.
+    @ViewBuilder
+    private var dismissKeyboardButton: some View {
+        if showsKeyboardDismissButton, isDraftFocused.wrappedValue {
+            Button("Fermer le clavier", systemImage: "keyboard.chevron.compact.down") {
+                isDraftFocused.wrappedValue = false
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glass)
+            .accessibilityIdentifier("chat.dismissKeyboard")
         }
     }
 

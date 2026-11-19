@@ -114,9 +114,6 @@ struct DiscoverView: View {
     /// colonnes. 0 avant la première mesure, donc une colonne au tout
     /// premier rendu.
     @State private var availableWidth: CGFloat = 0
-    /// Sujets dépliés dans « Tout ». État d'affichage local : il peut
-    /// disparaître avec la vue sans conséquence.
-    @State private var expandedTopics: Set<DiscoverTopic> = []
     /// Vrai seulement pendant un chargement lancé par « Réessayer » : le
     /// tirer-pour-actualiser affiche déjà son propre indicateur système, un
     /// second à la place du bouton ferait deux roues à l'écran (retour de Ben,
@@ -291,7 +288,7 @@ struct DiscoverView: View {
     /// (`MediaResultsPresentation.listLayout`) : le bouton n'apparaît que
     /// s'il cache au moins 2 articles.
     private func overviewSection(_ section: DiscoverTopicSection, columns: Int) -> some View {
-        let limit = expandedTopics.contains(section.topic)
+        let limit = model.expandedTopics.contains(section.topic)
             ? section.articles.count
             : DiscoverLayout.overviewArticleLimit(columnCount: columns)
         let layout = MediaResultsPresentation.listLayout(totalCount: section.articles.count, limit: limit)
@@ -302,7 +299,7 @@ struct DiscoverView: View {
             if layout.hiddenCount > 0 {
                 Button {
                     withAnimation {
-                        _ = expandedTopics.insert(section.topic)
+                        _ = model.expandedTopics.insert(section.topic)
                     }
                 } label: {
                     Label(DiscoverLayout.showMoreLabel(hiddenCount: layout.hiddenCount), systemImage: "chevron.down")

@@ -34,17 +34,15 @@ struct FavoriteDetailScreen: View {
     let historyStore: ChatHistoryStore
     let onOpenConversation: (@MainActor (UUID) -> Void)?
     let onRemove: @MainActor (UUID) -> Void
+    /// Faux avec deux volets (Duo déplié) : le titre « Favoris » de la pile unique reste celui de la barre.
+    var showsNavigationTitle = true
 
     @State private var phase: FavoriteDetailPhase = .loading
     @State private var retryCount = 0
     @State private var isConfirmingRemoval = false
 
     var body: some View {
-        content
-            .navigationTitle("Favori")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
+        titled(content)
             .toolbar {
                 if let loaded = loadedContent {
                     ToolbarItem(placement: .primaryAction) {
@@ -55,6 +53,19 @@ struct FavoriteDetailScreen: View {
             .task(id: FavoriteDetailLoadKey(revision: store.revision, historyRevision: historyStore.revision, retry: retryCount)) {
                 load()
             }
+    }
+
+    @ViewBuilder
+    private func titled(_ view: some View) -> some View {
+        if showsNavigationTitle {
+            view
+                .navigationTitle("Favori")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+        } else {
+            view
+        }
     }
 
     @ViewBuilder

@@ -74,7 +74,13 @@ struct FavoritesView: View {
     @State private var phase: FavoritesPhase = .loading
     @State private var retryCount = 0
     @State private var excerptCache = AnswerExcerptCache()
-    @State private var path = NavigationPath()
+    /// Pile injectée (`TrivaRootCoordinator.favoritesPath`), `nil` : `localPath` (aperçus). Voir `SettingsView`.
+    private let injectedPath: Binding<NavigationPath>?
+    @State private var localPath = NavigationPath()
+    /// Favori ouvert dans le volet de droite (Duo déplié), injecté (`TrivaRootCoordinator.favoritesSelection`)
+    /// ou local pour les aperçus. Même sélection que la route poussée de `path`, vue de deux manières.
+    private let injectedSelection: Binding<UUID?>?
+    @State private var localSelection: UUID?
     @State private var pendingRemoval: FavoriteSummary?
     @State private var removalErrorMessage: String?
 
@@ -88,25 +94,140 @@ struct FavoritesView: View {
     init(
         store: FavoritesStore,
         historyStore: ChatHistoryStore,
-        onOpenConversation: (@MainActor (UUID) -> Void)? = nil
+        onOpenConversation: (@MainActor (UUID) -> Void)? = nil,
+        navigationPath: Binding<NavigationPath>? = nil,
+        selection: Binding<UUID?>? = nil
     ) {
         _store = State(initialValue: store)
         _historyStore = State(initialValue: historyStore)
         self.onOpenConversation = onOpenConversation
+        injectedPath = navigationPath
+        injectedSelection = selection
     }
 
+    private var path: Binding<NavigationPath> { injectedPath ?? $localPath }
+    private var openedFavorite: Binding<UUID?> { injectedSelection ?? $localSelection }
+
     var body: some View {
-        NavigationStack(path: $path) {
+        // Duo déplié en paysage : liste | détail côte à côte (mission I2). Ailleurs, la pile d'avant.
+        DuoPaneContainer { columnCount in
+            if columnCount == 2 {
+                twoPanes
+            } else {
+                singlePane
+            }
+        }
+        // Sur la pile entière, pas sur la liste : un retrait demandé depuis le
+        // détail doit pouvoir afficher son échec quand la liste est recouverte.
+        .alert(removalErrorMessage ?? "", isPresented: isShowingRemovalError) {
+            Button("OK", role: .cancel) {}
+        }
+    }
+
+    // MARK: Présentations
+
+    /// Une colonne : la liste, et le détail poussé sur la pile (iPhone, iPad, Mac, Duo plié ou en portrait).
+    private var singlePane: some View {
+        NavigationStack(path: path) {
+            listScreen(selection: nil)
+                .navigationDestination(for: FavoriteRoute.self) { route in
+                    detailScreen(messageID: route.messageID)
+                        // La route poussée est AUSSI la sélection du volet de droite : déplier garde le favori ouvert.
+                        .onAppear { openedFavorite.wrappedValue = route.messageID }
+                }
+                // Retour à la liste : plus de favori ouvert.
+                .onChange(of: path.wrappedValue.count) { _, count in
+                    if count == 0 { openedFavorite.wrappedValue = nil }
+                }
+        }
+    }
+
+    /// Deux colonnes : la liste à gauche, le favori sélectionné à droite. UNE SEULE pile de navigation, posée
+    /// AUTOUR des deux volets (HIG « Designing for iPhone Duo » : la navigation reste en dehors de
+    /// l'`ArrangementView`, revue R1 C2) : titre « Favoris » et recherche viennent de cette pile ; le détail n'a
+    /// pas de pile ni de titre à lui (`showsNavigationTitle: false`), son bouton « Retirer » monte dans la même
+    /// barre. La sélection est recopiée dans `path` : replier l'appareil retrouve le favori ouvert, poussé sur
+    /// la pile.
+    private var twoPanes: some View {
+        NavigationStack {
+            listChrome(
+                DuoTwoPanes {
+                    FavoritesContentView(
+                        phase: phase, query: query,
+                        onRequestRemoval: { pendingRemoval = $0 },
+                        onRetry: retry,
+                        selection: selectionBinding
+                    )
+                } secondary: {
+                    detailPane
+                }
+            )
+        }
+    }
+
+    /// Volet de droite : le favori ouvert, ou une invite. Séparateur sur son bord gauche.
+    @ViewBuilder
+    private var detailPane: some View {
+        Group {
+            if let messageID = openedFavorite.wrappedValue {
+                detailScreen(messageID: messageID, showsNavigationTitle: false)
+                    .id(messageID)
+            } else {
+                Text("Choisis un favori dans la liste.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("favorites.detailPlaceholder")
+            }
+        }
+        .overlay(alignment: .leading) {
+            Rectangle().fill(.separator).frame(width: 1)
+        }
+    }
+
+    /// Sélection du volet de droite, et route correspondante sur la pile (pour le repli).
+    private var selectionBinding: Binding<UUID?> {
+        Binding(
+            get: { openedFavorite.wrappedValue },
+            set: { newValue in
+                openedFavorite.wrappedValue = newValue
+                path.wrappedValue = newValue.map { NavigationPath([FavoriteRoute(messageID: $0)]) } ?? NavigationPath()
+            }
+        )
+    }
+
+    private func detailScreen(messageID: UUID, showsNavigationTitle: Bool = true) -> some View {
+        FavoriteDetailScreen(
+            messageID: messageID, store: store, historyStore: historyStore,
+            onOpenConversation: onOpenConversation, onRemove: { removeFavorite(messageID: $0) },
+            showsNavigationTitle: showsNavigationTitle
+        )
+    }
+
+    /// Retente d'abord l'ouverture de la base (sans effet quand elle est ouverte), puis relit la liste.
+    private func retry() {
+        store.retryOpeningStorage()
+        retryCount += 1
+    }
+
+    /// La liste d'une colonne (pile d'avant).
+    private func listScreen(selection: Binding<UUID?>?) -> some View {
+        listChrome(
             FavoritesContentView(
                 phase: phase, query: query,
                 onRequestRemoval: { pendingRemoval = $0 },
-                // Retente d'abord l'ouverture de la base (sans effet quand elle
-                // est ouverte), puis relit la liste.
-                onRetry: {
-                    store.retryOpeningStorage()
-                    retryCount += 1
-                }
+                onRetry: retry,
+                selection: selection
             )
+        )
+    }
+
+    /// Titre, recherche, chargement et confirmation de retrait : identiques dans les deux présentations (posés sur
+    /// la liste seule, ou autour des deux volets).
+    private func listChrome<Content: View>(_ content: Content) -> some View {
+        content
             .navigationTitle("Favoris")
             // Titre en ligne, comme Bibliothèque et Découvrir (finding Q3 n°30).
             #if os(iOS)
@@ -115,12 +236,6 @@ struct FavoritesView: View {
             .searchable(text: $query, prompt: Text("Rechercher dans les favoris"))
             .task(id: FavoritesLoadKey(query: query, revision: store.revision, retry: retryCount)) {
                 await reload()
-            }
-            .navigationDestination(for: FavoriteRoute.self) { route in
-                FavoriteDetailScreen(
-                    messageID: route.messageID, store: store, historyStore: historyStore,
-                    onOpenConversation: onOpenConversation, onRemove: { removeFavorite(messageID: $0) }
-                )
             }
             .confirmationDialog(
                 FavoritePresentation.removalTitle, isPresented: isConfirmingRemoval,
@@ -133,12 +248,6 @@ struct FavoritesView: View {
             } message: { _ in
                 Text(FavoritePresentation.removalMessage)
             }
-        }
-        // Sur la pile entière, pas sur la liste : un retrait demandé depuis le
-        // détail doit pouvoir afficher son échec quand la liste est recouverte.
-        .alert(removalErrorMessage ?? "", isPresented: isShowingRemovalError) {
-            Button("OK", role: .cancel) {}
-        }
     }
 
     // MARK: Chargement
@@ -208,8 +317,15 @@ struct FavoritesView: View {
         if case .loaded(let snapshot) = phase {
             withAnimation { phase = .loaded(snapshot.removing(messageID: messageID)) }
         }
-        // Referme le détail : seul celui du favori retiré peut être ouvert (la pile le cache sinon).
-        path = NavigationPath()
+        // Referme le détail SEULEMENT si c'est celui du favori retiré : avec deux volets, la liste reste visible
+        // et on peut retirer un autre favori que celui qui est ouvert (revue R1, C1).
+        guard FavoriteDetailClosing.closesDetail(
+            removing: messageID,
+            opened: openedFavorite.wrappedValue,
+            hasPushedRoute: !path.wrappedValue.isEmpty
+        ) else { return }
+        path.wrappedValue = NavigationPath()
+        openedFavorite.wrappedValue = nil
     }
 
     private var isConfirmingRemoval: Binding<Bool> {

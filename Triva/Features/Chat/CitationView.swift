@@ -79,6 +79,9 @@ struct CitationView: View {
     let isStreaming: Bool
     /// Sources jamais lues : citation en texte simple (`CitationParser.parse(_:sourceCount:unread:)`).
     var unreadSourceNumbers: Set<Int> = []
+    /// Appelée quand une citation est touchée (mission I2) : sur le Duo déplié, la réponse touchée devient
+    /// celle que montre le volet de sources.
+    var onCitationSelected: (@MainActor () -> Void)?
 
     /// Largeur de la bulle : une colonne de lecture confortable, quelle que
     /// soit la taille de la fenêtre. Multiple de la grille.
@@ -189,11 +192,13 @@ struct CitationView: View {
     /// avec un numéro sans source n'ouvre rien.
     private func presentCitation(index: Int) {
         guard let source = CitationParser.source(forCitationIndex: index, in: sources) else { return }
+        onCitationSelected?()
         selection = CitationSelection(citationIndex: index, source: source)
     }
 
     /// Action VoiceOver : aucun point touché, la bulle s'ancre sur le texte.
     private func presentWithoutAnchor(_ cited: CitationSelection) {
+        onCitationSelected?()
         lastTapLocation = nil
         selection = cited
     }

@@ -122,12 +122,16 @@ extension TrivaUITests {
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 30))
         }
         dismissKeyboard()
+        #if os(iOS)
         XCUIDevice.shared.orientation = .landscapeLeft
+        #endif
         _ = element("search.engineBadge").waitForExistence(timeout: 5)
         let landscape = XCUIScreen.main.screenshot().image.size
         duoLog("orientation paysage demandée : capture \(Int(landscape.width))x\(Int(landscape.height)) pt")
         duoShot("recherche-vide_paysage")
+        #if os(iOS)
         XCUIDevice.shared.orientation = .portrait
+        #endif
     }
 
     /// Réglages : liste complète, feuille du moteur, feuille des clés API.
@@ -208,6 +212,18 @@ extension TrivaUITests {
         duoShot("brouillon_avant")
         let tab = tabItem(of: .settings)
         duoLog("clavier ouvert : onglet Réglages présent=\(tab.exists) touchable=\(tab.isHittable)")
+        // Mission I1 : le bouton « Fermer le clavier » de la barre de saisie (iPhone Duo plié) ferme le clavier
+        // SANS envoyer : le brouillon doit rester dans le champ.
+        let dismissButton = element("chat.dismissKeyboard")
+        if dismissButton.waitForExistence(timeout: 3) {
+            duoShot("brouillon_bouton-fermer-clavier")
+            dismissButton.tap()
+            _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 5)
+            duoLog("bouton « Fermer le clavier » touché : clavier=\(app.keyboards.firstMatch.exists), brouillon dans le champ = « \((element("chat.input").value as? String) ?? "?") »")
+            duoShot("brouillon_apres-bouton-fermer-clavier")
+        } else {
+            duoLog("bouton « Fermer le clavier » absent")
+        }
         if !tab.isHittable {
             element("chat.input").swipeDown()
             duoLog("après balayage vers le bas sur la saisie : clavier=\(app.keyboards.firstMatch.exists)")
@@ -239,5 +255,33 @@ extension TrivaUITests {
         duoShot("decouvrir-p2")
         duoScrollDown()
         duoShot("decouvrir-p3")
+    }
+
+    /// Mission I2 : Duo DÉPLIÉ en paysage. À lancer APRÈS avoir déplié l'appareil à la main dans Device Hub (bouton
+    /// « Ouvert », puis paysage) : le dépliage n'est pas pilotable. Recherche avec ses sources dans le volet de
+    /// droite, puis Favoris (liste | détail). Si l'écran intérieur n'est pas rendu par `XCUIScreen.main` :
+    /// `xcrun simctl io <UDID> screenshot --display=3 <fichier>`.
+    /// Un identifiant manquant est noté au journal et le parcours continue (aucune assertion bloquante).
+    @objc func testD0_f_deplie_deuxVolets() throws {
+        try duoPrepare()
+        launchToSearch()
+        requireChatReady()
+        duoShot("deplie_recherche-vide")
+        _ = sendQuestion("Cherche le prix d'un billet pour la tour Eiffel")
+        waitForAnswerEnd()
+        let pane = element("search.sourcesPane")
+        duoLog("volet de sources présent=\(pane.waitForExistence(timeout: 5)), liens de sources=\(elements("source.link").count)")
+        duoShot("deplie_recherche-deux-volets")
+        if duoTap(element("chat.favorite"), "étoile favori") { duoShot("deplie_reponse_favori-actif") }
+        // Barre latérale masquée à l'arrivée : `openFromSidebar` la révèle comme le ferait l'utilisateur.
+        openFromSidebar(.favorites, file: #filePath, line: #line)
+        duoShot("deplie_favoris-liste")
+        let row = elements("favorites.row").firstMatch
+        if row.waitForExistence(timeout: 8) {
+            row.tap()
+            duoShot("deplie_favoris-liste-detail")
+        } else {
+            duoLog("aucune ligne de favori")
+        }
     }
 }

@@ -108,6 +108,16 @@ final class ChatViewModel {
         offlineNotice = notice
     }
 
+    /// Demande de consentement cloud affichée, avec l'envoi qu'elle a interrompu (mission I1) : détenue ici,
+    /// pas par `ChatView`, pour que la feuille et l'envoi survivent au remontage de la vue quand
+    /// l'iPhone Duo se plie ou se déplie. Voir `ChatViewModel+CloudConsent`.
+    private(set) var pendingConsent: PendingCloudConsent?
+
+    /// Seul point d'écriture de `pendingConsent` hors de ce fichier (`ChatViewModel+CloudConsent`).
+    func setPendingConsent(_ pending: PendingCloudConsent?) {
+        pendingConsent = pending
+    }
+
     /// Seul point d'écriture de `errorDescription` hors de ce fichier (`ChatViewModel+CloudConsent`).
     func setErrorDescription(_ text: String?) {
         errorDescription = text

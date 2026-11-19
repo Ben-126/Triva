@@ -32,6 +32,18 @@ struct AIEngineSelectionView: View {
     private let isFirstLaunch: Bool
     /// Hauteur visible de la zone de défilement, pour centrer le contenu sur un grand écran (iPad).
     @State private var viewportHeight: CGFloat = 0
+    /// Hauteur du contenu sans les boutons, et des boutons seuls : voir `OnboardingActionPlacement`
+    /// (iPhone Duo plié : « Continuer » tombait sous le bord bas, mission I1).
+    @State private var contentHeight: CGFloat = 0
+    @State private var actionsHeight: CGFloat = 0
+
+    private var actionsArePinned: Bool {
+        OnboardingActionPlacement.isPinned(
+            contentHeight: contentHeight,
+            actionsHeight: actionsHeight + OnboardingActionPlacement.actionsLeadingSpacing + OnboardingActionPlacement.bottomPadding,
+            viewportHeight: viewportHeight
+        )
+    }
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -66,70 +78,102 @@ struct AIEngineSelectionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
-                if isFirstLaunch {
-                    header
-                }
-
-                GlassEffectContainer(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        engineCard(
-                            option: .appleIntelligence,
-                            title: "Apple Intelligence",
-                            subtitle: appleModel.isPrivateCloudOffered
-                                ? AppleIntelligenceModelCopy.engineCardSubtitle
-                                : "Gratuit, sur l'appareil. Nécessite un appareil compatible avec Apple Intelligence activé."
-                        )
-                        if showsAppleModelChoice {
-                            AppleIntelligenceModelSegmentedChoice(selection: $appleModelChoice)
-                        }
-                        engineCard(
-                            option: .mlxLocal,
-                            title: "Modèle local (MLX)",
-                            subtitle: "Gratuit, sur l'appareil. Un modèle adapté à la puissance de ton appareil te sera proposé au choix."
-                        )
-                        engineCard(
-                            option: .cloudBYOK,
-                            title: "Clé API personnelle",
-                            subtitle: Self.cloudKeyCardSubtitle
-                        )
-                        // Mention validée par Ben : payant chez le fournisseur, gratuit chez Triva.
-                        PaidKeyNoticeText()
-                            .padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 32) {
+                    if isFirstLaunch {
+                        header
                     }
+                    engineCards
                 }
+                .padding(.top, OnboardingActionPlacement.contentTopPadding)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
 
-                Button(isFirstLaunch ? "Continuer" : "Utiliser ce moteur") {
-                    if showsAppleModelChoice {
-                        appleModel.preference = appleModelChoice
-                    }
-                    onConfirm(selection)
-                }
-                .buttonStyle(.glassProminent)
-                .frame(maxWidth: .infinity)
-                .accessibilityIdentifier("engine.continue")
-
-                if let onCancel {
-                    Button("Annuler", action: onCancel)
-                        .buttonStyle(.glass)
-                        .keyboardShortcut(.cancelAction)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("engine.cancel")
+                if !actionsArePinned {
+                    actions
+                        .padding(.top, OnboardingActionPlacement.actionsLeadingSpacing)
                 }
             }
             .frame(maxWidth: contentMaxWidth)
             .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 40)
+            .padding(.bottom, OnboardingActionPlacement.bottomPadding)
             // Sur grand écran, le contenu est centré dans la hauteur visible : calé en haut, il
             // laissait ≈ 60 % de l'iPad vide et se lisait comme un écran d'iPhone posé là
             // (finding Q3 n°52). Sur iPhone la hauteur du contenu dépasse déjà la zone visible.
             .frame(maxWidth: .infinity, minHeight: horizontalSizeClass == .regular ? viewportHeight : nil)
         }
+        // Le texte qui défile sous les boutons épinglés s'estompe au lieu de les traverser (Duo plié, mission I1).
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        // Les boutons restent visibles quand le contenu déborde (iPhone Duo plié, mission I1).
+        .safeAreaBar(edge: .bottom, spacing: 0) {
+            if actionsArePinned {
+                actions
+                    .frame(maxWidth: contentMaxWidth)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        // Mesurée APRÈS la barre du bas : la zone de défilement rétrécit quand la barre apparaît (constaté sur
+        // l'iPhone 18 Pro, où les boutons restaient épinglés à tort), alors que ce cadre extérieur garde la même
+        // hauteur, barre ou non. Aucune oscillation possible.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         .task {
             appleModel.refreshStatus()
         }
+    }
+
+    private var engineCards: some View {
+        GlassEffectContainer(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
+                engineCard(
+                    option: .appleIntelligence,
+                    title: "Apple Intelligence",
+                    subtitle: appleModel.isPrivateCloudOffered
+                        ? AppleIntelligenceModelCopy.engineCardSubtitle
+                        : "Gratuit, sur l'appareil. Nécessite un appareil compatible avec Apple Intelligence activé."
+                )
+                if showsAppleModelChoice {
+                    AppleIntelligenceModelSegmentedChoice(selection: $appleModelChoice)
+                }
+                engineCard(
+                    option: .mlxLocal,
+                    title: "Modèle local (MLX)",
+                    subtitle: "Gratuit, sur l'appareil. Un modèle adapté à la puissance de ton appareil te sera proposé au choix."
+                )
+                engineCard(
+                    option: .cloudBYOK,
+                    title: "Clé API personnelle",
+                    subtitle: Self.cloudKeyCardSubtitle
+                )
+                // Mention validée par Ben : payant chez le fournisseur, gratuit chez Triva.
+                PaidKeyNoticeText()
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    /// « Continuer » (ou « Utiliser ce moteur ») et « Annuler ». Mesurée à part : voir `OnboardingActionPlacement`.
+    private var actions: some View {
+        VStack(spacing: 32) {
+            Button(isFirstLaunch ? "Continuer" : "Utiliser ce moteur") {
+                if showsAppleModelChoice {
+                    appleModel.preference = appleModelChoice
+                }
+                onConfirm(selection)
+            }
+            .buttonStyle(.glassProminent)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("engine.continue")
+
+            if let onCancel {
+                Button("Annuler", action: onCancel)
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("engine.cancel")
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { actionsHeight = $0 }
     }
 
     /// Texte de la carte « Clé API personnelle » (finding Q3 n°2). L'ancienne phrase, « ta clé reste

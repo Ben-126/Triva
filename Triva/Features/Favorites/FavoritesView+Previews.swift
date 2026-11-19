@@ -160,3 +160,33 @@ struct FavoritesContentPreview: View {
         FavoriteDetailScreen(messageID: UUID(), store: stores.favorites, historyStore: stores.history, onOpenConversation: nil, onRemove: { _ in })
     }
 }
+
+// MARK: - Duo déplié (mission I2)
+
+/// Favoris en deux volets, favori choisi à droite : paysage (951 x 669). Charnière et classe de taille forcées.
+#Preview("Duo déplié — Favoris, liste | détail (951 x 669)", traits: .fixedLayout(width: 951, height: 669)) {
+    let stores = FavoritesPreviewData.seededStores()
+    let first = (try? stores.favorites.favorites(matching: ""))?.first?.messageID
+    FavoritesView(
+        store: stores.favorites, historyStore: stores.history, onOpenConversation: { _ in },
+        selection: .constant(first)
+    )
+    .environment(\.trivaHasHinge, true)
+    .environment(\.horizontalSizeClass, .regular)
+}
+
+/// Même écran, aucun favori choisi : le volet de droite invite à en choisir un.
+#Preview("Duo déplié — Favoris, rien de choisi", traits: .fixedLayout(width: 951, height: 669)) {
+    let stores = FavoritesPreviewData.seededStores()
+    FavoritesView(store: stores.favorites, historyStore: stores.history, onOpenConversation: { _ in })
+        .environment(\.trivaHasHinge, true)
+        .environment(\.horizontalSizeClass, .regular)
+}
+
+/// Portrait déplié (669 x 951) : une seule colonne, la liste, comme sur iPad mini en portrait.
+#Preview("Duo déplié — Favoris, portrait (669 x 951)", traits: .fixedLayout(width: 669, height: 951)) {
+    let stores = FavoritesPreviewData.seededStores()
+    FavoritesView(store: stores.favorites, historyStore: stores.history, onOpenConversation: { _ in })
+        .environment(\.trivaHasHinge, true)
+        .environment(\.horizontalSizeClass, .regular)
+}

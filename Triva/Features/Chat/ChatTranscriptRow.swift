@@ -22,12 +22,26 @@ struct ChatTranscriptRow: View {
     let message: ChatViewModel.Message
     let viewModel: ChatViewModel
     let onRetry: @MainActor (UUID) -> Void
+    /// Reçoit le haut de la rangée dans le repère nommé `topCoordinateSpace` (mission I1) : sert à garder
+    /// la position de lecture quand la vue est remplacée (`TranscriptScrollState`). `nil` : rien n'est mesuré.
+    var onTopChange: (@MainActor (CGFloat) -> Void)?
+    var topCoordinateSpace = ""
 
     /// Identifiant du DÉBUT d'une réponse (son premier widget, sinon sa bulle) : c'est là
     /// qu'une conversation rouverte s'ouvre (`ChatView`, mission C1), et non sur le bas de la
     /// bulle, c'est-à-dire sur les sources (QA Q1, pt 14).
     static func answerStartID(_ messageID: UUID) -> String {
         "answer-start-\(messageID.uuidString)"
+    }
+
+    /// Identifiant de défilement du HAUT de la rangée d'un message : celui qu'`.id` pose sur son premier élément
+    /// (voir `body`). `ChatView` y revient pour restaurer la position de lecture.
+    static func scrollID(for message: ChatViewModel.Message) -> String {
+        scrollID(messageID: message.id, isAnswer: message.role == .assistant)
+    }
+
+    static func scrollID(messageID: UUID, isAnswer: Bool) -> String {
+        isAnswer ? answerStartID(messageID) : messageID.uuidString
     }
 
     private static func isIdle(_ phase: ImageResultsPhase) -> Bool {
@@ -59,6 +73,7 @@ struct ChatTranscriptRow: View {
                         }
                     }
                     .id(index == 0 ? Self.answerStartID(messageID) : "widget-\(index)-\(messageID.uuidString)")
+                    .reportingTop(index == 0 ? onTopChange : nil, in: topCoordinateSpace)
                 }
             }
 
@@ -75,6 +90,7 @@ struct ChatTranscriptRow: View {
                 )
                 .equatable()
                 .id(isAnswer && message.widgets.isEmpty ? Self.answerStartID(messageID) : messageID.uuidString)
+                .reportingTop(!isAnswer || message.widgets.isEmpty ? onTopChange : nil, in: topCoordinateSpace)
             }
 
             if isAnswer, MessageBubblePresentation.showsMediaSearch(answer) {
@@ -108,6 +124,19 @@ struct ChatTranscriptRow: View {
                 .buttonStyle(.glass)
                 .accessibilityIdentifier("chat.retryQuickMode")
             }
+        }
+    }
+}
+
+private extension View {
+    /// Rapporte le haut de la vue (repère `space`) à chaque changement de mise en page, pas à chaque image de
+    /// défilement : le repère est celui du contenu. `nil` : aucun effet.
+    @ViewBuilder
+    func reportingTop(_ report: (@MainActor (CGFloat) -> Void)?, in space: String) -> some View {
+        if let report {
+            onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(space)).minY } action: { report($0) }
+        } else {
+            self
         }
     }
 }

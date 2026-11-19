@@ -126,6 +126,10 @@ final class DiscoverViewModel {
     /// Sujet affiché, `nil` pour « Tout ». Ici plutôt qu'en `@State` dans la
     /// vue : revenir sur l'onglet retrouve le sujet qu'on y avait laissé.
     var selectedTopic: DiscoverTopic?
+    /// Sujets dépliés dans « Tout » (« Afficher les N autres articles »). Ici plutôt qu'en `@State`
+    /// dans la vue : plier ou déplier l'iPhone Duo remplace la vue, et l'utilisateur retrouve ses
+    /// sujets dépliés (mission I1).
+    var expandedTopics: Set<DiscoverTopic> = []
 
     private let loadContent: (@escaping TopicHandler) async throws -> DiscoverContent
     private let cache: any DiscoverContentCaching

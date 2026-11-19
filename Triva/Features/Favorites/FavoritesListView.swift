@@ -20,9 +20,12 @@ struct FavoritesContentView: View {
     let query: String
     let onRequestRemoval: @MainActor (FavoriteSummary) -> Void
     let onRetry: @MainActor () -> Void
+    /// Mode deux volets (iPhone Duo déplié, mission I2) : la sélection est le favori ouvert dans le volet de
+    /// droite, au lieu d'une pile poussée. `nil` : mode d'avant, une ligne ouvre le détail par navigation.
+    var selection: Binding<UUID?>?
 
     var body: some View {
-        List {
+        List(selection: selection) {
             if let snapshot {
                 ForEach(snapshot.favorites) { favorite in
                     row(for: favorite, referenceDate: snapshot.referenceDate)
@@ -46,9 +49,7 @@ struct FavoritesContentView: View {
     /// iOS qu'un écran va s'ouvrir. Balayage ET menu contextuel sur les deux
     /// plateformes, pour les raisons données sur `LibraryContentView`.
     private func row(for favorite: FavoriteSummary, referenceDate: Date) -> some View {
-        NavigationLink(value: FavoriteRoute(messageID: favorite.messageID)) {
-            FavoriteRowLabel(favorite: favorite, referenceDate: referenceDate)
-        }
+        rowContent(for: favorite, referenceDate: referenceDate)
         .accessibilityHint("Ouvre la réponse complète")
         .accessibilityIdentifier("favorites.row")
         .listRowInsets(HistoryListLayout.rowInsets)
@@ -57,6 +58,19 @@ struct FavoritesContentView: View {
         }
         .contextMenu {
             removeButton(for: favorite, title: "Retirer des favoris")
+        }
+    }
+
+    /// Une ligne sélectionnable (volet de droite) ou un lien de navigation (pile).
+    @ViewBuilder
+    private func rowContent(for favorite: FavoriteSummary, referenceDate: Date) -> some View {
+        if selection != nil {
+            FavoriteRowLabel(favorite: favorite, referenceDate: referenceDate)
+                .tag(favorite.messageID)
+        } else {
+            NavigationLink(value: FavoriteRoute(messageID: favorite.messageID)) {
+                FavoriteRowLabel(favorite: favorite, referenceDate: referenceDate)
+            }
         }
     }
 
