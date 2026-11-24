@@ -27,7 +27,7 @@ final class ExternalQueryInbox {
     /// Identifiant du dernier dépôt, à ouvrir en fenêtre.
     private(set) var lastDepositID: UUID?
 
-    @ObservationIgnored private var entries: [(id: UUID, query: String)] = []
+    @ObservationIgnored private var entries: [(id: UUID, query: ExternalQuery)] = []
     @ObservationIgnored private let capacity: Int
 
     init(capacity: Int = ExternalQueryInbox.defaultCapacity) {
@@ -36,10 +36,12 @@ final class ExternalQueryInbox {
 
     var pendingCount: Int { entries.count }
 
+    /// - Parameter origin: `.draft` par défaut (jamais envoyé) ; seul le panneau de la barre des menus demande
+    ///   `.typedInMenuBar`.
     @discardableResult
-    func deposit(_ query: String) -> UUID {
+    func deposit(_ query: String, origin: ExternalQueryOrigin = .draft) -> UUID {
         let id = UUID()
-        entries.append((id, query))
+        entries.append((id, ExternalQuery(text: query, origin: origin)))
         if entries.count > capacity {
             entries.removeFirst(entries.count - capacity)
         }
@@ -50,6 +52,11 @@ final class ExternalQueryInbox {
 
     /// Rend le texte déposé pour cet identifiant, UNE seule fois.
     func take(for id: UUID) -> String? {
+        takeQuery(for: id)?.text
+    }
+
+    /// Comme `take(for:)`, avec l'origine : c'est elle qui dit si la fenêtre peut envoyer la question.
+    func takeQuery(for id: UUID) -> ExternalQuery? {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return nil }
         return entries.remove(at: index).query
     }

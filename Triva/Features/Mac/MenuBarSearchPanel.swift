@@ -13,7 +13,10 @@ import SwiftUI
 /// « Ouvrir Triva ». Style fenêtre (et non menu) parce qu'il faut un champ de saisie.
 ///
 /// Aucune `SearchSession` ici (mémoire, modèle local, historique en double) : valider la question la dépose dans
-/// `ExternalSearchLauncher`, qui ouvre une vraie fenêtre de recherche, champ pré-rempli et non envoyé.
+/// `ExternalSearchLauncher`, qui ouvre une vraie fenêtre de recherche, et cette fenêtre ENVOIE la question
+/// (mission F3, demande de Ben) : l'utilisateur vient de la taper ici, c'est son geste d'envoi. L'accord « IA
+/// cloud » reste demandé avant tout envoi, dans cette fenêtre. Seule cette origine envoie : ce qui vient d'ailleurs
+/// (Service, partage, dépôt) reste un brouillon (`ExternalQueryOrigin`).
 struct MenuBarSearchPanel: View {
     let stores: TrivaSharedStores
     let launcher: ExternalSearchLauncher
@@ -60,7 +63,7 @@ struct MenuBarSearchPanel: View {
     }
 
     private func submit() {
-        guard launcher.requestSearch(question: question) else { return }
+        guard launcher.requestSearch(question: question, origin: .typedInMenuBar) else { return }
         question = ""
     }
 

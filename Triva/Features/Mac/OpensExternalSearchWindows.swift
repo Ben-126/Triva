@@ -16,16 +16,44 @@ import SwiftUI
 @MainActor
 struct ExternalSearchWindowOpener {
     let launcher: ExternalSearchLauncher
-    let openWindow: OpenWindowAction
+    /// Registre des fenêtres : une conversation déjà tenue par une fenêtre la ramène devant au lieu d'en ouvrir une
+    /// autre (une valeur de scène identique est déjà ramenée par le système, mais pas une conversation qu'une
+    /// réponse en arrière-plan tient dans une fenêtre qui en affiche une autre).
+    let registry: WindowConversationRegistry
     /// `true` pour l'observateur de scène : n'agit que si aucune fenêtre n'est affichée.
     let onlyWhenNoWindow: Bool
+    /// Ouvre la fenêtre d'une cible (`openWindow(id:value:)` ; les tests passent leur propre fonction).
+    let open: (TrivaWindowTarget) -> Void
+
+    init(
+        launcher: ExternalSearchLauncher,
+        registry: WindowConversationRegistry = .shared,
+        onlyWhenNoWindow: Bool,
+        open: @escaping (TrivaWindowTarget) -> Void
+    ) {
+        self.launcher = launcher
+        self.registry = registry
+        self.onlyWhenNoWindow = onlyWhenNoWindow
+        self.open = open
+    }
+
+    init(
+        launcher: ExternalSearchLauncher,
+        openWindow: OpenWindowAction,
+        onlyWhenNoWindow: Bool
+    ) {
+        self.init(launcher: launcher, onlyWhenNoWindow: onlyWhenNoWindow) { target in
+            openWindow(id: TrivaWindowTarget.sceneID, value: target)
+        }
+    }
 
     func openPending() {
         if onlyWhenNoWindow, launcher.visibleWindowCount > 0 { return }
         let targets = launcher.drain()
         guard !targets.isEmpty else { return }
         for target in targets {
-            openWindow(id: TrivaWindowTarget.sceneID, value: target)
+            if let id = target.conversationID, registry.focusHolder(of: id, excluding: nil) { continue }
+            open(target)
         }
         #if os(macOS)
         NSApp.activate()

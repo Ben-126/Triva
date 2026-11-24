@@ -44,15 +44,16 @@ nonisolated enum DuoPaneLayout {
         return detailWidth >= 2 * minimumPaneWidth + paneSpacing ? 2 : 1
     }
 
-    /// La barre latérale se masque-t-elle à l'arrivée ? Vrai seulement pour le Duo DÉPLIÉ en paysage : plié
-    /// en paysage (678 x 466), la classe de largeur est `compact`, donc exclu ; un iPad ou un Mac n'a pas de
-    /// charnière. Appliqué UNE seule fois par la coquille : ensuite le choix de l'utilisateur est respecté.
-    static func initialSidebarHidden(
-        hasHinge: Bool,
-        horizontalSizeClass: UserInterfaceSizeClass?,
-        windowWidth: CGFloat,
-        windowHeight: CGFloat
-    ) -> Bool {
-        hasHinge && horizontalSizeClass == .regular && windowWidth > windowHeight
+    /// La barre latérale se masque-t-elle à l'arrivée ? Vrai pour tout appareil à charnière (iPhone Duo), dans
+    /// toutes ses postures : déplié en paysage ET en portrait (décision de Ben du 24/11 : en portrait la barre
+    /// s'ouvrait par-dessus la recherche et l'assombrissait), et aussi PLIÉ, où la coquille est une barre
+    /// d'onglets qui n'utilise pas cette visibilité : la valeur est alors déjà posée quand l'appareil se
+    /// déplie (constaté le 24/11 : lancé plié puis déplié, la barre restait visible et le volet de sources
+    /// absent). La décision ne lit volontairement NI la classe de taille NI la taille de la fenêtre : au
+    /// dépliage, ces valeurs arrivent séparément et une lecture à un instant donné en trouvait une périmée.
+    /// Un iPad, un Mac ou un iPhone ordinaire n'a pas de charnière : jamais masquée. Appliqué UNE seule fois par
+    /// le coordinateur : ensuite le choix de l'utilisateur est respecté.
+    static func initialSidebarHidden(hasHinge: Bool) -> Bool {
+        hasHinge
     }
 }

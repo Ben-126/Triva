@@ -38,6 +38,8 @@ final class WindowConversationRegistry {
     /// Par fenêtre : la conversation dans laquelle une réponse continue d'écrire alors qu'elle est
     /// affichée ailleurs. Lue à la demande (pas de copie à tenir à jour).
     private var backgroundConversations: [UUID: @MainActor () -> UUID?] = [:]
+    /// Par fenêtre : comment la ramener au premier plan.
+    private var focusActions: [UUID: @MainActor () -> Bool] = [:]
 
     init() {}
 
@@ -56,10 +58,32 @@ final class WindowConversationRegistry {
         backgroundConversations[window] = conversation
     }
 
+    /// Dit au registre comment ramener `window` au premier plan (fenêtre AppKit sur Mac, scène sur iPad). Posée
+    /// par la coquille de la fenêtre ; sans elle, `focusHolder` ne peut rien faire pour cette fenêtre. L'action
+    /// rend `false` quand elle n'a pas pu (fenêtre système pas encore connue) : l'appelant se replie alors.
+    func setFocusAction(_ action: @escaping @MainActor () -> Bool, in window: UUID) {
+        focusActions[window] = action
+    }
+
+    /// Ramène au premier plan la fenêtre qui tient `conversation` (affichée d'abord, puis écrite en arrière-plan),
+    /// autre que `window` (`nil` : aucune exclue).
+    /// - Returns: `true` si une fenêtre a été ramenée ; `false` si personne ne la tient ou si la fenêtre qui la
+    ///   tient ne sait pas se mettre devant (l'appelant se replie alors sur `openWindow`).
+    @discardableResult
+    func focusHolder(of conversation: UUID, excluding window: UUID?) -> Bool {
+        let showing = displayed.filter { $0.key != window && $0.value == conversation }.keys
+        let writing = backgroundConversations.filter { $0.key != window && $0.value() == conversation }.keys
+        for candidate in Array(showing) + Array(writing) {
+            if let action = focusActions[candidate], action() { return true }
+        }
+        return false
+    }
+
     /// Fenêtre fermée ou reconstruite : elle ne tient plus rien.
     func remove(window: UUID) {
         displayed[window] = nil
         backgroundConversations[window] = nil
+        focusActions[window] = nil
     }
 
     /// `conversation` est-elle AFFICHÉE par une AUTRE fenêtre que `window` ?
@@ -76,22 +100,48 @@ final class WindowConversationRegistry {
     }
 }
 
-/// Cible de restauration d'une fenêtre, consommable UNE seule fois.
+/// Cible de restauration d'une fenêtre, et mémoire de ce que cette fenêtre a déjà tenu.
 ///
-/// `TrivaRootView` en détient une (par fenêtre) ; seule la PREMIÈRE coquille
-/// qui apparaît la reçoit. Une coquille reconstruite parce que le moteur IA a
-/// changé (`.id(selected)`) n'en reçoit plus : la conversation repart à zéro,
-/// comme l'a décidé Ben (2026-10-04), au lieu de rouvrir l'ancienne.
+/// `TrivaRootView` en détient une (par fenêtre) ; seule la PREMIÈRE coquille qui apparaît reçoit la cible
+/// (`take`). Une coquille reconstruite parce que le moteur IA a changé (`.id(selected)`) n'en reçoit plus :
+/// la conversation repart à zéro, comme l'a décidé Ben (2026-10-04), au lieu de rouvrir l'ancienne.
+///
+/// ## Valeur restaurée qui arrive APRÈS le premier rendu (mission F3)
+/// La valeur de scène (`WindowGroup(for:)`) n'est pas forcément celle de l'écran à la création de la vue : au
+/// relancement, la valeur restaurée peut arriver après le premier rendu, quand la cible lue par `take` était
+/// déjà consommée, et la fenêtre restait vide. La coquille observe donc la valeur de scène, et `lateTarget`
+/// décide si un changement est une restauration tardive ou seulement l'écho de ce que la fenêtre a elle-même
+/// publié. `held` retient chaque cible que la fenêtre a affichée (toutes coquilles confondues, moteur changé
+/// compris) : ce qu'elle a déjà tenu n'est jamais « restauré » une seconde fois, sinon un écho en retard
+/// rouvrirait une conversation que l'utilisateur vient de quitter.
 @MainActor
 final class WindowRestoration {
     private var pending: TrivaWindowTarget?
+    private var held: Set<TrivaWindowTarget> = []
 
     init(initial: TrivaWindowTarget) {
         pending = initial
     }
 
     func take() -> TrivaWindowTarget? {
+        if let pending { held.insert(pending) }
         defer { pending = nil }
         return pending
+    }
+
+    /// La fenêtre affiche (ou publie) cette cible : un écho de cette valeur n'est pas une restauration.
+    func noteHeld(_ target: TrivaWindowTarget) {
+        held.insert(target)
+    }
+
+    /// Cible à restaurer pour une valeur de scène arrivée après coup, `nil` si ce n'en est pas une.
+    ///
+    /// Seule une CONVERSATION jamais tenue par cette fenêtre est restaurée, et seulement dans une fenêtre encore
+    /// vierge (`isPristine` : aucune conversation affichée) : une recherche neuve ne porte rien à restaurer, et on
+    /// ne remplace jamais ce que l'utilisateur lit. Une valeur n'est rendue qu'une fois.
+    func lateTarget(for value: TrivaWindowTarget, isPristine: Bool) -> TrivaWindowTarget? {
+        guard isPristine, case .conversation = value, !held.contains(value) else { return nil }
+        held.insert(value)
+        return value
     }
 }

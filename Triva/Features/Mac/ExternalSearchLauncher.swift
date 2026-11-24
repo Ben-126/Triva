@@ -54,11 +54,13 @@ final class ExternalSearchLauncher {
 
     /// Une recherche avec cette question. La question est assainie (`ExternalQuerySanitizer`) ; vide ou illisible,
     /// rien n'est ouvert.
+    /// - Parameter origin: `.draft` (Service, partage, dépôts : la question reste dans la barre de saisie, jamais
+    ///   envoyée) ou `.typedInMenuBar` (le panneau de la barre des menus : envoyée par la fenêtre).
     /// - Returns: `true` si une fenêtre va s'ouvrir.
     @discardableResult
-    func requestSearch(question: String?) -> Bool {
+    func requestSearch(question: String?, origin: ExternalQueryOrigin = .draft) -> Bool {
         guard let clean = ExternalQuerySanitizer.sanitize(question) else { return false }
-        let id = inbox.deposit(clean)
+        let id = inbox.deposit(clean, origin: origin)
         enqueue(.newSearch(id))
         return true
     }

@@ -57,27 +57,11 @@ struct DuoPaneColumnCountTests {
 
 @Suite("Duo déplié — barre latérale masquée à l'arrivée")
 struct DuoInitialSidebarTests {
-    private func hidden(hinge: Bool, h: UserInterfaceSizeClass?, width: CGFloat, height: CGFloat) -> Bool {
-        DuoPaneLayout.initialSidebarHidden(hasHinge: hinge, horizontalSizeClass: h, windowWidth: width, windowHeight: height)
-    }
+    @Test("Vrai avec une charnière : le Duo, déplié (paysage ou portrait, décision de Ben du 24/11) comme plié")
+    func duoEveryPosture() { #expect(DuoPaneLayout.initialSidebarHidden(hasHinge: true)) }
 
-    @Test("Vrai seulement pour le Duo déplié en paysage (951 x 669)")
-    func duoUnfoldedLandscape() { #expect(hidden(hinge: true, h: .regular, width: 951, height: 669)) }
-
-    @Test("Faux : Duo déplié en portrait (669 x 951)")
-    func duoUnfoldedPortrait() { #expect(!hidden(hinge: true, h: .regular, width: 669, height: 951)) }
-
-    @Test("Faux : Duo plié en paysage (678 x 466, classe compacte)")
-    func duoFoldedLandscape() { #expect(!hidden(hinge: true, h: .compact, width: 678, height: 466)) }
-
-    @Test("Faux : iPad et Mac (pas de charnière), même en paysage")
-    func ipadAndMac() {
-        #expect(!hidden(hinge: false, h: .regular, width: 1366, height: 1024))
-        #expect(!hidden(hinge: false, h: nil, width: 1440, height: 900))
-    }
-
-    @Test("Faux tant que la fenêtre n'est pas mesurée (0 x 0)")
-    func notMeasured() { #expect(!hidden(hinge: true, h: .regular, width: 0, height: 0)) }
+    @Test("Faux : iPad, Mac et iPhone ordinaire (pas de charnière), même en grand paysage")
+    func ipadAndMac() { #expect(!DuoPaneLayout.initialSidebarHidden(hasHinge: false)) }
 }
 
 @Suite("Duo déplié — réponse ciblée par le volet de sources")
@@ -129,23 +113,42 @@ private func makePaneStores() throws -> TrivaSharedStores {
 @MainActor
 @Suite("Duo déplié — barre latérale tenue par le coordinateur")
 struct DuoPaneStateTests {
-    @Test("Barre latérale : masquée une seule fois à l'arrivée du Duo déplié en paysage, puis le choix est respecté")
+    @Test("Barre latérale : masquée une seule fois dès que la charnière est connue, puis le choix est respecté")
     func sidebarHiddenOnlyOnce() throws {
         let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makePaneStores())
+        #expect(!coordinator.applyInitialSidebarIfNeeded())
         coordinator.hasHinge = true
         #expect(coordinator.columnVisibility == .all)
 
-        // Portrait déplié : rien.
-        #expect(!coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: .regular, windowSize: CGSize(width: 669, height: 951)))
-        #expect(coordinator.columnVisibility == .all)
-
-        // Paysage déplié : masquée.
-        #expect(coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: .regular, windowSize: CGSize(width: 951, height: 669)))
+        #expect(coordinator.applyInitialSidebarIfNeeded())
         #expect(coordinator.columnVisibility == .detailOnly)
 
-        // L'utilisateur la rouvre ; un nouveau passage en paysage ne la masque pas de nouveau.
+        // L'utilisateur la rouvre ; ni un pliage / dépliage ni une rotation ne la masquent de nouveau.
         coordinator.columnVisibility = .all
-        #expect(!coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: .regular, windowSize: CGSize(width: 951, height: 669)))
+        #expect(!coordinator.applyInitialSidebarIfNeeded())
+        #expect(coordinator.columnVisibility == .all)
+    }
+
+    @Test("Lancé plié puis déplié : la barre est déjà masquée au dépliage (avant, elle restait visible)")
+    func launchedFoldedThenUnfolded() throws {
+        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makePaneStores())
+        // Plié : la charnière est connue dès l'apparition de la vue (journal I2), la coquille est en onglets.
+        coordinator.hasHinge = true
+        coordinator.applyInitialSidebarIfNeeded()
+        // Dépliage : la barre latérale apparaît dans la coquille ; son état est celui du coordinateur.
+        #expect(coordinator.columnVisibility == .detailOnly)
+    }
+
+    @Test("Pliage puis dépliage : un choix explicite de l'utilisateur (barre rouverte) est conservé")
+    func explicitChoiceSurvivesFolding() throws {
+        let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makePaneStores())
+        coordinator.hasHinge = true
+        coordinator.applyInitialSidebarIfNeeded()
+        coordinator.columnVisibility = .all
+        // Plier : la coquille bascule en onglets ; déplier : la charnière est signalée de nouveau.
+        coordinator.hasHinge = false
+        coordinator.hasHinge = true
+        coordinator.applyInitialSidebarIfNeeded()
         #expect(coordinator.columnVisibility == .all)
     }
 
@@ -153,7 +156,7 @@ struct DuoPaneStateTests {
     func noHingeNeverHides() throws {
         let coordinator = TrivaRootCoordinator(engine: .appleIntelligence, stores: try makePaneStores())
         #expect(!coordinator.hasHinge)
-        #expect(!coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: .regular, windowSize: CGSize(width: 1366, height: 1024)))
+        #expect(!coordinator.applyInitialSidebarIfNeeded())
         #expect(coordinator.columnVisibility == .all)
     }
 }

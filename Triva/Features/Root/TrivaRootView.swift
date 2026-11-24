@@ -298,6 +298,10 @@ private struct TrivaRootShell: View {
     /// brouillon.
     @State private var coordinator: TrivaRootCoordinator
 
+    /// Poignée sur la fenêtre système de cette coquille : sert à la ramener devant quand une autre fenêtre ouvre
+    /// la conversation qu'elle tient (mission F3).
+    @State private var focusHandle = WindowFocusHandle()
+
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Plusieurs fenêtres possibles : vrai sur Mac et sur iPad (clé multi-scènes), faux sur iPhone, où
@@ -312,9 +316,6 @@ private struct TrivaRootShell: View {
     #if DEBUG
     @Environment(\.trivaHasHinge) private var inheritedHasHinge
     #endif
-
-    /// Taille de la fenêtre, pour masquer la barre latérale à l'arrivée du Duo déplié en paysage (mission I2).
-    @State private var windowSize: CGSize = .zero
 
     #if DEBUG
     /// Journal de vérification (mission I1), compilé seulement en DEBUG : plier ou déplier l'iPhone Duo garde-t-il
@@ -360,19 +361,11 @@ private struct TrivaRootShell: View {
         // Aperçus du Duo déplié seulement : ils forcent la charnière par l'environnement (revue R1, M5).
         .onAppear { if inheritedHasHinge { coordinator.hasHinge = true } }
         #endif
-        // Fenêtre mesurée par un fond qui IGNORE les zones sûres, clavier compris : sur la racine, la taille suit la
-        // zone sûre et se réduit quand le clavier s'ouvre, ce qui ferait passer un portrait pour un paysage
-        // (revue R1, C5).
-        .background {
-            Color.clear
-                .ignoresSafeArea()
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { newSize in
-                    windowSize = newSize
-                    coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: horizontalSizeClass, windowSize: newSize)
-                }
-        }
+        // Barre latérale masquée dès que la charnière est connue, quelle que soit la posture (plié, déplié en
+        // portrait ou en paysage) : la décision ne lit ni classe de taille ni taille de fenêtre, qui arrivent
+        // séparément au dépliage (constaté le 24/11, mission F4). Une seule fois ; ensuite le choix est respecté.
         .onChange(of: coordinator.hasHinge) {
-            coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: horizontalSizeClass, windowSize: windowSize)
+            coordinator.applyInitialSidebarIfNeeded()
         }
         // Posé AUTOUR du choix onglets / sidebar, pas dans une seule branche :
         // il doit continuer de jouer quand la classe de taille bascule. Une
@@ -390,6 +383,11 @@ private struct TrivaRootShell: View {
         .onChange(of: coordinator.windowTarget) { _, newTarget in
             publish(newTarget)
         }
+        // Valeur de scène arrivée APRÈS le premier rendu (relancement : fenêtres restaurées vides, mission F3).
+        .onChange(of: windowTarget.wrappedValue) { _, newValue in
+            receiveLateWindowValue(newValue)
+        }
+        .anchorsWindowFocus(focusHandle)
         .environment(\.openConversationInNewWindow, newWindowAction)
         // La barre de menus (`TrivaCommands`) agit sur la fenêtre au premier plan : elle lit ce coordinateur.
         .focusedSceneValue(coordinator)
@@ -400,12 +398,11 @@ private struct TrivaRootShell: View {
             Self.logger.debug("Coquille apparue, coordinateur \(ObjectIdentifier(coordinator).hashValue, privacy: .public)")
         }
         #endif
+        #if DEBUG
         .onChange(of: horizontalSizeClass) { _, newValue in
-            coordinator.applyInitialSidebarIfNeeded(horizontalSizeClass: newValue, windowSize: windowSize)
-            #if DEBUG
             Self.logger.debug("Classe de largeur : \(String(describing: newValue), privacy: .public), coordinateur \(ObjectIdentifier(coordinator).hashValue, privacy: .public)")
-            #endif
         }
+        #endif
     }
 
     // MARK: Fenêtres (chantier 2.2)
@@ -413,26 +410,63 @@ private struct TrivaRootShell: View {
     /// Première apparition : restaure la cible mémorisée (une seule fois par fenêtre), puis écrit dans la
     /// valeur de la fenêtre ce que celle-ci affiche vraiment. Une coquille reconstruite par un changement de
     /// moteur ne reçoit plus de cible : elle repart à zéro et la valeur de la fenêtre le dit.
+    ///
+    /// Une valeur de scène « recherche neuve » à la première apparition n'est PAS réécrite : elle peut n'être que
+    /// la valeur par défaut, et la valeur restaurée du relancement (une conversation) peut encore arriver ;
+    /// l'écraser la ferait perdre pour de bon (`receiveLateWindowValue`).
     private func adoptWindowTarget() {
-        if let initial = restoration.take() {
+        coordinator.windowRegistry.setFocusAction({ [focusHandle] in focusHandle.bringToFront() }, in: coordinator.windowID)
+        let initial = restoration.take()
+        if let initial {
             coordinator.restoreWindowTarget(initial)
         } else {
             coordinator.syncWindowTarget()
         }
+        restoration.noteHeld(coordinator.windowTarget)
         coordinator.receiveExternalQuery(from: externalQueryInbox)
+        #if DEBUG
+        Self.restorationLogger.debug("Première apparition : cible lue \(initial.map(Self.describe) ?? "aucune", privacy: .public), valeur de scène \(Self.describe(windowTarget.wrappedValue), privacy: .public), cible prise \(Self.describe(coordinator.windowTarget), privacy: .public)")
+        #endif
+        if initial != nil, case .newSearch = coordinator.windowTarget, case .newSearch = windowTarget.wrappedValue { return }
         publish(coordinator.windowTarget)
+    }
+
+    /// La valeur de scène a changé : si c'est la conversation restaurée qui arrive après coup, la fenêtre vierge la
+    /// rouvre ; ce que la fenêtre a publiée elle-même (écho) est ignoré. Voir `WindowRestoration`.
+    private func receiveLateWindowValue(_ value: TrivaWindowTarget) {
+        let taken = coordinator.receiveLateWindowValue(value, restoration: restoration)
+        #if DEBUG
+        Self.restorationLogger.debug("Valeur de scène changée : \(Self.describe(value), privacy: .public), prise pour une restauration : \(taken, privacy: .public)")
+        #endif
+        if taken { publish(coordinator.windowTarget) }
     }
 
     /// N'écrit que si la valeur change : chaque écriture est enregistrée par SwiftUI pour la restauration.
     private func publish(_ target: TrivaWindowTarget) {
+        restoration.noteHeld(target)
         guard windowTarget.wrappedValue != target else { return }
         windowTarget.wrappedValue = target
     }
 
+    #if DEBUG
+    /// Journal de vérification du relancement (mission F3) : `log stream --predicate 'category == "WindowRestoration"'`.
+    /// Identifiants seulement, jamais de texte de question.
+    private static let restorationLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "WindowRestoration")
+
+    private static func describe(_ target: TrivaWindowTarget) -> String {
+        switch target {
+        case .newSearch(let id): "recherche neuve \(id.uuidString.prefix(8))"
+        case .conversation(let id): "conversation \(id.uuidString.prefix(8))"
+        }
+    }
+    #endif
+
     /// `nil` sur iPhone : l'entrée de menu n'existe alors pas.
     private var newWindowAction: OpenConversationInNewWindowAction? {
         guard supportsMultipleWindows else { return nil }
-        return OpenConversationInNewWindowAction(owner: coordinator) { id in
+        return OpenConversationInNewWindowAction(owner: coordinator) { [coordinator] id in
+            // Déjà tenue par une fenêtre (affichée ou écrite en arrière-plan) : celle-ci passe devant.
+            if coordinator.windowRegistry.focusHolder(of: id, excluding: nil) { return }
             openWindow(id: TrivaWindowTarget.sceneID, value: TrivaWindowTarget.conversation(id))
         }
     }

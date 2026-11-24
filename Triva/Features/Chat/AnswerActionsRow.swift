@@ -34,6 +34,9 @@ struct AnswerActionsRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("chat.copyAnswer")
+            #if os(macOS)
+            .help(justCopied ? AnswerShareText.copiedTitle : AnswerShareText.copyTitle)
+            #endif
 
             ShareLink(item: text) {
                 Label(AnswerShareText.shareTitle, systemImage: "square.and.arrow.up")
@@ -43,14 +46,17 @@ struct AnswerActionsRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("chat.shareAnswer")
+            #if os(macOS)
+            .help(AnswerShareText.shareTitle)
+            #endif
 
             // Glisser vers une autre app (Mac, iPad) : même texte marqué que Copier et Partager (mission G2).
             AnswerDragHandle(text: text)
         }
         .foregroundStyle(.secondary)
-        #if os(macOS)
-        .help(AnswerShareText.copyTitle)
-        #endif
+        // Pas de `.help` ici : sur Mac, une infobulle posée sur le conteneur est héritée par TOUS ses boutons
+        // (aide d'accessibilité « Copier la réponse » sur Partager et Glisser, constaté le 24/11, mission F4).
+        // Chaque bouton porte la sienne.
     }
 
     private func copy() {

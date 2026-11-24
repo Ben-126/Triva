@@ -86,7 +86,7 @@ final class TrivaRootCoordinator {
     /// par `FavoritesView` : la route poussée et ce volet sont la MÊME sélection, vue de deux manières.
     var favoritesSelection: UUID?
 
-    /// Faux tant que la barre latérale n'a pas été masquée à l'arrivée en paysage déplié : ne se fait qu'UNE fois.
+    /// Faux tant que la barre latérale n'a pas été masquée à l'arrivée du Duo (déplié ou non) : ne se fait qu'UNE fois.
     @ObservationIgnored private var didApplyInitialSidebar = false
 
     /// Session de la Recherche (conversation en cours, brouillon de la barre
@@ -266,18 +266,13 @@ final class TrivaRootCoordinator {
         chatViewModel.conversationWasDeleted(id: conversationID)
     }
 
-    /// Masque la barre latérale à l'arrivée du Duo déplié en paysage (`DuoPaneLayout.initialSidebarHidden`),
-    /// UNE seule fois : ensuite le choix de l'utilisateur est respecté, même si l'appareil pivote.
+    /// Masque la barre latérale dès que l'appareil se révèle à charnière (`DuoPaneLayout.initialSidebarHidden`),
+    /// UNE seule fois : ensuite le choix de l'utilisateur est respecté, même si l'appareil se plie, se déplie ou
+    /// pivote (la visibilité vit ici, au-dessus du choix onglets / barre latérale, donc survit au pli).
     /// - Returns: `true` quand la barre vient d'être masquée (pour les tests).
     @discardableResult
-    func applyInitialSidebarIfNeeded(horizontalSizeClass: UserInterfaceSizeClass?, windowSize: CGSize) -> Bool {
-        guard !didApplyInitialSidebar,
-              DuoPaneLayout.initialSidebarHidden(
-                  hasHinge: hasHinge,
-                  horizontalSizeClass: horizontalSizeClass,
-                  windowWidth: windowSize.width,
-                  windowHeight: windowSize.height
-              ) else { return false }
+    func applyInitialSidebarIfNeeded() -> Bool {
+        guard !didApplyInitialSidebar, DuoPaneLayout.initialSidebarHidden(hasHinge: hasHinge) else { return false }
         didApplyInitialSidebar = true
         columnVisibility = .detailOnly
         return true

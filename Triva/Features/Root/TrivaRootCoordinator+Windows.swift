@@ -53,29 +53,49 @@ extension TrivaRootCoordinator {
         case .conversation(let id):
             // Une autre fenêtre tient déjà cette conversation (elle ou une de ses réponses en cours) : deux
             // fenêtres écriraient dedans. Cette fenêtre devient une recherche neuve, sans rien charger.
-            let existing: Set<UUID> = conversationExists(id) && !windowRegistry.isHeld(id, excluding: windowID) ? [id] : []
+            let isHeldElsewhere = windowRegistry.isHeld(id, excluding: windowID)
+            let existing: Set<UUID> = conversationExists(id) && !isHeldElsewhere ? [id] : []
             let resolved = TrivaWindowTarget.restored(target, existingIDs: existing)
             if case .conversation = resolved {
                 openConversation(id: id)
             } else {
                 windowTarget = resolved
+                // Fenêtre créée sur une conversation qu'une autre tient : plutôt que de laisser la seule recherche
+                // vide, la fenêtre qui tient la conversation passe devant (rapport W2-G1, point 4).
+                if isHeldElsewhere { windowRegistry.focusHolder(of: id, excluding: windowID) }
             }
         }
         syncWindowTarget(refreshTitle: true)
     }
 
+    /// La valeur de scène a CHANGÉ après le premier affichage : si c'est la conversation restaurée du relancement
+    /// (arrivée après le premier rendu), la fenêtre vierge la rouvre. Mêmes règles que `restoreWindowTarget` :
+    /// supprimée ou tenue par une autre fenêtre, elle donne une recherche neuve. Ce que la fenêtre a elle-même
+    /// publié (écho) n'est jamais rouvert : voir `WindowRestoration`.
+    ///
+    /// - Returns: `true` si la valeur a été prise pour une restauration (la cible de la fenêtre a pu changer).
+    @discardableResult
+    func receiveLateWindowValue(_ value: TrivaWindowTarget, restoration: WindowRestoration) -> Bool {
+        let isPristine = windowTarget.conversationID == nil && session.chatViewModel?.currentConversationID == nil
+        guard let target = restoration.lateTarget(for: value, isPristine: isPristine) else { return false }
+        restoreWindowTarget(target)
+        restoration.noteHeld(windowTarget)
+        return true
+    }
+
     /// Bibliothèque ou favori > une conversation, DEPUIS cette fenêtre.
     ///
-    /// Déjà tenue par une autre fenêtre : on demande à celle-ci de passer au premier plan
-    /// (`openInWindow`, qui appelle `openWindow(value: .conversation(id))`) au lieu de la charger une
-    /// seconde fois ici. Sinon, comportement d'avant : elle s'ouvre dans cette fenêtre.
+    /// Déjà tenue par une autre fenêtre : cette fenêtre-là passe au premier plan (`focusHolder`, fenêtre AppKit ou
+    /// scène iPad) au lieu de charger la conversation une seconde fois ici ou d'ouvrir une fenêtre vide. Si elle
+    /// ne sait pas se mettre devant, repli sur `openInWindow` (`openWindow(value: .conversation(id))`, qui ramène
+    /// la fenêtre dont la valeur est cette conversation). Sinon, comportement d'avant : elle s'ouvre ici.
     ///
     /// - Parameters:
     ///   - canUseOtherWindows: l'appareil ouvre plusieurs fenêtres (`supportsMultipleWindows`).
     ///   - openInWindow: ouvre ou ramène la fenêtre de cette conversation.
     func openConversationFromHistory(id: UUID, canUseOtherWindows: Bool, openInWindow: (UUID) -> Void) {
         if canUseOtherWindows, windowRegistry.isHeld(id, excluding: windowID) {
-            openInWindow(id)
+            if !windowRegistry.focusHolder(of: id, excluding: windowID) { openInWindow(id) }
         } else {
             openConversation(id: id)
         }
