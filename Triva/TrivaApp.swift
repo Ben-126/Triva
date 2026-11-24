@@ -5,6 +5,7 @@
 //  Created by ben podrojsky on 27/08/2026.
 //
 
+import AppIntents
 import SwiftUI
 import SwiftData
 
@@ -382,6 +383,22 @@ struct TrivaApp: App {
         _searXNGMaintenance = State(initialValue: stores.makeSearXNGMaintenance())
         Self.purgeLegacyURLCacheOnce()
         Self.purgeAttachmentCopies()
+        Self.registerSystemIntegrations(stores: stores)
+    }
+
+    /// Intégrations système (chantier 2.1) : le pont des intents vers le routeur et les dépendances des intents,
+    /// puis, hors tests, le démarrage des intégrations et la mise à jour des raccourcis.
+    ///
+    /// La garde `isHostingUnitTests` est ICI, une fois pour toutes : les missions qui remplissent
+    /// `SystemIntegrations` (widget, partage, Spotlight, activité en direct) n'ont pas à ajouter la leur.
+    private static func registerSystemIntegrations(stores: TrivaSharedStores) {
+        SystemRouteDispatcher.shared.install { SystemRouteCenter.shared.submit($0) }
+        let services = TrivaAppServices(stores: stores)
+        AppDependencyManager.shared.add(dependency: services)
+        guard !TrivaTestHost.isHostingUnitTests() else { return }
+        SystemIntegrations.shared.bind(chatHistory: stores.chatHistory)
+        SystemIntegrations.shared.start()
+        TrivaShortcuts.updateAppShortcutParameters()
     }
 
     /// Copies temporaires de pièces jointes (Coup d'œil, glisser-déposer) laissées par un lancement précédent : ce sont
@@ -438,6 +455,12 @@ struct TrivaApp: App {
         .onChange(of: scenePhase, initial: true) { _, phase in
             guard phase == .active, !TrivaTestHost.isHostingUnitTests() else { return }
             searXNGMaintenance.sceneDidBecomeActive()
+            SystemIntegrations.shared.sceneDidBecomeActive()
+        }
+        // Historique modifié dans n'importe quelle fenêtre : les intégrations système (widget, Spotlight) suivent.
+        .onChange(of: stores.chatHistory.revision) {
+            guard !TrivaTestHost.isHostingUnitTests() else { return }
+            SystemIntegrations.shared.historyDidChange()
         }
         // Retour de la connexion (tâche 1.16) : le passage ignoré hors connexion a lieu maintenant.
         .onChange(of: ConnectivityMonitor.shared.status) { _, status in
@@ -481,7 +504,7 @@ struct TrivaApp: App {
 
         // Icône de la barre des menus (chantier 2.2, M7), à la demande de l'utilisateur seulement. Style fenêtre :
         // il faut un champ de saisie. Retirée à la main de la barre, le réglage repasse tout seul à « non ».
-        MenuBarExtra("Triva", systemImage: "magnifyingglass", isInserted: $showsMenuBarItem) {
+        MenuBarExtra("Triva", image: "TrivaMenuBar", isInserted: $showsMenuBarItem) {
             MenuBarSearchPanel(stores: stores, launcher: externalSearch)
         }
         .menuBarExtraStyle(.window)

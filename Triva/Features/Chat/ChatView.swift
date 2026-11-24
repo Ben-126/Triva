@@ -78,16 +78,12 @@ struct ChatView: View {
     // Le consentement cloud en attente (mission C2) vit dans `ChatViewModel.pendingConsent` depuis la
     // mission I1 : une feuille et un envoi tenus par la vue étaient perdus au pliage de l'iPhone Duo.
 
-    /// Repli tant que `TrivaSharedStores` ne porte pas le store du mode :
-    /// UNE instance par processus, partagée par toutes les fenêtres (iPad,
-    /// Mac). Une instance par vue afficherait un mode périmé dans une fenêtre
-    /// après un changement dans une autre — alors que l'envoi relit
-    /// `UserDefaults` : l'interface dirait « Rapide » pendant que la
-    /// recherche part en « Fiable ».
-    private static let sharedResponseModeStore = ResponseModeSettingsStore()
-
+    /// Repli quand aucun store n'est injecté : l'instance PARTAGÉE du processus (`ResponseModeSettingsStore.shared`),
+    /// celle que l'intent « Choisir le mode de réponse » écrit aussi (chantier 2.1). Une instance par vue
+    /// afficherait un mode périmé après un changement fait ailleurs — alors que l'envoi relit `UserDefaults` :
+    /// l'interface dirait « Rapide » pendant que la recherche part en « Fiable ».
     private var responseModeStore: ResponseModeSettingsStore {
-        injectedResponseModeStore ?? Self.sharedResponseModeStore
+        injectedResponseModeStore ?? .shared
     }
 
     /// Largeur de contenu plafonnée en `regular` (iPad/Mac) — même principe

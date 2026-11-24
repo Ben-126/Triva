@@ -151,6 +151,10 @@ struct TrivaRootView: View {
             // Copie des clés de l'ancien trousseau Mac vers le trousseau protégé, hors du fil
             // principal et une seule fois par lancement (`KeychainMigration`).
             .task { await KeychainMigration.runOnce() }
+            // Schéma `triva://` (touchers du widget et de l'activité en direct, chantier 2.1). Posé autour des trois
+            // états de la racine : une URL reçue pendant l'onboarding entre dans la file et attend la coquille.
+            // Seules `triva://new` et `triva://conversation/<UUID>` sont acceptées ; rien n'est jamais envoyé.
+            .onOpenURL { SystemRouteCenter.shared.open(url: $0) }
     }
 
     @ViewBuilder
@@ -308,6 +312,11 @@ private struct TrivaRootShell: View {
     /// aucune entrée « nouvelle fenêtre » ne doit apparaître.
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     @Environment(\.openWindow) private var openWindow
+    /// Cette fenêtre est-elle active ? Seule une fenêtre active prend une route du système (chantier 2.1).
+    @Environment(\.scenePhase) private var scenePhase
+    /// Vrai une fois la cible de la fenêtre restaurée : une route du système ne s'applique pas avant (sinon la
+    /// restauration pourrait la recouvrir).
+    @State private var didAdoptWindowTarget = false
     /// Questions venues de l'extérieur (Service, barre des menus) : voir `receiveExternalQuery`.
     @Environment(\.externalQueryInbox) private var externalQueryInbox
 
@@ -383,6 +392,10 @@ private struct TrivaRootShell: View {
         .onChange(of: coordinator.windowTarget) { _, newTarget in
             publish(newTarget)
         }
+        // Routes du système (iPhone, iPad ; vide sur Mac, où le lanceur de fenêtres s'en charge) : la fenêtre
+        // active les prend, une seule les consomme.
+        .onChange(of: SystemRouteCenter.shared.revision, initial: true) { consumeSystemRoutes() }
+        .onChange(of: scenePhase) { consumeSystemRoutes() }
         // Valeur de scène arrivée APRÈS le premier rendu (relancement : fenêtres restaurées vides, mission F3).
         .onChange(of: windowTarget.wrappedValue) { _, newValue in
             receiveLateWindowValue(newValue)
@@ -427,8 +440,23 @@ private struct TrivaRootShell: View {
         #if DEBUG
         Self.restorationLogger.debug("Première apparition : cible lue \(initial.map(Self.describe) ?? "aucune", privacy: .public), valeur de scène \(Self.describe(windowTarget.wrappedValue), privacy: .public), cible prise \(Self.describe(coordinator.windowTarget), privacy: .public)")
         #endif
+        defer {
+            didAdoptWindowTarget = true
+            consumeSystemRoutes()
+        }
         if initial != nil, case .newSearch = coordinator.windowTarget, case .newSearch = windowTarget.wrappedValue { return }
         publish(coordinator.windowTarget)
+    }
+
+    /// Prend les routes du système en attente (chantier 2.1) : seulement quand cette fenêtre est active et sa cible
+    /// restaurée. `drain()` ne rend chaque route qu'une fois, donc deux fenêtres iPad ne l'appliquent jamais deux fois.
+    private func consumeSystemRoutes() {
+        guard didAdoptWindowTarget, scenePhase == .active else { return }
+        for route in SystemRouteCenter.shared.drain() {
+            coordinator.apply(route, canUseOtherWindows: supportsMultipleWindows) { id in
+                openWindow(id: TrivaWindowTarget.sceneID, value: TrivaWindowTarget.conversation(id))
+            }
+        }
     }
 
     /// La valeur de scène a changé : si c'est la conversation restaurée qui arrive après coup, la fenêtre vierge la

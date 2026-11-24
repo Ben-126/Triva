@@ -19,7 +19,7 @@ import Foundation
 /// `UserDefaults` reste lisible même si l'ordre des cas change), et pour
 /// pouvoir servir de valeur de segmentation directe dans une UI SwiftUI
 /// (`Picker(selection:)`, comparaison de tag, etc.).
-enum ResponseMode: String, Sendable, Codable, CaseIterable, Equatable {
+nonisolated enum ResponseMode: String, Sendable, Codable, CaseIterable, Equatable {
     case quick
     case deep
     case reliable
@@ -147,6 +147,11 @@ enum ResponseMode: String, Sendable, Codable, CaseIterable, Equatable {
 @Observable
 final class ResponseModeSettingsStore {
     private static let storageKey = "chat.responseMode.selected"
+
+    /// UNE instance par processus, partagée par toutes les fenêtres (iPad, Mac) ET par l'intent « Choisir le mode
+    /// de réponse » (chantier 2.1) : ce store ne lit `UserDefaults` qu'à sa construction, une seconde instance
+    /// afficherait un mode périmé dès que l'autre en écrit un.
+    static let shared = ResponseModeSettingsStore()
 
     /// Valeur de repli si aucun mode n'est stocké, ou si la valeur stockée est
     /// invalide (ancien format, corruption, ou cas `debate` retiré de la version web d'origine —

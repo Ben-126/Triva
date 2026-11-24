@@ -209,6 +209,13 @@ final class SearchSession {
     @ObservationIgnored var preparedMLXProvider: PreparedMLXProvider?
     /// Identité de cette session auprès du pool MLX (file d'attente, fenêtres encore ouvertes).
     let mlxRequesterID = UUID()
+    /// Mode de réponse imposé à CETTE session, sans toucher au mode mémorisé de l'utilisateur (chantier 2.1,
+    /// mission B : « Poser une question à Triva » avec un mode choisi dans Raccourcis). `nil` = le mode mémorisé,
+    /// relu à chaque envoi. Lu par `ensureChatViewModel()`.
+    @ObservationIgnored var responseModeOverride: ResponseMode?
+    /// `false` pour une session sans fenêtre (Siri, Raccourcis) : les pistes « À creuser » ne seraient lues par
+    /// personne et coûteraient un second appel au modèle. À poser AVANT `ensureChatViewModel()`.
+    @ObservationIgnored var generatesSuggestions = true
     /// `FailoverManager` de la session, avec la liste d'instances qui l'a
     /// construit. En recréer un à chaque recherche jetterait son cache de
     /// dernière instance fonctionnelle ; le garder quand la liste a changé
@@ -374,8 +381,15 @@ final class SearchSession {
             resolvePipelineConfiguration: { [weak self] in
                 self?.pipelineConfigurationForSending() ?? .appleIntelligence
             },
+            // Mode imposé à cette session (Raccourcis), sinon le mode mémorisé, relu à chaque envoi.
+            readResponseMode: { [weak self] in self?.responseModeOverride ?? ChatViewModel.persistedResponseMode() },
             historyStore: stores.chatHistory,
             favoritesStore: stores.favorites,
+            // Une session sans fenêtre (Siri) ne génère pas de pistes : personne ne les lirait.
+            generateSuggestions: { [weak self] provider, history in
+                guard self?.generatesSuggestions ?? true else { return [] }
+                return await SuggestionsService(aiProvider: provider).generateSuggestions(chatHistory: history)
+            },
             resolveConsentRequest: { [weak self] in self?.cloudConsentRequestForSending() },
             grantConsent: { [weak self] request in self?.stores.cloudConsent.grant(providerID: request.providerID) }
         )
