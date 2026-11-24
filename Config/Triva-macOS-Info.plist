@@ -8,6 +8,20 @@
 -->
 <plist version="1.0">
 <dict>
+	<!-- Schéma `triva://` (chantier 2.1, S1) : entrée EXTERNE, il ne fait que naviguer (spec §2). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.benpodrojsky.Triva</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>triva</string>
+			</array>
+		</dict>
+	</array>
 	<!-- Service du menu « Services » : clic droit sur un texte sélectionné > Services > Rechercher avec Triva.
 	     Le texte est remis à `TrivaServicesProvider.searchWithTriva(_:userData:error:)`. -->
 	<key>NSServices</key>

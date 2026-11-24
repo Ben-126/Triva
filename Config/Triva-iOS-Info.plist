@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist PARTIEL de l'app sur iPhone et iPad (chantier 2.1, S1). Fusionné avec le plist généré
+  (GENERATE_INFOPLIST_FILE = YES) : toutes les clés INFOPLIST_KEY_* restent actives.
+  Branché par `INFOPLIST_FILE[sdk=iphone*]` : le Mac ne le lit pas. Hors du dossier synchronisé `Triva/`.
+  Schéma `triva://` : entrée EXTERNE, il ne fait que naviguer (voir la spec §2).
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.benpodrojsky.Triva</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>triva</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Active les activités en direct (Dynamic Island, écran verrouillé) : aucune capacité payante requise.
+	     Mis ici et non en INFOPLIST_KEY_ : ce réglage, même limité à iPhone, ajoutait `false` au plist du Mac. -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+</dict>
+</plist>

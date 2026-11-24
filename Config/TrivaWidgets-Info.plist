@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist PARTIEL de l'extension Widgets (chantier 2.1, S1). Xcode le FUSIONNE avec le plist généré
+  (GENERATE_INFOPLIST_FILE = YES). Hors du dossier synchronisé `TrivaWidgets/` : dedans, il serait copié
+  comme ressource.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+</dict>
+</plist>

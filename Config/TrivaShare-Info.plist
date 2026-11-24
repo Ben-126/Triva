@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist PARTIEL de l'extension de partage (chantier 2.1, S1), iPhone et iPad seulement.
+  Fusionné avec le plist généré (GENERATE_INFOPLIST_FILE = YES). Hors du dossier synchronisé `TrivaShare/`.
+  Le nom affiché dans la feuille de partage vient de INFOPLIST_KEY_CFBundleDisplayName (projet).
+  Règles d'activation de la spec §4.6 : texte, une URL web, une page web (la page passe par le script
+  de prétraitement Safari ShareSafariPreprocessor.js, qui renvoie son titre et son adresse).
+-->
+<plist version="1.0">
+<dict>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
+				<integer>1</integer>
+			</dict>
+			<key>NSExtensionJavaScriptPreprocessingFile</key>
+			<string>ShareSafariPreprocessor</string>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+	</dict>
+</dict>
+</plist>

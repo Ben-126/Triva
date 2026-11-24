@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		51C0DE510000000000000018 /* TrivaWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 51C0DE510000000000000003 /* TrivaWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		51C0DE510000000000000019 /* TrivaShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 51C0DE510000000000000004 /* TrivaShare.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5BB1B85019A6B9846DF5E9BF /* ClaudeForFoundationModels in Frameworks */ = {isa = PBXBuildFile; productRef = ADE12E64CF40CCE61F98F538 /* ClaudeForFoundationModels */; };
 		E0E86AE43040E08B001915D6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = E0E86AE33040E08B001915D6 /* MLXLLM */; };
 		E0E86AE63040E08B001915D6 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = E0E86AE53040E08B001915D6 /* MLXLMCommon */; };
@@ -17,6 +19,20 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		51C0DE510000000000000016 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E06FD8D8303FB7B400B887F2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 51C0DE510000000000000001;
+			remoteInfo = TrivaWidgets;
+		};
+		51C0DE510000000000000017 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E06FD8D8303FB7B400B887F2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 51C0DE510000000000000002;
+			remoteInfo = TrivaShare;
+		};
 		E06FD8F0303FB7B700B887F2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E06FD8D8303FB7B400B887F2 /* Project object */;
@@ -33,13 +49,45 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		51C0DE51000000000000001A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				51C0DE510000000000000018 /* TrivaWidgets.appex in Embed Foundation Extensions */,
+				51C0DE510000000000000019 /* TrivaShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		51C0DE510000000000000003 /* TrivaWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TrivaWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		51C0DE510000000000000004 /* TrivaShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TrivaShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		E06FD8E0303FB7B400B887F2 /* Triva.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Triva.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E06FD8EF303FB7B700B887F2 /* TrivaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrivaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E06FD8F9303FB7B700B887F2 /* TrivaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrivaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		51C0DE510000000000000005 /* TrivaWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TrivaWidgets;
+			sourceTree = "<group>";
+		};
+		51C0DE510000000000000006 /* TrivaShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TrivaShare;
+			sourceTree = "<group>";
+		};
+		51C0DE510000000000000007 /* TrivaShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TrivaShared;
+			sourceTree = "<group>";
+		};
 		E06FD8E2303FB7B400B887F2 /* Triva */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Triva;
@@ -58,6 +106,20 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		51C0DE510000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		51C0DE51000000000000000C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E06FD8DD303FB7B400B887F2 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -95,6 +157,9 @@
 				E06FD8E2303FB7B400B887F2 /* Triva */,
 				E06FD8F2303FB7B700B887F2 /* TrivaTests */,
 				E06FD8FC303FB7B700B887F2 /* TrivaUITests */,
+				51C0DE510000000000000005 /* TrivaWidgets */,
+				51C0DE510000000000000006 /* TrivaShare */,
+				51C0DE510000000000000007 /* TrivaShared */,
 				E0E86AED3040E363001915D6 /* Frameworks */,
 				E06FD8E1303FB7B400B887F2 /* Products */,
 			);
@@ -106,6 +171,8 @@
 				E06FD8E0303FB7B400B887F2 /* Triva.app */,
 				E06FD8EF303FB7B700B887F2 /* TrivaTests.xctest */,
 				E06FD8F9303FB7B700B887F2 /* TrivaUITests.xctest */,
+				51C0DE510000000000000003 /* TrivaWidgets.appex */,
+				51C0DE510000000000000004 /* TrivaShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -120,6 +187,52 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		51C0DE510000000000000001 /* TrivaWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 51C0DE51000000000000000E /* Build configuration list for PBXNativeTarget "TrivaWidgets" */;
+			buildPhases = (
+				51C0DE510000000000000008 /* Sources */,
+				51C0DE510000000000000009 /* Frameworks */,
+				51C0DE51000000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				51C0DE510000000000000005 /* TrivaWidgets */,
+				51C0DE510000000000000007 /* TrivaShared */,
+			);
+			name = TrivaWidgets;
+			packageProductDependencies = (
+			);
+			productName = TrivaWidgets;
+			productReference = 51C0DE510000000000000003 /* TrivaWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		51C0DE510000000000000002 /* TrivaShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 51C0DE51000000000000000F /* Build configuration list for PBXNativeTarget "TrivaShare" */;
+			buildPhases = (
+				51C0DE51000000000000000B /* Sources */,
+				51C0DE51000000000000000C /* Frameworks */,
+				51C0DE51000000000000000D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				51C0DE510000000000000006 /* TrivaShare */,
+				51C0DE510000000000000007 /* TrivaShared */,
+			);
+			name = TrivaShare;
+			packageProductDependencies = (
+			);
+			productName = TrivaShare;
+			productReference = 51C0DE510000000000000004 /* TrivaShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		E06FD8DF303FB7B400B887F2 /* Triva */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E06FD903303FB7B700B887F2 /* Build configuration list for PBXNativeTarget "Triva" */;
@@ -127,12 +240,16 @@
 				E06FD8DC303FB7B400B887F2 /* Sources */,
 				E06FD8DD303FB7B400B887F2 /* Frameworks */,
 				E06FD8DE303FB7B400B887F2 /* Resources */,
+				51C0DE51000000000000001A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				51C0DE510000000000000014 /* PBXTargetDependency */,
+				51C0DE510000000000000015 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				51C0DE510000000000000007 /* TrivaShared */,
 				E06FD8E2303FB7B400B887F2 /* Triva */,
 			);
 			name = Triva;
@@ -205,6 +322,12 @@
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2710;
 				TargetAttributes = {
+					51C0DE510000000000000001 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+					51C0DE510000000000000002 = {
+						CreatedOnToolsVersion = 27.2;
+					};
 					E06FD8DF303FB7B400B887F2 = {
 						CreatedOnToolsVersion = 26.6;
 					};
@@ -241,11 +364,27 @@
 				E06FD8DF303FB7B400B887F2 /* Triva */,
 				E06FD8EE303FB7B700B887F2 /* TrivaTests */,
 				E06FD8F8303FB7B700B887F2 /* TrivaUITests */,
+				51C0DE510000000000000001 /* TrivaWidgets */,
+				51C0DE510000000000000002 /* TrivaShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		51C0DE51000000000000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		51C0DE51000000000000000D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E06FD8DE303FB7B400B887F2 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -270,6 +409,20 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		51C0DE510000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		51C0DE51000000000000000B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E06FD8DC303FB7B400B887F2 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -294,6 +447,17 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		51C0DE510000000000000014 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 51C0DE510000000000000001 /* TrivaWidgets */;
+			targetProxy = 51C0DE510000000000000016 /* PBXContainerItemProxy */;
+		};
+		51C0DE510000000000000015 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = 51C0DE510000000000000002 /* TrivaShare */;
+			targetProxy = 51C0DE510000000000000017 /* PBXContainerItemProxy */;
+		};
 		E06FD8F1303FB7B700B887F2 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E06FD8DF303FB7B400B887F2 /* Triva */;
@@ -307,6 +471,164 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		51C0DE510000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/TrivaWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = V3FWDNB5J5;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/TrivaWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Triva;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.benpodrojsky.Triva.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		51C0DE510000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/TrivaWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = V3FWDNB5J5;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/TrivaWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Triva;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.benpodrojsky.Triva.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		51C0DE510000000000000012 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/TrivaShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = V3FWDNB5J5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/TrivaShare-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Rechercher avec Triva";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.benpodrojsky.Triva.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		51C0DE510000000000000013 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/TrivaShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = V3FWDNB5J5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/TrivaShare-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Rechercher avec Triva";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.benpodrojsky.Triva.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		E06FD901303FB7B700B887F2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -432,6 +754,7 @@
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=iphoneos*]" = AppIconLegacy;
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=iphonesimulator*]" = AppIconLegacy;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Triva.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -441,6 +764,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=iphone*]" = "Config/Triva-iOS-Info.plist";
 				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Triva-macOS-Info.plist";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Triva a besoin d'accéder à ton réseau local uniquement si tu ajoutes une instance de recherche SearXNG hébergée chez toi.";
@@ -481,6 +805,7 @@
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=iphoneos*]" = AppIconLegacy;
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=iphonesimulator*]" = AppIconLegacy;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Triva.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -490,6 +815,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=iphone*]" = "Config/Triva-iOS-Info.plist";
 				"INFOPLIST_FILE[sdk=macosx*]" = "Config/Triva-macOS-Info.plist";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Triva a besoin d'accéder à ton réseau local uniquement si tu ajoutes une instance de recherche SearXNG hébergée chez toi.";
@@ -624,6 +950,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		51C0DE51000000000000000E /* Build configuration list for PBXNativeTarget "TrivaWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				51C0DE510000000000000010 /* Debug */,
+				51C0DE510000000000000011 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		51C0DE51000000000000000F /* Build configuration list for PBXNativeTarget "TrivaShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				51C0DE510000000000000012 /* Debug */,
+				51C0DE510000000000000013 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		E06FD8DB303FB7B400B887F2 /* Build configuration list for PBXProject "Triva" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

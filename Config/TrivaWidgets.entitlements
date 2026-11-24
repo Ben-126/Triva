@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements de l'extension Widgets (chantier 2.1, S1) : l'App Group SEUL (compte gratuit : ni Siri, ni iCloud, ni Push,
+  ni Associated Domains). Sur Mac, Xcode y ajoute le bac à sable et le réseau d'après les réglages ENABLE_*.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.benpodrojsky.Triva</string>
+	</array>
+</dict>
+</plist>
