@@ -82,6 +82,10 @@ private struct SourcePreviewAction: ViewModifier {
                 }
             }
             .quickLookPreview($previewedURL)
+            // « Tout effacer » : l'aperçu se ferme avant que son fichier ne soit supprimé.
+            .onReceive(NotificationCenter.default.publisher(for: AttachmentVaultPurgeSignal.notificationName)) { _ in
+                previewedURL = nil
+            }
     }
 
     private func previewButton(action: @escaping () -> Void) -> some View {

@@ -143,7 +143,7 @@ struct EraseAllDataTests {
             discoverCache: DiscoverNoCache(),
             urlCache: URLCache(memoryCapacity: 0, diskCapacity: 0),
             storage: nil,
-            clearBrowserData: { counter.value += 1 }
+            clearBrowserData: { counter.value += 1; return .completed }
         )
         try await eraser.eraseAll()
         #expect(counter.value == 1)
@@ -152,7 +152,7 @@ struct EraseAllDataTests {
     #if os(iOS)
     @Test("iPhone/iPad : la vraie fonction de vidage du navigateur intégré s'exécute jusqu'au bout sans plantage")
     func realEmbeddedBrowserClearingCompletes() async {
-        await LocalDataEraser.clearEmbeddedBrowserData()
+        _ = await LocalDataEraser.clearEmbeddedBrowserData()
     }
     #endif
 

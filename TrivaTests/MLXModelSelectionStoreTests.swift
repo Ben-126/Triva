@@ -58,4 +58,25 @@ struct MLXModelSelectionStoreTests {
         let reloaded = MLXModelSelectionStore(userDefaults: defaults)
         #expect(reloaded.selectedModelID == nil)
     }
+
+    @Test("« Plusieurs modèles en mémoire » : éteint par défaut")
+    func multipleModelsOffByDefault() {
+        let store = MLXModelSelectionStore(userDefaults: uniqueDefaults())
+        #expect(store.allowsMultipleModels == false)
+    }
+
+    @Test("« Plusieurs modèles en mémoire » : allumé puis éteint, chaque état est persisté, sans toucher au modèle choisi")
+    func multipleModelsSettingPersists() {
+        let defaults = uniqueDefaults()
+        let store = MLXModelSelectionStore(userDefaults: defaults)
+        store.selectedModelID = "qwen3-4b-4bit"
+
+        store.allowsMultipleModels = true
+        #expect(MLXModelSelectionStore(userDefaults: defaults).allowsMultipleModels == true)
+
+        store.allowsMultipleModels = false
+        let reloaded = MLXModelSelectionStore(userDefaults: defaults)
+        #expect(reloaded.allowsMultipleModels == false)
+        #expect(reloaded.selectedModelID == "qwen3-4b-4bit")
+    }
 }

@@ -12,6 +12,8 @@ import OSLog
 nonisolated enum LocalDataEraseStep: String, Sendable, Equatable, CaseIterable {
     case favorites
     case history
+    /// Le navigateur intégré (iPhone, iPad) n'a pas pu être vidé : Safari n'a pas répondu dans le délai.
+    case browser
 }
 
 /// Échec d'au moins une étape de suppression en base. Les autres étapes ont
@@ -49,11 +51,15 @@ extension FavoritesStore: AllDeleting {}
 ///   cookies, stockage local et cache du navigateur intégré (`SFSafariViewController.DataStore`).
 ///   Sur Mac, la fenêtre du navigateur intégré utilise un stockage non persistant : rien à effacer.
 ///   Copies temporaires de pièces jointes (dossier `tmp/TrivaAttachments`, Coup d'œil et glisser-déposer),
-///   quand l'app lui donne leur dossier (`attachmentVaultRoot`).
+///   quand l'app lui donne leur dossier (`attachmentVaultRoot`) : y compris celles des fenêtres ouvertes, dont
+///   l'aperçu est fermé avant (`AttachmentVaultPurgeSignal`) ; leur Coup d'œil n'est plus proposé ensuite.
 /// - JAMAIS TOUCHÉ : clés API (Trousseau), choix du moteur IA, fournisseur et
 ///   modèle choisis, instances SearXNG, modèles MLX téléchargés. Cet objet ne
 ///   reçoit d'ailleurs ni le trousseau ni aucun store de réglages : il ne peut
 ///   pas les effacer par mégarde.
+///
+/// Safari (navigateur intégré, iPhone et iPad) qui ne répond pas en 10 s : l'effacement continue sans l'attendre,
+/// puis est déclaré `.incomplete` avec l'étape `.browser` — jamais « Tout a été effacé » (décision de Ben, 2026-11-24).
 ///
 /// ## Chemin principal : `deleteAllData()` (décision de Ben, 2026-11-14)
 /// Quand le stockage sait se rouvrir (`TrivaStorage.eraseAllData()`, base sur
@@ -91,8 +97,10 @@ struct LocalDataEraser {
     private let urlCache: URLCache
     private let storage: TrivaStorage?
     private let beforeErase: (@MainActor () async -> Void)?
-    private let clearBrowserData: @MainActor () async -> Void
+    private let clearBrowserData: @MainActor () async -> EmbeddedBrowserClearOutcome
     private let attachmentVaultRoot: URL?
+    private let previewDismissDelay: Duration
+    private let vaultPurgeCenter: NotificationCenter
 
     /// - Parameters:
     ///   - storage: stockage à effacer d'un coup (`deleteAllData()` puis
@@ -109,8 +117,10 @@ struct LocalDataEraser {
         urlCache: URLCache = .shared,
         storage: TrivaStorage? = nil,
         beforeErase: (@MainActor () async -> Void)? = nil,
-        clearBrowserData: @escaping @MainActor () async -> Void = LocalDataEraser.clearEmbeddedBrowserData,
-        attachmentVaultRoot: URL? = nil
+        clearBrowserData: @escaping @MainActor () async -> EmbeddedBrowserClearOutcome = LocalDataEraser.clearEmbeddedBrowserData,
+        attachmentVaultRoot: URL? = nil,
+        previewDismissDelay: Duration = .milliseconds(250),
+        vaultPurgeCenter: NotificationCenter = .default
     ) {
         self.chatHistory = chatHistory
         self.favorites = favorites
@@ -120,20 +130,26 @@ struct LocalDataEraser {
         self.beforeErase = beforeErase
         self.clearBrowserData = clearBrowserData
         self.attachmentVaultRoot = attachmentVaultRoot
+        self.previewDismissDelay = previewDismissDelay
+        self.vaultPurgeCenter = vaultPurgeCenter
     }
 
     /// Joue toutes les étapes puis lève `LocalDataEraseError.incomplete` si une
     /// suppression en base a échoué (jamais d'erreur avalée).
     func eraseAll() async throws(LocalDataEraseError) {
         await beforeErase?()
-        let failed = eraseDatabase()
+        await announceVaultPurge()
+        var failed = eraseDatabase()
         await Self.clearCaches(urlCache: urlCache, discoverCache: discoverCache)
         // Pages lues à la demande (« Lire cette page »), refus des sites et
         // règles robots.txt en mémoire : elles révèlent les sites consultés.
         UserReadPages.removeAll()
         SiteReadRefusals.shared.removeAll()
         await RobotsRulesCache.shared.removeAll()
-        await clearBrowserData()
+        // Safari muet : l'effacement continue (le reste est vidé), mais l'utilisateur est prévenu.
+        if await clearBrowserData() == .timedOut {
+            failed.append(.browser)
+        }
         // Copies temporaires de documents joints (chantier 2.2) : ce sont des données de l'utilisateur aussi.
         if let attachmentVaultRoot {
             AttachmentFileVault.purgeAll(rootDirectory: attachmentVaultRoot)
@@ -142,6 +158,16 @@ struct LocalDataEraser {
         if !failed.isEmpty {
             throw .incomplete(failedSteps: failed)
         }
+    }
+
+    /// Prévient les fenêtres ouvertes que leurs copies de fichiers vont disparaître : leur aperçu (Coup d'œil) se
+    /// ferme et elles les oublient. Le délai laisse l'interface réellement fermer un aperçu avant que son fichier
+    /// ne soit supprimé (la suppression a lieu en fin d'effacement). Sans dossier de coffre, rien n'est supprimé,
+    /// donc rien n'est annoncé.
+    private func announceVaultPurge() async {
+        guard let attachmentVaultRoot else { return }
+        AttachmentVaultPurgeSignal.post(root: attachmentVaultRoot, on: vaultPurgeCenter)
+        try? await Task.sleep(for: previewDismissDelay)
     }
 
     /// Efface la base : d'un coup si le stockage le permet, sinon (ou si cela
@@ -182,7 +208,7 @@ struct LocalDataEraser {
     ///
     /// Un seul vidage à la fois, avec un délai maximal : voir `EmbeddedBrowserDataClearer` (des appels
     /// simultanés s'invalident entre eux et ne rendent jamais la main).
-    static func clearEmbeddedBrowserData() async {
+    static func clearEmbeddedBrowserData() async -> EmbeddedBrowserClearOutcome {
         await EmbeddedBrowserDataClearer.shared.clear()
     }
 

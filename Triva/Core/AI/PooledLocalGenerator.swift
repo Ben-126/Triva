@@ -33,7 +33,7 @@ nonisolated struct PooledLocalGenerator: AIGenerating {
         if requiresResidentModel {
             return try await pool.beginGeneration(with: model, requester: requester)
         }
-        return try await pool.beginTrialGeneration(requester: requester)
+        return try await pool.beginTrialGeneration(with: model, requester: requester)
     }
 
     func generate(prompt: String) async throws -> String {

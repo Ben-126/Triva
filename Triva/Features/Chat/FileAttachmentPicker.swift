@@ -332,6 +332,7 @@ final class FileAttachmentController {
     private(set) var storedFileURLs: [UUID: URL] = [:]
 
     @ObservationIgnored private let vault: AttachmentFileVault
+    @ObservationIgnored private var purgeObservation: AttachmentVaultPurgeObservation?
     @ObservationIgnored private var queue: [QueuedFile] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var currentFileID: UUID?
@@ -340,11 +341,29 @@ final class FileAttachmentController {
     init(
         store: AttachmentStore,
         maxAttachmentCount: Int = FileAttachmentRules.maxAttachmentCount,
-        vault: AttachmentFileVault = AttachmentFileVault()
+        vault: AttachmentFileVault = AttachmentFileVault(),
+        purgeSignalCenter: NotificationCenter = .default
     ) {
         self.store = store
         self.maxAttachmentCount = max(1, maxAttachmentCount)
         self.vault = vault
+        purgeObservation = AttachmentVaultPurgeObservation(center: purgeSignalCenter) { [weak self] root in
+            self?.forgetPurgedCopies(inVaultAt: root)
+        }
+    }
+
+    /// « Tout effacer » va supprimer TOUTES les copies du coffre (`AttachmentVaultPurgeSignal`), y compris les
+    /// nôtres : on les oublie (plus de Coup d'œil proposé sur un fichier disparu ; le texte déjà lu reste joint), et
+    /// les dépôts encore en file, dont la copie disparaît avant d'être lue, sont retirés. Un fichier choisi dans le
+    /// sélecteur n'est pas une copie du coffre : il reste en file.
+    private func forgetPurgedCopies(inVaultAt root: URL?) {
+        // Un autre coffre que le nôtre : nos copies ne sont pas touchées.
+        guard root?.path == vault.rootDirectory.standardizedFileURL.path else { return }
+        storedFileURLs = [:]
+        let lostIDs = Set(queue.filter(\.isDeposit).map(\.id))
+        guard !lostIDs.isEmpty else { return }
+        queue.removeAll { lostIDs.contains($0.id) }
+        pendingAttachments.removeAll { lostIDs.contains($0.id) }
     }
 
     /// Fenêtre fermée : les copies de documents de l'utilisateur ne doivent pas lui survivre, y compris les dépôts
@@ -613,6 +632,10 @@ struct FileAttachmentTray: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel(FileAttachmentPresentation.trayAccessibilityLabel)
             .quickLookPreview($previewedURL)
+            // « Tout effacer » : l'aperçu se ferme avant que son fichier ne soit supprimé.
+            .onReceive(NotificationCenter.default.publisher(for: AttachmentVaultPurgeSignal.notificationName)) { _ in
+                previewedURL = nil
+            }
         }
     }
 

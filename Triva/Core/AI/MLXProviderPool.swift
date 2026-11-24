@@ -58,12 +58,40 @@ extension MLXProvider: PoolableLocalModel {
 ///
 /// Une génération sur un modèle remplacé entre-temps échoue (`MLXProviderError.modelNotLoaded`)
 /// plutôt que de recharger l'ancien en douce : la question suivante part sur le nouveau.
+///
+/// ## Un seul modèle en mémoire, essai compris (décision de Ben, 2026-11-24)
+/// Tant que le réglage `MLXModelSelectionStore.allowsMultipleModels` est éteint (par défaut), le modèle
+/// qu'on ESSAIE ne s'ajoute jamais au résident : essayer un autre modèle décharge le résident (à son tour dans
+/// la file : une réponse en cours se termine d'abord). Ce modèle « évincé » n'est pas perdu : la fenêtre qui le
+/// tient le fait recharger, dans son tour, à sa question suivante (`beginGeneration`), et ce rechargement libère
+/// à son tour le modèle d'essai (rechargé depuis le disque à la prochaine question d'essai). Allumé : l'essai
+/// et le résident coexistent, comme avant.
 @MainActor
 @Observable
 final class MLXProviderPool {
     private struct Resident {
         let modelID: String
         let model: any PoolableLocalModel
+    }
+
+    /// Modèle d'essai suivi par le pool (écran de choix d'un modèle). Classe : l'état change pendant que
+    /// plusieurs tâches l'attendent.
+    private final class TrialSlot {
+        let modelID: String
+        let model: any PoolableLocalModel
+        /// Poids en mémoire.
+        var isLoaded = false
+        /// Téléchargement/chargement en cours, hors de la file (plusieurs minutes).
+        var isLoading = true
+        /// Essai abandonné : s'il finit de charger, il est aussitôt déchargé.
+        var isDiscarded = false
+
+        init(modelID: String, model: any PoolableLocalModel) {
+            self.modelID = modelID
+            self.model = model
+        }
+
+        var holdsMemory: Bool { isLoaded || isLoading }
     }
 
     private struct PendingLoad {
@@ -82,6 +110,11 @@ final class MLXProviderPool {
     @ObservationIgnored private var pendingLoad: PendingLoad?
     @ObservationIgnored private var requesters: Set<UUID> = []
     @ObservationIgnored private var evictionTask: Task<Void, Never>?
+    @ObservationIgnored private var trials: [TrialSlot] = []
+    /// Résident libéré pour faire place à un essai (réglage éteint) : sa fenêtre le fait recharger à sa
+    /// question suivante. `nil` dès qu'un modèle redevient résident.
+    @ObservationIgnored private var displaced: Resident?
+    @ObservationIgnored private var reconcileTask: Task<Void, Never>?
 
     /// `selection` : LE store partagé de l'app. Le pool le suit lui-même pour décharger l'ancien
     /// modèle à chaque changement, d'où qu'il vienne.
@@ -92,6 +125,9 @@ final class MLXProviderPool {
 
     /// Modèle demandé par la sélection courante : le seul qui a le droit de rester en mémoire.
     private var targetModelID: String? { selection.selectedModelID }
+
+    /// Réglage « Autoriser plusieurs modèles en mémoire ».
+    private var allowsMultipleModels: Bool { selection.allowsMultipleModels }
 
     /// Le modèle `modelID` est-il chargé en mémoire (par n'importe quelle fenêtre) ?
     func isResident(_ modelID: String) -> Bool {
@@ -121,7 +157,13 @@ final class MLXProviderPool {
             return try await pendingLoad.task.value
         }
         let token = UUID()
-        let model = make()
+        // Le modèle libéré pour un essai revient sur la MÊME instance : une autre fenêtre la tient peut-être.
+        let model: any PoolableLocalModel
+        if let displaced, displaced.modelID == modelID {
+            model = displaced.model
+        } else {
+            model = make()
+        }
         let task = Task { @MainActor in
             try await self.load(model, id: modelID, requester: requester, token: token)
         }
@@ -154,13 +196,38 @@ final class MLXProviderPool {
 
     /// Attend son tour puis vérifie que `model` est toujours le modèle résident. Le tour est rendu
     /// (et l'erreur levée) sinon.
+    ///
+    /// Exception : `model` est le résident libéré pour un essai (réglage éteint) et la sélection n'a pas changé :
+    /// il est rechargé ICI, dans le tour, et le modèle d'essai est libéré à son tour.
     func beginGeneration(with model: any PoolableLocalModel, requester: UUID) async throws -> LocalModelTurn {
         let turn = try await turns.acquire(for: requester)
-        guard let resident, resident.model === model else {
-            endGeneration(turn)
+        if let resident, resident.model === model {
+            return turn
+        }
+        if resident == nil, let displaced, displaced.model === model {
+            do {
+                try await restore(displaced)
+                return turn
+            } catch {
+                endGeneration(turn)
+                throw error
+            }
+        }
+        endGeneration(turn)
+        throw MLXProviderError.modelNotLoaded
+    }
+
+    /// Recharge le résident libéré pour un essai. Appelé pendant un tour.
+    private func restore(_ evicted: Resident) async throws {
+        guard targetModelID == evicted.modelID, !requesters.isEmpty else { throw MLXProviderError.modelNotLoaded }
+        await unloadTrials(otherThan: evicted.modelID)
+        try await evicted.model.loadIntoMemory()
+        guard targetModelID == evicted.modelID, !requesters.isEmpty else {
+            await evicted.model.unloadFromMemory()
             throw MLXProviderError.modelNotLoaded
         }
-        return turn
+        resident = evicted
+        displaced = nil
     }
 
     func endGeneration(_ turn: LocalModelTurn) {
@@ -168,19 +235,81 @@ final class MLXProviderPool {
         scheduleEvictionIfUnwanted()
     }
 
-    // MARK: - Essai d'un modèle (écran de choix, mission G1)
+    // MARK: - Essai d'un modèle (écran de choix, missions G1 et K1)
 
     /// Générateur de l'ESSAI d'un modèle : la génération passe par la même file que celles des fenêtres
-    /// (une seule génération MLX à la fois), mais le modèle essayé n'a pas à être le modèle résident
+    /// (une seule génération MLX à la fois), mais le modèle essayé n'a pas à être le modèle résident du pool
     /// (c'est justement un modèle qu'on n'a pas encore choisi). L'essai n'entre PAS dans les demandeurs :
     /// il ne retient pas le modèle résident en mémoire.
     func trialGenerator(for model: any PoolableLocalModel, requester: UUID) -> any AIGenerating {
         PooledLocalGenerator(model: model, pool: self, requester: requester, requiresResidentModel: false)
     }
 
-    /// Tour d'une génération d'essai : attend son rang, sans exiger que `model` soit le résident.
-    func beginTrialGeneration(requester: UUID) async throws -> LocalModelTurn {
-        try await turns.acquire(for: requester)
+    /// Télécharge et charge le modèle d'ESSAI `model` (poids annonçant leur progression).
+    ///
+    /// Réglage éteint : avant de commencer, le résident (et tout autre essai chargé) est déchargé, à son tour
+    /// dans la file : une réponse en cours se termine d'abord. Le téléchargement lui-même reste HORS de la file
+    /// (plusieurs minutes : il ferait attendre toutes les fenêtres). Une fenêtre qui pose une question pendant
+    /// ce temps recharge son modèle ; à la fin du téléchargement, l'essai reprend la place (`settle`).
+    func loadTrialModel(
+        _ model: any TrialLocalModel,
+        id modelID: String,
+        onProgress: @escaping @Sendable (MLXDownloadProgress) -> Void
+    ) async throws {
+        let slot = TrialSlot(modelID: modelID, model: model)
+        trials.append(slot)
+        do {
+            if !allowsMultipleModels {
+                try await withTurn {
+                    // Abandonné pendant l'attente du tour : ne rien libérer pour un essai qui n'aura pas lieu.
+                    if !slot.isDiscarded { await self.evictOthers(forTrial: slot) }
+                }
+            }
+            guard !slot.isDiscarded else { throw CancellationError() }
+            try await model.loadIntoMemory(onProgress: onProgress)
+        } catch {
+            slot.isLoading = false
+            forget(slot)
+            throw error
+        }
+        slot.isLoading = false
+        if !slot.isDiscarded { slot.isLoaded = true }
+        // Le chargement est fini : l'écran passe à l'essai sans attendre le tour de la file (une fenêtre peut
+        // être en train de charger son modèle, des minutes). La remise en ordre de la mémoire se fait à son tour.
+        if slot.isDiscarded || !allowsMultipleModels {
+            Task { @MainActor [weak self] in await self?.settle(slot) }
+        }
+    }
+
+    /// Fin du chargement d'un essai, à son tour dans la file : abandonné entre-temps, il est déchargé ; sinon,
+    /// réglage éteint, il prend la place des autres modèles (qu'une fenêtre aurait rechargés pendant le
+    /// téléchargement).
+    private func settle(_ slot: TrialSlot) async {
+        await withMaintenanceTurn {
+            if slot.isDiscarded {
+                await self.unloadTrialModelIfUnused(slot.model, id: slot.modelID)
+            } else if !self.allowsMultipleModels, slot.isLoaded {
+                await self.evictOthers(forTrial: slot)
+            }
+        }
+    }
+
+    /// Tour d'une génération d'essai : attend son rang. Réglage éteint, l'essai prend alors la place du résident ;
+    /// un essai libéré entre-temps (par la question d'une fenêtre) est rechargé depuis le disque.
+    func beginTrialGeneration(with model: any PoolableLocalModel, requester: UUID) async throws -> LocalModelTurn {
+        let turn = try await turns.acquire(for: requester)
+        guard let slot = trials.first(where: { $0.model === model }), !slot.isDiscarded else { return turn }
+        do {
+            if !allowsMultipleModels { await evictOthers(forTrial: slot) }
+            if !slot.isLoaded && !slot.isLoading {
+                try await model.loadIntoMemory()
+                slot.isLoaded = true
+            }
+        } catch {
+            endGeneration(turn)
+            throw error
+        }
+        return turn
     }
 
     /// L'essai est abandonné (autre modèle, annulation, fenêtre fermée). Le modèle d'essai n'est
@@ -188,51 +317,110 @@ final class MLXProviderPool {
     /// de `mlx-swift-lm`, pour cet identifiant, donc sous les pieds d'un modèle résident (ou en cours de
     /// chargement) de même identifiant. La vérification se fait à SON tour dans la file : un chargement du
     /// pool qui démarrerait entre-temps passe soit avant (il est alors résident), soit après (il recharge).
+    /// Le résident libéré pour cet essai n'est PAS rechargé d'office : sa fenêtre le fait à sa question suivante.
     func discardTrialModel(_ model: any PoolableLocalModel, id modelID: String) {
+        let slot = trials.first { $0.model === model }
+        slot?.isDiscarded = true
+        if let slot { forget(slot) }
         Task { @MainActor [weak self] in
             guard let self else {
                 await model.unloadFromMemory()
                 return
             }
             await self.withMaintenanceTurn {
-                await self.unloadTrialModelIfUnused(model, id: modelID)
+                await self.unloadTrialModelIfUnused(model, id: modelID, slot: slot)
             }
         }
     }
 
     /// L'essai est validé : si c'est désormais le modèle voulu par la sélection et qu'une fenêtre l'utilise,
     /// il DEVIENT le modèle résident (déjà chargé, aucun rechargement à la première question) ; l'ancien est
-    /// déchargé. Sinon (aucune fenêtre, sélection autre, même modèle déjà résident ou en chargement) il est
-    /// traité comme un essai abandonné. À appeler APRÈS avoir écrit la sélection.
+    /// déchargé. Sinon (aucune fenêtre, sélection autre, même modèle déjà résident ou en chargement, essai
+    /// libéré entre-temps) il est traité comme un essai abandonné. À appeler APRÈS avoir écrit la sélection.
     func adoptTrialModel(_ model: any PoolableLocalModel, id modelID: String) {
+        let slot = trials.first { $0.model === model }
         Task { @MainActor [weak self] in
             guard let self else {
                 await model.unloadFromMemory()
                 return
             }
             await self.withMaintenanceTurn {
+                if let slot { self.forget(slot) }
                 let isFree = self.resident?.modelID != modelID && self.pendingLoad?.modelID != modelID
-                if isFree, self.targetModelID == modelID, !self.requesters.isEmpty {
+                let isLoaded = slot?.isLoaded ?? true
+                if isLoaded, isFree, self.targetModelID == modelID, !self.requesters.isEmpty {
                     await self.unloadResident()
                     self.resident = Resident(modelID: modelID, model: model)
+                    self.displaced = nil
+                    if !self.allowsMultipleModels { await self.unloadTrials(otherThan: modelID) }
                 } else {
-                    await self.unloadTrialModelIfUnused(model, id: modelID)
+                    await self.unloadTrialModelIfUnused(model, id: modelID, slot: slot)
                 }
             }
         }
     }
 
-    private func unloadTrialModelIfUnused(_ model: any PoolableLocalModel, id modelID: String) async {
+    private func forget(_ slot: TrialSlot) {
+        trials.removeAll { $0 === slot }
+    }
+
+    /// Décharge `model` s'il ne sert à personne : ni résident ni chargement du pool de même identifiant, et
+    /// pas déjà libéré (`slot` : l'essai suivi, s'il l'est encore).
+    private func unloadTrialModelIfUnused(_ model: any PoolableLocalModel, id modelID: String, slot: TrialSlot? = nil) async {
         let isUsedByPool = resident?.modelID == modelID || pendingLoad?.modelID == modelID
         guard !isUsedByPool else { return }
+        if let slot, !slot.holdsMemory { return }
+        slot?.isLoaded = false
         await model.unloadFromMemory()
     }
 
-    /// Travail d'entretien rendu à son tour dans la file, comme les déchargements.
+    // MARK: - Un seul modèle en mémoire (réglage éteint)
+
+    /// Libère tout ce qui occupe la mémoire sauf le modèle d'essai `slot` (même identifiant = mêmes poids,
+    /// partagés dans le cache global : rien à libérer). Le résident libéré est mémorisé pour être rechargé.
+    private func evictOthers(forTrial slot: TrialSlot) async {
+        if let old = resident, old.modelID != slot.modelID {
+            displaced = old
+            resident = nil
+            await old.model.unloadFromMemory()
+        }
+        await unloadTrials(otherThan: slot.modelID, besides: slot)
+    }
+
+    /// Décharge les essais CHARGÉS d'un autre identifiant que `modelID`. Un essai encore en train de télécharger
+    /// n'est pas touché (`settle` s'en occupe à la fin).
+    private func unloadTrials(otherThan modelID: String, besides keep: TrialSlot? = nil) async {
+        for slot in trials where slot !== keep && slot.isLoaded && slot.modelID != modelID {
+            slot.isLoaded = false
+            await slot.model.unloadFromMemory()
+        }
+    }
+
+    /// Réglage éteint alors que plusieurs modèles sont en mémoire : les essais chargés sont libérés (le
+    /// résident reste, c'est lui que les fenêtres utilisent).
+    private func scheduleReconcileIfSingleModel() {
+        guard !allowsMultipleModels, reconcileTask == nil,
+              trials.contains(where: \.isLoaded) else { return }
+        reconcileTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.reconcileTask = nil }
+            await self.withMaintenanceTurn {
+                guard !self.allowsMultipleModels, let keptID = self.resident?.modelID else { return }
+                await self.unloadTrials(otherThan: keptID)
+            }
+        }
+    }
+
+    /// Travail d'entretien rendu à son tour dans la file, comme les déchargements. Lève si l'attente du tour est
+    /// annulée (le travail n'a alors pas eu lieu).
+    private func withTurn<T>(_ work: () async -> T) async throws -> T {
+        let turn = try await turns.acquire(for: maintenanceRequester)
+        defer { endGeneration(turn) }
+        return await work()
+    }
+
     private func withMaintenanceTurn(_ work: () async -> Void) async {
-        guard let turn = try? await turns.acquire(for: maintenanceRequester) else { return }
-        await work()
-        endGeneration(turn)
+        _ = try? await withTurn(work)
     }
 
     // MARK: - Chargement et déchargement
@@ -254,6 +442,7 @@ final class MLXProviderPool {
         guard targetModelID == modelID else { throw MLXProviderError.modelNotLoaded }
         if let resident, resident.modelID == modelID { return resident.model }
         await unloadResident()
+        if !allowsMultipleModels { await unloadTrials(otherThan: modelID) }
         try await model.loadIntoMemory()
         // Sélection changée PENDANT le chargement, ou plus aucune fenêtre : on ne l'installe pas.
         guard targetModelID == modelID, !requesters.isEmpty else {
@@ -261,6 +450,7 @@ final class MLXProviderPool {
             throw MLXProviderError.modelNotLoaded
         }
         resident = Resident(modelID: modelID, model: model)
+        displaced = nil
         return model
     }
 
@@ -298,12 +488,14 @@ final class MLXProviderPool {
     private func observeSelection() {
         withObservationTracking {
             _ = selection.selectedModelID
+            _ = selection.allowsMultipleModels
         } onChange: { [weak self] in
             // Appelé AVANT l'écriture (`willSet`) : on relit la valeur au tour suivant du main actor.
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.observeSelection()
                 self.scheduleEvictionIfUnwanted()
+                self.scheduleReconcileIfSingleModel()
             }
         }
     }

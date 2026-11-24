@@ -109,9 +109,10 @@ final class MLXModelSelectionCoordinator {
         self.provider = provider
         providerModelID = entry.id
 
+        let pool = pool
         downloadTask = Task { [weak self] in
             do {
-                try await provider.loadIntoMemory { progress in
+                try await pool.loadTrialModel(provider, id: entry.id) { progress in
                     Task { @MainActor in
                         // Un `prepare()` annulé continue de télécharger en
                         // tâche de fond côté module mlx-swift-lm (voir le

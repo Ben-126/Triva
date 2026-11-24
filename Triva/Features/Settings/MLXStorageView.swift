@@ -223,6 +223,7 @@ struct MLXStorageView: View {
     var body: some View {
         MLXStorageContent(
             display: display,
+            memorySettingStore: mlxSelectionStore,
             onRequestDeletion: { requestDeletion(id: $0) },
             onRetry: { retry() }
         )
@@ -430,11 +431,16 @@ private nonisolated enum MLXStorageDisplay: Equatable, Sendable {
 /// previews de chaque état avec des données factices.
 private struct MLXStorageContent: View {
     let display: MLXStorageDisplay
+    /// Store du réglage « plusieurs modèles en mémoire » ; `nil` : réglage masqué (aperçus des états de la liste).
+    var memorySettingStore: MLXModelSelectionStore?
     let onRequestDeletion: (String) -> Void
     let onRetry: () -> Void
 
     var body: some View {
         Form {
+            if let memorySettingStore {
+                MLXMemorySettingSection(store: memorySettingStore)
+            }
             if case .loaded(let rows, let totalSize) = display, !rows.isEmpty {
                 Section {
                     ForEach(rows) { row in

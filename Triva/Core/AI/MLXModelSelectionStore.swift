@@ -16,10 +16,18 @@ import Foundation
 @Observable
 final class MLXModelSelectionStore {
     private static let storageKey = "mlx.selectedModelID"
+    private static let multipleModelsKey = "mlx.allowMultipleModels"
     private let userDefaults: UserDefaults
 
     var selectedModelID: String? {
         didSet { persist() }
+    }
+
+    /// Réglage « Autoriser plusieurs modèles en mémoire » (décision de Ben, 2026-11-24). ÉTEINT par défaut :
+    /// un seul modèle MLX en mémoire à la fois, essai d'un autre modèle compris (l'essai libère le modèle
+    /// des réponses, rechargé à la question suivante). Allumé : l'essai garde l'autre modèle en mémoire.
+    var allowsMultipleModels: Bool {
+        didSet { userDefaults.set(allowsMultipleModels, forKey: Self.multipleModelsKey) }
     }
 
     init(userDefaults: UserDefaults = .standard) {
@@ -28,6 +36,8 @@ final class MLXModelSelectionStore {
         // sinon le `didSet` du nil initial persisterait avant même d'avoir lu
         // la donnée existante et l'effacerait du UserDefaults.
         self.selectedModelID = userDefaults.string(forKey: Self.storageKey)
+        // Clé absente = éteint (`bool(forKey:)` rend `false`).
+        self.allowsMultipleModels = userDefaults.bool(forKey: Self.multipleModelsKey)
     }
 
     private func persist() {

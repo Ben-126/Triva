@@ -46,7 +46,7 @@ private func write(_ name: String, _ text: String, in folder: URL) throws -> URL
 @Suite("Pièces jointes — contrôleur et coffre")
 struct FileAttachmentVaultControllerTests {
     private func makeController(vaultRoot: URL) -> FileAttachmentController {
-        FileAttachmentController(store: AttachmentStore(), vault: AttachmentFileVault(rootDirectory: vaultRoot))
+        FileAttachmentController(store: AttachmentStore(), vault: AttachmentFileVault(rootDirectory: vaultRoot), purgeSignalCenter: NotificationCenter())
     }
 
     @Test("Un fichier joint est lu sur sa copie : Coup d'œil disponible, original intact")
@@ -101,7 +101,7 @@ struct FileAttachmentVaultControllerTests {
     func deinitDeletesSession() async throws {
         try await withSandbox { origin, vaultRoot in
             let vault = AttachmentFileVault(rootDirectory: vaultRoot)
-            var controller: FileAttachmentController? = FileAttachmentController(store: AttachmentStore(), vault: vault)
+            var controller: FileAttachmentController? = FileAttachmentController(store: AttachmentStore(), vault: vault, purgeSignalCenter: NotificationCenter())
             controller?.enqueue([try write("a.txt", "un", in: origin)])
             #expect(await waitFor { controller?.attachments.count == 1 })
             #expect(exists(vault.sessionDirectory))
@@ -114,7 +114,7 @@ struct FileAttachmentVaultControllerTests {
     func refusedFileLeavesNothing() async throws {
         try await withSandbox { origin, vaultRoot in
             let vault = AttachmentFileVault(rootDirectory: vaultRoot)
-            let controller = FileAttachmentController(store: AttachmentStore(), vault: vault)
+            let controller = FileAttachmentController(store: AttachmentStore(), vault: vault, purgeSignalCenter: NotificationCenter())
             controller.enqueue([try write("archive.zip", "zip", in: origin)])
             #expect(await waitFor { controller.pendingAttachments.isEmpty && !controller.notices.isEmpty })
             #expect(controller.attachments.isEmpty)
@@ -145,7 +145,8 @@ struct FileAttachmentVaultControllerTests {
     func overflowDepositsAreDiscarded() async throws {
         try await withSandbox { origin, vaultRoot in
             let controller = FileAttachmentController(
-                store: AttachmentStore(), maxAttachmentCount: 1, vault: AttachmentFileVault(rootDirectory: vaultRoot)
+                store: AttachmentStore(), maxAttachmentCount: 1, vault: AttachmentFileVault(rootDirectory: vaultRoot),
+                purgeSignalCenter: NotificationCenter()
             )
             let kept = try AttachmentFileVault.stageDeposit(of: try write("a.txt", "un", in: origin), rootDirectory: vaultRoot)
             let extra = try AttachmentFileVault.stageDeposit(of: try write("b.txt", "deux", in: origin), rootDirectory: vaultRoot)
@@ -195,7 +196,7 @@ struct FileAttachmentVaultControllerTests {
     func exhaustedBudgetDiscardsAbandonedDeposits() async throws {
         try await withSandbox { origin, vaultRoot in
             let store = AttachmentStore(scorer: LexicalSimilarityScorer(), totalCharacterBudget: 5)
-            let controller = FileAttachmentController(store: store, vault: AttachmentFileVault(rootDirectory: vaultRoot))
+            let controller = FileAttachmentController(store: store, vault: AttachmentFileVault(rootDirectory: vaultRoot), purgeSignalCenter: NotificationCenter())
             let deposits = try stageThree(in: origin, vaultRoot: vaultRoot)
             controller.enqueue(deposits, areDeposits: true)
             #expect(await waitFor { controller.pendingAttachments.isEmpty })

@@ -18,20 +18,26 @@ extension FakeLocalModel: TrialLocalModel {
 
 /// Fabrique de modèles d'essai : rend, pour chaque modèle du catalogue, le double préparé par le test.
 @MainActor
-private final class TrialFactory {
+final class TrialFactory {
     private(set) var made: [String: FakeLocalModel] = [:]
     private let log: PoolEventLog
+    /// Portes de chargement par identifiant de modèle : le « téléchargement » de l'essai dure tant qu'elle est fermée.
+    var loadGates: [String: TestGate] = [:]
+    /// Échecs de chargement par identifiant de modèle.
+    var loadErrors: [String: MLXProviderError] = [:]
 
     init(log: PoolEventLog) { self.log = log }
 
     func make(_ entry: MLXModelCatalogEntry) -> any TrialLocalModel {
-        let model = FakeLocalModel(name: "trial-\(entry.id)", log: log)
+        let model = FakeLocalModel(
+            name: "trial-\(entry.id)", log: log, loadGate: loadGates[entry.id], loadError: loadErrors[entry.id]
+        )
         made[entry.id] = model
         return model
     }
 }
 
-private func trialEntry(_ id: String) -> MLXModelCatalogEntry {
+func trialEntry(_ id: String) -> MLXModelCatalogEntry {
     MLXModelCatalogEntry(
         id: id, displayName: id, huggingFaceRepo: "mlx-community/\(id)", registryKey: nil, license: "Apache 2.0",
         downloadSizeBytes: 1, recommendedGPUWorkingSetBytes: 1, capabilityScore: 1, supportsThinkingMode: false,
@@ -41,16 +47,20 @@ private func trialEntry(_ id: String) -> MLXModelCatalogEntry {
 
 /// Un pool avec `resident` déjà chargé pour la fenêtre `window`, et un coordinateur d'essai branché dessus.
 @MainActor
-private struct TrialRig {
+struct TrialRig {
     let selection: MLXModelSelectionStore
     let pool: MLXProviderPool
     let factory: TrialFactory
     let log = PoolEventLog()
     let window = UUID()
 
-    init(selected: String?) {
+    /// `allowsMultipleModels` : le réglage « Autoriser plusieurs modèles en mémoire ». Cette suite teste le
+    /// comportement ALLUMÉ (le modèle d'essai et le résident coexistent) ; l'éteint (par défaut, un seul modèle
+    /// en mémoire) est dans `MLXSingleModelPoolTests`.
+    init(selected: String?, allowsMultipleModels: Bool = false) {
         let log = log
         selection = makePoolSelection(selected: selected)
+        selection.allowsMultipleModels = allowsMultipleModels
         pool = MLXProviderPool(selection: selection)
         factory = TrialFactory(log: log)
     }
@@ -79,14 +89,14 @@ private struct TrialRig {
     }
 }
 
-@Suite("Essai d'un modèle MLX par le pool")
+@Suite("Essai d'un modèle MLX par le pool (plusieurs modèles autorisés)")
 @MainActor
 struct MLXModelTrialPoolTests {
     // MARK: - Même file que les fenêtres
 
     @Test("Une question d'essai attend le tour d'une fenêtre qui répond, puis passe")
     func trialQuestionWaitsBehindAWindow() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let gate = TestGate()
         let resident = FakeLocalModel(name: "small", log: rig.log, generationGate: gate)
         let model = try await rig.pool.preparedModel(id: "small", requester: rig.window) { resident }
@@ -114,7 +124,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Le modèle d'essai n'est jamais un « demandeur » : fermer la dernière fenêtre décharge quand même le résident")
     func trialDoesNotKeepTheResidentAlive() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let resident = FakeLocalModel(name: "small", log: rig.log)
         try await rig.makeResident(resident, id: "small")
         let coordinator = rig.makeCoordinator()
@@ -130,7 +140,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Une génération d'essai qui échoue rend quand même son tour")
     func failedTrialGenerationReleasesTheTurn() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let coordinator = rig.makeCoordinator()
         #expect(await rig.startTrial(coordinator, id: "other"))
         let trial = try #require(rig.factory.made["other"])
@@ -147,7 +157,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Annuler l'essai du modèle qui est DÉJÀ résident ne le décharge pas")
     func abandoningTrialOfTheResidentModelKeepsIt() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let resident = FakeLocalModel(name: "small", log: rig.log)
         try await rig.makeResident(resident, id: "small")
         let coordinator = rig.makeCoordinator()
@@ -164,7 +174,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Annuler pendant que le pool CHARGE ce même modèle ne le décharge pas non plus")
     func abandoningTrialDuringPoolLoadKeepsIt() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let gate = TestGate()
         let loading = FakeLocalModel(name: "small", log: rig.log, loadGate: gate)
         let pool = rig.pool
@@ -188,7 +198,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Annuler l'essai d'un AUTRE modèle le décharge, sans toucher au résident")
     func abandoningTrialOfAnotherModelUnloadsOnlyIt() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let resident = FakeLocalModel(name: "small", log: rig.log)
         try await rig.makeResident(resident, id: "small")
         let coordinator = rig.makeCoordinator()
@@ -205,7 +215,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Fermer l'écran sans choisir décharge le modèle d'essai (le coordinateur disparaît)")
     func closingTheSheetUnloadsTheTrialModel() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         var coordinator: MLXModelSelectionCoordinator? = rig.makeCoordinator()
         let started = await rig.startTrial(try #require(coordinator), id: "other")
         #expect(started)
@@ -220,7 +230,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Valider : le modèle d'essai devient le résident, sans rechargement, et l'ancien est déchargé")
     func validatingAdoptsTheTrialModel() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let old = FakeLocalModel(name: "small", log: rig.log)
         try await rig.makeResident(old, id: "small")
         let selection = rig.selection
@@ -247,7 +257,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Valider sans aucune fenêtre qui utilise MLX : le modèle d'essai est libéré, pas gardé en mémoire")
     func validatingWithoutWindowReleasesTheTrialModel() async throws {
-        let rig = TrialRig(selected: nil)
+        let rig = TrialRig(selected: nil, allowsMultipleModels: true)
         let selection = rig.selection
         let coordinator = rig.makeCoordinator { selection.selectedModelID = $0.id }
         #expect(await rig.startTrial(coordinator, id: "big"))
@@ -261,7 +271,7 @@ struct MLXModelTrialPoolTests {
 
     @Test("Valider le modèle qui est déjà résident : l'instance du pool reste, le doublon d'essai n'évince rien")
     func validatingTheResidentModelKeepsThePoolInstance() async throws {
-        let rig = TrialRig(selected: "small")
+        let rig = TrialRig(selected: "small", allowsMultipleModels: true)
         let resident = FakeLocalModel(name: "small", log: rig.log)
         try await rig.makeResident(resident, id: "small")
         let selection = rig.selection

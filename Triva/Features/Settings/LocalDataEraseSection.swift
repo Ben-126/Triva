@@ -28,7 +28,7 @@ struct LocalDataEraseSection: View {
         case idle
         case erasing
         case done
-        /// Les étapes en base qui n'ont pas pu être jouées (les caches, eux, l'ont été).
+        /// Les étapes qui n'ont pas pu être jouées : base, ou navigateur intégré muet (les caches, eux, l'ont été).
         case incomplete(failedSteps: [LocalDataEraseStep])
     }
 
@@ -83,14 +83,22 @@ struct LocalDataEraseSection: View {
         let retry = " Réessaie ; si cela se reproduit, redémarre l'app."
         let failedFavorites = failedSteps.contains(.favorites)
         let failedHistory = failedSteps.contains(.history)
+        // Texte à valider par Ben (2026-11-24) : Safari n'a pas répondu en 10 secondes.
+        let browser = failedSteps.contains(.browser)
+            ? " Les données du navigateur intégré n'ont pas pu être effacées : Safari n'a pas répondu."
+            : ""
         switch (failedHistory, failedFavorites) {
         case (true, true):
-            return "Tes conversations et tes favoris n'ont pas pu être effacés. Seuls les caches de recherche l'ont été." + retry
+            return "Tes conversations et tes favoris n'ont pas pu être effacés. Seuls les caches de recherche l'ont été." + browser + retry
         case (true, false):
-            return "Tes conversations n'ont pas pu être effacées ; tes favoris et les caches de recherche l'ont été." + retry
+            return "Tes conversations n'ont pas pu être effacées ; tes favoris et les caches de recherche l'ont été." + browser + retry
         case (false, true):
-            return "Tes favoris n'ont pas pu être effacés ; tes conversations et les caches de recherche l'ont été." + retry
+            return "Tes favoris n'ont pas pu être effacés ; tes conversations et les caches de recherche l'ont été." + browser + retry
         case (false, false):
+            if failedSteps.contains(.browser) {
+                return "Les données du navigateur intégré n'ont pas pu être effacées : Safari n'a pas répondu. "
+                    + "Le reste a été effacé." + retry
+            }
             return "Triva n'a pas pu tout effacer." + retry
         }
     }
