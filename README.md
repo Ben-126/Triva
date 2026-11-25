@@ -2,7 +2,7 @@
 
 Triva est un moteur de recherche IA **privé et natif** pour iPhone, iPad et Mac. Pas de compte, pas de serveur : tout tourne sur ton appareil ou passe directement par les fournisseurs que **toi** tu choisis.
 
-> ⚠️ **Projet en développement actif.** Triva n'est pas encore disponible sur l'App Store. Le cœur de l'app — poser une question, obtenir une réponse sourcée — fonctionne déjà ; les fonctions avancées (widgets, historique, favoris, pièces jointes) sont en cours de construction.
+> ⚠️ **Projet en développement actif.** Triva n'est pas encore disponible sur l'App Store. Le cœur de l'app — poser une question, obtenir une réponse sourcée, avec historique, favoris et pièces jointes — fonctionne déjà ; les fonctions qui l'intègrent au système (iPhone Duo, Mac approfondi, widget, Siri, partage…) sont en cours de construction ou de vérification sur appareil.
 
 ## Pourquoi Triva
 
@@ -65,7 +65,14 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 **V2 en cours : ce qu'une app native permet et pas le web**
 - L'iPhone Duo : en plié, l'écran s'adapte à la place disponible et un bouton ferme le clavier ; en déplié et en paysage, la conversation et ses sources s'affichent côte à côte (les Favoris aussi : liste et détail). Le brouillon, la position de lecture et la réponse en cours sont gardés quand on plie ou déplie
 - Le Mac approfondi : une recherche par fenêtre, les menus et raccourcis clavier complets, « Rechercher avec Triva » depuis n'importe quelle app (Services), une barre des menus et un menu du Dock en option, le glisser-déposer de fichiers et d'images (texte lu sur l'appareil) dans les deux sens, et Coup d'œil sur les pièces jointes (aussi sur iPad et iPhone)
-- À venir : Siri, Raccourcis, widgets, Spotlight, Activité en direct, la voix, la synchronisation iCloud et la traduction en anglais et en espagnol
+- L'intégration au système, codée mais encore à vérifier sur appareil réel :
+  - un **widget** « Recherche rapide » (iPhone, iPad, Mac, écran verrouillé) et une commande « Nouvelle question » (Centre de contrôle, bouton Action). Le widget peut afficher le titre de ta dernière conversation, **seulement si tu l'actives** dans Réglages > Intégrations (éteint par défaut : rien n'est alors écrit pour lui) ;
+  - ton historique (titres et dates, **jamais le texte des réponses**) dans la **recherche de l'appareil** (Spotlight), réglable et allumé par défaut ;
+  - une **activité en direct** pendant une recherche (écran verrouillé, Dynamic Island ; iPhone et iPad), réglable et allumée par défaut : elle montre ta question, donc elle peut se lire sans déverrouiller l'appareil ;
+  - le **partage** vers Triva depuis la feuille de partage (iPhone et iPad) : un texte, une page web, un PDF ou une image arrivent dans la barre de saisie ou en pièce jointe, jamais envoyés sans toi ;
+  - **Siri et Raccourcis** : poser une question, ouvrir une nouvelle recherche, chercher dans l'historique, ouvrir une conversation, choisir le mode de réponse ; une question ne part jamais vers une IA en ligne sans ton accord pour ce fournisseur ;
+  - **coller** une image ou un fichier, et joindre des photos choisies dans la **photothèque** (le sélecteur du système : Triva ne voit que les photos choisies).
+- À venir : la voix, la synchronisation iCloud et la traduction en anglais et en espagnol
 
 **Plus tard**
 - La publication sur l'App Store
@@ -82,8 +89,10 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Aucune télémétrie, aucun tracking
 - Aucune donnée envoyée à un serveur intermédiaire
 - Les clés API et les clés de recherche restent en local, dans le Trousseau de ton appareil
-- Uniquement des widgets qui ne demandent ni clé API ni compte — pas de service tiers caché derrière une fonctionnalité en apparence gratuite
-- « Tout effacer » (Réglages > Données) supprime d'un coup l'historique, les favoris, les caches et les données du navigateur intégré
+- Uniquement des widgets de réponse (météo, calculatrice) qui ne demandent ni clé API ni compte — pas de service tiers caché derrière une fonctionnalité en apparence gratuite
+- Le widget, la recherche de l'appareil, l'activité en direct et le partage restent sur ton appareil : ils n'envoient rien sur Internet et rien à l'éditeur
+- Pour l'aperçu et le glisser-déposer, Triva garde une copie temporaire du fichier joint, uniquement sur ton appareil, effacée quand tu retires le fichier, commences une nouvelle conversation, fermes la fenêtre ou utilises « Tout effacer », et au plus tard au prochain lancement de Triva
+- « Tout effacer » (Réglages > Données) supprime d'un coup l'historique, les favoris, les caches, les copies temporaires de fichiers, ce que Triva avait publié dans le widget et la recherche de l'appareil, et les données du navigateur intégré
 
 Le détail est dans la [politique de confidentialité](docs/confidentialite.md) ([English](docs/en/privacy.md)), avec les [conditions d'utilisation](docs/conditions.md), les [mentions légales](docs/mentions-legales.md), les [licences et attributions](docs/licences.md) et l'[assistance](docs/assistance.md).
 

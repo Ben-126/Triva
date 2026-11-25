@@ -2,7 +2,7 @@
 
 # Triva Privacy Policy
 
-*Last updated: 18 November 2026*
+*Last updated: 25 November 2026*
 
 *This is a translation. The [French version](../confidentialite.md) is the authoritative one. Triva's screens are in French: the names of screens and buttons are given in English, followed by the French label in brackets the first time.*
 
@@ -14,7 +14,8 @@ This page explains, in plain words, what Triva does with your data. It is writte
 - **No account, no ads, no audience measurement, no tracking.** Triva contains no analytics or advertising tool.
 - **What you do in Triva stays on your device** (iPhone, iPad or Mac), except what has to be sent over the Internet to answer your question.
 - When Triva sends something over the Internet, it goes **directly** from your device to an outside service (a search engine, an AI you chose…). These services can see at least your device's **IP address**. Each one applies its own rules. They are all listed below.
-- You can erase your history, favorites and caches at any time in **Settings > Data > Erase All** (« Réglages > Données > Tout effacer »); your keys and local models are deleted in their own settings (see section 7).
+- The **widget**, the **device search** (Spotlight), the **Live Activity**, **sharing** to Triva, **Siri** and **Shortcuts** work on your device: Triva sends none of it to its publisher. The first three are set in **Settings > Integrations** (« Réglages > Intégrations »), and section 2 shows exactly what they keep.
+- You can erase your history, favorites, caches and what Triva published in the widget, the device search and the Live Activity at any time in **Settings > Data > Erase All** (« Réglages > Données > Tout effacer »); your keys and local models are deleted in their own settings (see section 7).
 
 ## 1. Who publishes Triva?
 
@@ -37,11 +38,28 @@ This data is stored **only on your device**. The publisher has no access to it.
 | List of public search instances and their measured reliability | The app's internal storage | Updated as you use the app |
 | Caches (recent pages and network responses, content of the Discover tab) | The app's internal storage | Renewed automatically; emptied by "Erase All" |
 | Local AI models (MLX) you downloaded | The app's internal storage | Until you delete them in Settings > MLX Models (« Modèles MLX ») |
-| Files you attach to a question | The file is not sent anywhere else: its text is read on your device. Triva keeps a **temporary copy** in the app's temporary folder, for the preview ("Quick Look") and drag and drop. For an **image**, the text is read on your device (Vision): the image itself is never sent, and the recognized text follows the same rule as the text of a PDF. The **file name** and the **excerpts** used as sources of the answer are saved with it in the history (and in favorites if you add it there) | The copy: until the window is closed, "Erase All" is used, or Triva is quit; at the latest until the next launch. The name and excerpts: until you delete the conversation or the favorite, or "Erase All" |
+| Files you attach to a question (picked in Files, pasted, dragged and dropped, taken from the photo library or received through sharing) | The file is not sent anywhere else: its text is read on your device. For the preview and drag and drop, Triva keeps a temporary copy of the file, only on your device. It is erased when you remove the file, start a new conversation, close the window or use “Erase All”, and at the latest the next time Triva launches. No copy is kept above 200 MB (so no preview then). Exception: a new question started from the widget, Siri or the Action button keeps the files you had attached but not yet sent (with their copy), for your first question. For an **image**, the text is read on your device (Vision): the image itself is never sent, and the recognized text follows the same rule as the text of a PDF. The **file name** and the **excerpts** used as sources of the answer are saved with it in the history (and in favorites if you add it there) | The copy: see the rule on the left. The name and excerpts: until you delete the conversation or the favorite, or "Erase All" |
 | Pages you had read with "Read this page" (« Lire cette page ») | **In memory only** | Until Triva is closed or "Erase All" |
 | Data of websites opened in the **built-in browser** (cookies, website data) | iPhone and iPad: storage of the built-in browser (Safari), separate for Triva. Mac: **nothing is kept** | iPhone and iPad: until the website deletes it, you use "Erase All" (which deletes it too) or you delete the app |
 
-**Protection.** Triva adds no encryption of its own: your data is protected by your device's protection (passcode or password, built-in encryption on iPhone and iPad, FileVault on Mac if turned on). It is included in your device's **backups** (iCloud or computer), like other apps' data.
+**Protection.** Triva adds no encryption of its own: your data is protected by your device's protection (passcode or password, built-in encryption on iPhone and iPad, FileVault on Mac if turned on). It is included in your device's **backups** (iCloud or computer), like other apps' data. One exception: the folder Triva shares with its widget and its share extension (see 2.1) is only a relay; Triva asks the system not to include it in backups.
+
+### 2.1 Widget, device search, Live Activity, sharing
+
+These features connect Triva to your device's system. None of them goes through a publisher's server. The first three have a setting in **Settings > Integrations**.
+
+| Feature | What is kept, and where | How long |
+|---|---|---|
+| **Last question in the widget** (« Dernière question dans le widget », off by default) | A small file in a folder shared between Triva and its widget (on your device): the **title** (80 characters at most), the identifier and the date of your **latest conversation**, never the text of an answer nor several conversations. While the setting is off, this file does not exist: the widget only shows the "New question" gesture. The widget reads this file, writes nothing and does not use the Internet. If you add it to the Lock Screen, the title may be readable without unlocking the device, unless you chose in iOS to hide sensitive content | Updated when your history changes; removed right away when you turn the setting off or use "Erase All" |
+| **History in the device search** (« Historique dans la recherche de l'appareil », on by default) | The **title** and **date** of your 500 most recent conversations, in your device's search index (Spotlight), which stays on the device. Never the text of questions or answers. Triva also notes in its settings the identifiers of what it indexed (without the titles), so it can remove them | Removed when you delete the conversation, turn the setting off or use "Erase All" |
+| **Live Activity during a search** (« Activité en direct pendant une recherche », on by default; iPhone and iPad) | During a search, your **question** (one line, 140 characters at most), the stage ("Searching…", "Reading 3 sources", "Writing…", "Answer ready") and the number of sources, on the Lock Screen and in the Dynamic Island. It starts only if Triva is open, updates from the device with no server and no push notification, and may also show, depending on your devices, on a paired watch, Mac or CarPlay. It can therefore be read without unlocking the device, unless you chose in iOS to hide sensitive content | Answer ready and Triva open: disappears right away. Answer ready and Triva in the background: 30 minutes at most. Search interrupted or failed: 5 minutes at most. Also removed when you turn the setting off, delete the conversation, use "Erase All", or the next time Triva launches |
+| **Sharing to Triva** ("Search with Triva" in the share sheet; iPhone and iPad) | What you share (a text, a page address with its title, a PDF or an image) is placed in a folder shared between the share extension and Triva, on your device: 8 shares at most, 400 MB of files (PDF up to 200 MB, image up to 50 MB). The text is limited to 2,000 characters and the file name is cleaned up. The extension sends nothing over the Internet and starts no search. The next time Triva comes to the foreground, the text arrives in the input bar (never sent without you) and the file is attached to the question (temporary copy, see above) | Erased from the shared folder as soon as Triva has picked it up; otherwise expired after 24 hours and erased the next time Triva or the extension runs; or by "Erase All". The extension's working folder (temporary folder) is erased at the end of the share or, at the latest, at the next share |
+
+On Mac, there is no share extension and no Live Activity. The folder shared with the widget is used only if you have turned on "Last question in the widget" at some point.
+
+**Siri and Shortcuts.** Triva's actions ("Ask Triva a question" (« Poser une question à Triva »), "New search" (« Nouvelle recherche »), "Search the history" (« Chercher dans l'historique »), "Open a conversation" (« Ouvrir une conversation »), "Choose the answer mode" (« Choisir le mode de réponse »)) keep nothing beyond what is described here. A question asked through Siri or Shortcuts is saved in your history like the others. The conversations Siri and Shortcuts see are reduced to their title and date; "Search the history" also finds text in your messages, but returns only titles and dates, and requires the device to be unlocked. See also section 3.7.
+
+**Pasting and photo library.** Pasting a file or an image (⌘V on Mac, "Paste" in the paperclip menu on iPhone and iPad) reads the clipboard only when you ask for it. For a photo, Triva has no access to your photo library: the system's photo picker opens, and Triva only receives the photos you choose in it. A pasted file or a photo then follows the same rule as any attached file (the "Files you attach" row above).
 
 ## 3. What goes over the Internet, and to whom
 
@@ -91,6 +109,10 @@ Links open in Triva's **built-in browser** (built-in Safari on iPhone and iPad, 
 ### 3.6 When you open the Discover tab (« Découvrir »)
 
 Triva downloads the news feeds of these publishers: Numerama, Frandroid, The Conversation, ESPN, Variety, Deadline, The Hollywood Reporter, ARTnews. They receive the request for the feed (and your IP address). The **article images** (except for The Conversation) are also downloaded from the servers of these publishers, or of those hosting their images, which then receive your IP address.
+
+### 3.7 When you use Siri or Shortcuts
+
+The widget, the device search, the Live Activity and sharing send nothing over the Internet by themselves. "Ask Triva a question" (Siri, Shortcuts) asks a real question: it follows the same path as a question asked in the app (sections 3.2 and 3.3), with the AI engine you chose. A question is never sent to a cloud AI without your permission for that provider: otherwise Triva asks you to open the app, and your question waits in the input bar. Triva hands back to Siri or Shortcuts (Apple) your question, the answer, and the title and link of the sources; what a shortcut does next with these depends on the shortcut you built. Siri and Shortcuts are Apple services, and Apple applies its own rules (see [Apple's privacy policy](https://www.apple.com/legal/privacy/)).
 
 ## 4. Outside services follow their own rules
 
@@ -148,12 +170,13 @@ For what you decide to send yourself, with your own key or your own service, eac
 
 ## 7. Erasing your data
 
-- **Erase All** (« Tout effacer », Settings, "Data" section, « Données ») deletes at once, on this device: your history (conversations, messages, sources), your favorites, the network cache, the Discover tab cache and, on iPhone and iPad, the cookies and data of websites opened in the built-in browser. Normally, the database is emptied completely and no trace of it remains. If that isn't possible, Triva deletes items one by one (leaving the same temporary traces as a single deleted conversation, see below) and tells you if part of it could not be erased.
-- "Erase All" **does not delete**: your API keys, the chosen engine, provider and model, your permissions for cloud AIs, your search instances, your other settings, the downloaded local models. To delete them: Settings > API Keys (or Search Keys), and Settings > MLX Models.
-- A **single conversation you delete** disappears from the app right away. It may stay for a while in the database's internal file, still protected by your device's encryption, until that file is cleaned up automatically.
+- **Erase All** (« Tout effacer », Settings, "Data" section, « Données ») deletes at once, on this device: your history (conversations, messages, sources), your favorites, the network cache, the Discover tab cache, the temporary copies of attached files, what Triva published in the widget, in the device search and in the Live Activity, pending shares (iPhone and iPad) and, on iPhone and iPad, the cookies and data of websites opened in the built-in browser. Normally, the database is emptied completely and no trace of it remains. If that isn't possible, Triva deletes items one by one (leaving the same temporary traces as a single deleted conversation, see below) and tells you if part of it could not be erased.
+- "Erase All" **does not delete**: your API keys, the chosen engine, provider and model, your permissions for cloud AIs, your search instances, your other settings (including the three under "Integrations"), the downloaded local models. To delete them: Settings > API Keys (or Search Keys), and Settings > MLX Models.
+- **Turning off** "Last question in the widget" or "History in the device search" removes what Triva had published right away; turning off "Live Activity" stops the one in progress. If the system refuses a removal, Triva tries again a few times, and "Erase All" warns you when something could not be erased.
+- A **single conversation you delete** disappears from the app right away (and from the device search; its finished Live Activity is removed). It may stay for a while in the database's internal file, still protected by your device's encryption, until that file is cleaned up automatically.
 - **Deleting the app** removes its data from the device. Keys saved in the Keychain may sometimes remain after the app is deleted: delete them first in Triva's Settings.
 - **Data of websites opened in the built-in browser** (cookies): on Mac, nothing is kept; on iPhone and iPad, "Erase All" deletes it too (deleting the app does as well).
-- What you have **already sent** to an outside service (section 3) cannot be erased by Triva: ask that service directly.
+- What you have **already sent** to an outside service (section 3) cannot be erased by Triva: ask that service directly. The same goes for what a shortcut you built saved elsewhere (a note, a file…).
 
 ## 8. Your rights
 
@@ -176,7 +199,7 @@ In France, under 15, some uses of your data require a parent's permission as wel
 - No tracking across apps or websites, no advertising identifier.
 - No automated decisions about you: Triva makes no decision about you that would have legal effects or significantly affect you (GDPR, article 22).
 - No selling or sharing of data by the publisher: it has none.
-- No access to your location, contacts, photo library, microphone or camera. Triva only reads the files you choose to attach yourself. Triva may ask for access to the **local network**, only if you add a search instance hosted at home.
+- No access to your location, contacts, microphone or camera, and no access to your whole photo library: to attach a photo, you pick it in the system's picker, and Triva only receives those. Triva only reads the files, images and texts you choose to attach, paste or share to Triva yourself. Triva may ask for access to the **local network**, only if you add a search instance hosted at home.
 
 ## 11. Changes to this policy
 
@@ -187,3 +210,4 @@ If Triva changes the way it handles your data, this page will be updated and its
 | Version | Date | Changes |
 |---|---|---|
 | 1.0 | 18 November 2026 | First version. |
+| 1.1 | 25 November 2026 | Added the widget, the device search (Spotlight), the Live Activity, sharing to Triva, Siri and Shortcuts, pasting and the photo library (sections 2.1, 3.7, 7 and 10); erasure rule for temporary copies of files. |
