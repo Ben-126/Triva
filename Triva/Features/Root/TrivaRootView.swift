@@ -166,6 +166,7 @@ struct TrivaRootView: View {
                 ) else { return }
                 SystemRouteCenter.shared.submit(route)
             }
+            .acceptsExternalEventsInOpenWindows()
     }
 
     @ViewBuilder
@@ -178,6 +179,7 @@ struct TrivaRootView: View {
             TrivaRootShell(
                 engine: selected,
                 onChangeEngine: { isChoosingEngine = true },
+                onCloseEngineChange: { isChoosingEngine = false },
                 stores: stores,
                 windowTarget: windowTarget,
                 restoration: restoration
@@ -260,6 +262,22 @@ struct TrivaRootView: View {
 }
 
 private extension View {
+    /// Mac : un widget, un résultat Spotlight ou un raccourci qui arrive pendant qu'une fenêtre est ouverte est traité par
+    /// cette fenêtre (les routes passent toutes par `SystemRouteCenter`, d'où qu'elles arrivent). Sans cela, SwiftUI crée
+    /// une scène de plus pour l'événement, donc une fenêtre vide en plus de celle que la route demande (R2-04).
+    /// `preferring` vide : aucune fenêtre n'est prioritaire ; `allowing: ["*"]` : toutes peuvent le prendre.
+    /// Aucune fenêtre ouverte : la doc (`Scene.handlesExternalEvents(matching:)`) prend la PREMIÈRE déclaration de scène sans
+    /// ce modificateur, c'est-à-dire le `WindowGroup` « Triva » (déclaré avant « Navigateur » dans `TrivaApp`) : aucun
+    /// modificateur de scène n'est ajouté. `"*"` est l'usage courant pour « tout événement » (non détaillé par la doc).
+    @ViewBuilder
+    func acceptsExternalEventsInOpenWindows() -> some View {
+        #if os(macOS)
+        handlesExternalEvents(preferring: [], allowing: ["*"])
+        #else
+        self
+        #endif
+    }
+
     /// Plein écran sur iPhone et iPad, comme l'écran de choix du premier
     /// lancement ; feuille sur Mac, qui n'a pas de présentation plein écran.
     /// Taille plancher sur Mac : une feuille y prend sinon la taille idéale de
@@ -296,6 +314,8 @@ private extension View {
 /// première.
 private struct TrivaRootShell: View {
     let onChangeEngine: () -> Void
+    /// Ferme l'écran de choix du moteur de la fenêtre : une route du système ne doit pas s'appliquer dessous (R2-11).
+    let onCloseEngineChange: @MainActor () -> Void
     let stores: TrivaSharedStores
     /// Valeur de la fenêtre (`WindowGroup(for:)`) et cible de restauration à consommer, voir `TrivaRootView`.
     let windowTarget: Binding<TrivaWindowTarget>
@@ -353,11 +373,13 @@ private struct TrivaRootShell: View {
     init(
         engine: AIEngineOption,
         onChangeEngine: @escaping () -> Void,
+        onCloseEngineChange: @escaping @MainActor () -> Void,
         stores: TrivaSharedStores,
         windowTarget: Binding<TrivaWindowTarget>,
         restoration: WindowRestoration
     ) {
         self.onChangeEngine = onChangeEngine
+        self.onCloseEngineChange = onCloseEngineChange
         self.stores = stores
         self.windowTarget = windowTarget
         self.restoration = restoration
@@ -406,7 +428,14 @@ private struct TrivaRootShell: View {
         // Routes du système (iPhone, iPad ; vide sur Mac, où le lanceur de fenêtres s'en charge) : la fenêtre
         // active les prend, une seule les consomme.
         .onChange(of: SystemRouteCenter.shared.revision, initial: true) { consumeSystemRoutes() }
-        .onChange(of: scenePhase) { consumeSystemRoutes() }
+        // Les routes arrivées pendant la feuille d'accord « IA cloud » sont prises à sa fermeture (C1).
+        .onChange(of: coordinator.session.chatViewModel?.pendingConsent?.id) { consumeSystemRoutes() }
+        .onChange(of: scenePhase) {
+            // Avant tout : un modèle MLX ne doit plus toucher au GPU une fois l'app en arrière-plan (R2-01).
+            coordinator.scenePhaseDidChange(scenePhase)
+            consumeSystemRoutes()
+        }
+        .environment(\.presentationDismissal, coordinator.presentationDismissal)
         // Valeur de scène arrivée APRÈS le premier rendu (relancement : fenêtres restaurées vides, mission F3).
         .onChange(of: windowTarget.wrappedValue) { _, newValue in
             receiveLateWindowValue(newValue)
@@ -437,12 +466,15 @@ private struct TrivaRootShell: View {
     ///
     /// Une valeur de scène « recherche neuve » à la première apparition n'est PAS réécrite : elle peut n'être que
     /// la valeur par défaut, et la valeur restaurée du relancement (une conversation) peut encore arriver ;
-    /// l'écraser la ferait perdre pour de bon (`receiveLateWindowValue`).
+    /// l'écraser la ferait perdre pour de bon (`receiveLateWindowValue`). À l'inverse, si la valeur de scène est DÉJÀ
+    /// la conversation restaurée alors que la cible lue à la création de la vue était la recherche neuve par défaut,
+    /// la conversation de la scène l'emporte (`WindowRestoration.take(sceneValue:)`, constat du 25/11).
     private func adoptWindowTarget() {
         coordinator.windowRegistry.setFocusAction({ [focusHandle] in focusHandle.bringToFront() }, in: coordinator.windowID)
-        let initial = restoration.take()
+        coordinator.dismissShellPresentations = onCloseEngineChange
+        let initial = restoration.take(sceneValue: windowTarget.wrappedValue)
         if let initial {
-            coordinator.restoreWindowTarget(initial)
+            coordinator.restoreWindowTarget(initial, externalInbox: externalQueryInbox)
         } else {
             coordinator.syncWindowTarget()
         }
@@ -463,10 +495,8 @@ private struct TrivaRootShell: View {
     /// restaurée. `drain()` ne rend chaque route qu'une fois, donc deux fenêtres iPad ne l'appliquent jamais deux fois.
     private func consumeSystemRoutes() {
         guard didAdoptWindowTarget, scenePhase == .active else { return }
-        for route in SystemRouteCenter.shared.drain() {
-            coordinator.apply(route, canUseOtherWindows: supportsMultipleWindows) { id in
-                openWindow(id: TrivaWindowTarget.sceneID, value: TrivaWindowTarget.conversation(id))
-            }
+        coordinator.consumeSystemRoutes(canUseOtherWindows: supportsMultipleWindows) { id in
+            openWindow(id: TrivaWindowTarget.sceneID, value: TrivaWindowTarget.conversation(id))
         }
     }
 

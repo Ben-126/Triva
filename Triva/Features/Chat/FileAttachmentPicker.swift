@@ -131,6 +131,8 @@ struct FileAttachmentTray: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel(FileAttachmentPresentation.trayAccessibilityLabel)
             .quickLookPreview($previewedURL)
+            // Une route du système (widget, Siri…) ferme l'aperçu : il cacherait ce qu'elle affiche (R2-11).
+            .dismissesOnSystemRoute { previewedURL = nil }
             // « Tout effacer » : l'aperçu se ferme avant que son fichier ne soit supprimé.
             .onReceive(NotificationCenter.default.publisher(for: AttachmentVaultPurgeSignal.notificationName)) { _ in
                 previewedURL = nil

@@ -18,7 +18,7 @@ struct HeadlessQuestionPolicyTests {
         consent: HeadlessCloudConsent = .notApplicable,
         platform: HeadlessPlatform = .iOS
     ) -> HeadlessQuestionContext {
-        HeadlessQuestionContext(engine: engine, isEngineReady: ready, cloudConsent: consent, platform: platform)
+        HeadlessQuestionContext(noticeAcknowledged: true, engine: engine, isEngineReady: ready, cloudConsent: consent, platform: platform)
     }
 
     @Test("Aucun moteur choisi : il faut ouvrir Triva")
@@ -69,7 +69,7 @@ struct HeadlessQuestionPolicyTests {
         for ready in [true, false] {
             for consent in consents {
                 let decision = HeadlessQuestionPolicy.decide(
-                    HeadlessQuestionContext(engine: engine, isEngineReady: ready, cloudConsent: consent, platform: platform)
+                    HeadlessQuestionContext(noticeAcknowledged: true, engine: engine, isEngineReady: ready, cloudConsent: consent, platform: platform)
                 )
                 guard engine == .cloudBYOK else { continue }
                 if consent != .granted || !ready {
@@ -85,5 +85,14 @@ struct HeadlessQuestionPolicyTests {
     func dialogs() {
         #expect(HeadlessQuestionPolicy.engineChoiceDialog == "Ouvre Triva pour choisir ton moteur d'IA.")
         #expect(HeadlessQuestionPolicy.consentDialog(providerName: "OpenAI") == "Ouvre Triva pour autoriser l'envoi à OpenAI.")
+    }
+
+    @Test("Information IA pas lue : jamais de réponse, quel que soit le moteur ou l'accord cloud",
+          arguments: [AIEngineOption?.none, .appleIntelligence, .mlxLocal, .cloudBYOK])
+    func noticeComesFirst(engine: AIEngineOption?) {
+        let decision = HeadlessQuestionPolicy.decide(
+            HeadlessQuestionContext(noticeAcknowledged: false, engine: engine, isEngineReady: true, cloudConsent: .granted, platform: .iOS)
+        )
+        #expect(decision == .needsAINotice)
     }
 }

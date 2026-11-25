@@ -29,6 +29,8 @@ final class SpotlightIndexer {
     private let preferences: SystemIntegrationPreferences
     private let defaults: UserDefaults
     private let delay: Duration
+    /// Attente avant un nouvel essai de retrait refusé par Spotlight (doublée à chaque essai).
+    private let purgeRetryDelay: Duration
     private let loadEntries: @MainActor () throws -> [SpotlightEntry]
 
     /// Ce qui a été envoyé pendant CE lancement ; `nil` : la prochaine passe envoie tout.
@@ -36,6 +38,10 @@ final class SpotlightIndexer {
     private var debounce: Task<Void, Never>?
     private var running: Task<Void, Never>?
     private var syncAgain = false
+    private var purgeRetry: Task<Void, Never>?
+
+    /// Essais de retrait au plus après un refus de Spotlight, avant d'attendre le prochain lancement ou la prochaine bascule.
+    static let maxPurgeRetries = 3
 
     /// - Parameters:
     ///   - delay: attente après le dernier changement (2 s dans l'app, nulle dans les tests).
@@ -46,12 +52,14 @@ final class SpotlightIndexer {
         preferences: SystemIntegrationPreferences,
         defaults: UserDefaults,
         delay: Duration = .seconds(2),
+        purgeRetryDelay: Duration = .seconds(30),
         loadEntries: @escaping @MainActor () throws -> [SpotlightEntry]
     ) {
         self.client = client
         self.preferences = preferences
         self.defaults = defaults
         self.delay = delay
+        self.purgeRetryDelay = purgeRetryDelay
         self.loadEntries = loadEntries
     }
 
@@ -93,6 +101,7 @@ final class SpotlightIndexer {
     /// Le réglage vient de changer (ou l'app démarre) : allumé, tout est (ré)indexé ; éteint, l'index est vidé.
     func settingChanged() async {
         if preferences.isSpotlightEnabled {
+            cancelPurgeRetry()
             scheduleSync()
         } else {
             await purgeIfNeeded()
@@ -109,6 +118,7 @@ final class SpotlightIndexer {
     /// « Tout effacer » : l'index est vidé, que le réglage soit allumé ou non. `false` si Spotlight a refusé : les
     /// identifiants restent alors, pour réessayer.
     func eraseAll() async -> Bool {
+        cancelPurgeRetry()
         stopPending()
         await running?.value
         do {
@@ -145,19 +155,45 @@ final class SpotlightIndexer {
         }
     }
 
-    private func purgeIfNeeded() async {
+    private func purgeIfNeeded(attempt: Int = 0) async {
         stopPending()
         await running?.value
         guard !indexedIDs.isEmpty || previous != nil else { return }
         do {
             try await client.deleteAll()
         } catch {
-            // Les identifiants restent : la prochaine bascule ou le prochain lancement réessaie.
+            // Les identifiants restent. L'écran promet « tout de suite » : on réessaie de nous-mêmes, quelques fois,
+            // sans attendre une prochaine bascule ou un prochain lancement.
             Self.logger.error("Spotlight : retrait de l'index impossible : \(String(describing: error), privacy: .private)")
+            scheduleRetry(after: attempt)
             return
         }
         saveIDs([])
         previous = nil
+    }
+
+    private func scheduleRetry(after attempt: Int) {
+        guard attempt < Self.maxPurgeRetries else { return }
+        purgeRetry?.cancel()
+        let wait = purgeRetryDelay * (1 << attempt)
+        purgeRetry = Task { [weak self] in
+            if wait > .zero { try? await Task.sleep(for: wait) }
+            guard !Task.isCancelled, let self, !self.preferences.isSpotlightEnabled else { return }
+            await self.purgeIfNeeded(attempt: attempt + 1)
+        }
+    }
+
+    private func cancelPurgeRetry() {
+        purgeRetry?.cancel()
+        purgeRetry = nil
+    }
+
+    /// Attend la fin d'un éventuel nouvel essai de retrait (tests).
+    func settlePurgeRetries() async {
+        while let current = purgeRetry {
+            await current.value
+            if purgeRetry == current { purgeRetry = nil }
+        }
     }
 
     private func syncOnce() async {

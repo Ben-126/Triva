@@ -53,7 +53,13 @@ struct SharedInboxHandoffTests {
         let fixture = try HandoffFixture(); defer { fixture.cleanUp() }
         try fixture.inbox.add(text: "Pourquoi le ciel est bleu ?", fileAt: nil, displayName: nil)
         let handoff = await SharedInboxHandoff.takeLatest(from: fixture.inbox, depositRoot: fixture.depositRoot)
-        #expect(handoff == SharedHandoff(text: "Pourquoi le ciel est bleu ?", depositURL: nil))
+        let taken = try #require(handoff)
+        #expect(taken.text == "Pourquoi le ciel est bleu ?")
+        #expect(taken.depositURL == nil)
+        #expect(!taken.textWasTruncated && !taken.fileCopyFailed)
+        // L'entrée reste dans l'App Group tant que l'app n'a pas pris la route (`commit`).
+        #expect(!fixture.inboxLeftovers().isEmpty)
+        SharedInboxHandoff.commit(taken.entryID, in: fixture.inbox)
         #expect(fixture.inboxLeftovers().isEmpty)
         #expect(await SharedInboxHandoff.takeLatest(from: fixture.inbox, depositRoot: fixture.depositRoot) == nil)
     }
@@ -70,7 +76,8 @@ struct SharedInboxHandoffTests {
         #expect(deposit.lastPathComponent == "Cours.pdf")
         #expect(deposit.standardizedFileURL.path.hasPrefix(fixture.depositRoot.standardizedFileURL.path + "/_deposits/"))
         #expect(try Data(contentsOf: deposit) == bytes)
-        #expect(fixture.inboxLeftovers().isEmpty, "la copie de l'App Group est effacée")
+        SharedInboxHandoff.commit(handoff.entryID, in: fixture.inbox)
+        #expect(fixture.inboxLeftovers().isEmpty, "la copie de l'App Group est effacée une fois la route prise")
     }
 
     @Test("Deux partages de suite : le plus récent est repris, l'ancien est effacé avec son fichier")
@@ -83,6 +90,7 @@ struct SharedInboxHandoffTests {
         let handoff = try #require(await SharedInboxHandoff.takeLatest(from: fixture.inbox, depositRoot: fixture.depositRoot))
         #expect(handoff.text == "récent")
         #expect(handoff.depositURL?.lastPathComponent == "recent.pdf")
+        SharedInboxHandoff.commit(handoff.entryID, in: fixture.inbox)
         #expect(fixture.inboxLeftovers().isEmpty)
         let deposits = fixture.depositRoot.appendingPathComponent("_deposits")
         let staged = try FileManager.default.contentsOfDirectory(atPath: deposits.path)

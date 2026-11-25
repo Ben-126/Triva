@@ -34,8 +34,12 @@ nonisolated struct SearchActivityAttributes: Codable, Hashable, Sendable {
 
     private static func oneLine(_ text: String) -> String {
         let flattened = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard flattened.count > maxQuestionLength else { return flattened }
-        return String(flattened.prefix(maxQuestionLength - 1)) + "…"
+        // Bornée aussi en scalaires : 4 Ko au plus pour toute l'activité, quelle que soit la question.
+        let scalarBudget = maxQuestionLength * 4
+        guard WidgetSnapshot.clip(flattened, maxCharacters: maxQuestionLength, maxScalars: scalarBudget).wasClipped else {
+            return flattened
+        }
+        return WidgetSnapshot.clip(flattened, maxCharacters: maxQuestionLength - 1, maxScalars: scalarBudget).text + "…"
     }
 }
 

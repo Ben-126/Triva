@@ -7,7 +7,8 @@
 //
 //  Un widget petit n'a qu'une zone tactile (`widgetURL`) : « Nouvelle question ». Le moyen a deux `Link` :
 //  « Reprendre » (la dernière conversation) et « Nouvelle question ». La question affichée est marquée
-//  `privacySensitive` : sur l'écran verrouillé, elle est masquée tant que l'appareil n'est pas déverrouillé.
+//  `privacySensitive` : masquée sur l'écran verrouillé seulement si la personne a choisi de masquer les contenus
+//  sensibles (doc WidgetKit) ; le réglage « Dernière question dans le widget » est éteint par défaut.
 //
 
 import SwiftUI

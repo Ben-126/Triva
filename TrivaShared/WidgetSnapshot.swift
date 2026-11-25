@@ -53,10 +53,31 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Sendable {
     static func displayTitle(_ raw: String) -> String {
         let collapsed = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !collapsed.isEmpty else { return untitledFallback }
-        guard collapsed.count > maxTitleLength else { return collapsed }
-        let head = collapsed.prefix(maxTitleLength - 1)
-        let trimmed = head.last?.isWhitespace == true ? head.dropLast() : head
+        let scalarBudget = maxTitleLength * 8
+        let whole = clip(collapsed, maxCharacters: maxTitleLength, maxScalars: scalarBudget)
+        guard whole.wasClipped else { return collapsed }
+        let head = clip(collapsed, maxCharacters: maxTitleLength - 1, maxScalars: scalarBudget).text
+        let trimmed = head.last?.isWhitespace == true ? head.dropLast() : Substring(head)
         return String(trimmed) + "…"
+    }
+}
+
+extension WidgetSnapshot {
+    /// Le début de `text`, jamais coupé au milieu d'un caractère, borné en caractères ET en scalaires Unicode : un
+    /// seul « caractère » peut porter des dizaines de milliers de marques invisibles ou combinantes, que le seul
+    /// compte des caractères laisserait passer entiers (mission X1, C7).
+    nonisolated static func clip(_ text: String, maxCharacters: Int, maxScalars: Int) -> (text: String, wasClipped: Bool) {
+        var characters = 0
+        var scalars = 0
+        var end = text.startIndex
+        for character in text {
+            let next = scalars + character.unicodeScalars.count
+            guard characters < maxCharacters, next <= maxScalars else { return (String(text[..<end]), true) }
+            characters += 1
+            scalars = next
+            end = text.index(after: end)
+        }
+        return (text, false)
     }
 }
 

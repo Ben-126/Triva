@@ -40,6 +40,8 @@ final class WindowConversationRegistry {
     private var backgroundConversations: [UUID: @MainActor () -> UUID?] = [:]
     /// Par fenêtre : comment la ramener au premier plan.
     private var focusActions: [UUID: @MainActor () -> Bool] = [:]
+    /// Par fenêtre : comment lui faire AFFICHER une conversation qu'elle tient (Recherche, fil rouvert).
+    private var revealActions: [UUID: @MainActor (UUID) -> Void] = [:]
 
     init() {}
 
@@ -65,8 +67,15 @@ final class WindowConversationRegistry {
         focusActions[window] = action
     }
 
+    /// Dit au registre comment faire afficher une conversation par `window` (X2, R2-03) : ramener la fenêtre devant ne
+    /// suffit pas quand elle est sur la Bibliothèque ou qu'elle écrit la conversation en arrière-plan en montrant
+    /// un autre fil. Appelée par `focusHolder` une fois la fenêtre devant.
+    func setRevealAction(_ action: @escaping @MainActor (UUID) -> Void, in window: UUID) {
+        revealActions[window] = action
+    }
+
     /// Ramène au premier plan la fenêtre qui tient `conversation` (affichée d'abord, puis écrite en arrière-plan),
-    /// autre que `window` (`nil` : aucune exclue).
+    /// autre que `window` (`nil` : aucune exclue), et lui fait afficher cette conversation sur la Recherche.
     /// - Returns: `true` si une fenêtre a été ramenée ; `false` si personne ne la tient ou si la fenêtre qui la
     ///   tient ne sait pas se mettre devant (l'appelant se replie alors sur `openWindow`).
     @discardableResult
@@ -74,7 +83,10 @@ final class WindowConversationRegistry {
         let showing = displayed.filter { $0.key != window && $0.value == conversation }.keys
         let writing = backgroundConversations.filter { $0.key != window && $0.value() == conversation }.keys
         for candidate in Array(showing) + Array(writing) {
-            if let action = focusActions[candidate], action() { return true }
+            if let action = focusActions[candidate], action() {
+                revealActions[candidate]?(conversation)
+                return true
+            }
         }
         return false
     }
@@ -84,6 +96,7 @@ final class WindowConversationRegistry {
         displayed[window] = nil
         backgroundConversations[window] = nil
         focusActions[window] = nil
+        revealActions[window] = nil
     }
 
     /// `conversation` est-elle AFFICHÉE par une AUTRE fenêtre que `window` ?
@@ -127,6 +140,19 @@ final class WindowRestoration {
         if let pending { held.insert(pending) }
         defer { pending = nil }
         return pending
+    }
+
+    /// Comme `take()`, mais tient compte de la valeur de scène à la première apparition. Au relancement, la valeur
+    /// restaurée peut être déjà remise quand la coquille apparaît, alors que la cible lue à la création de la vue
+    /// (avant que SwiftUI la remette) était la recherche neuve par défaut : la conversation de la scène l'emporte
+    /// sur cette cible périmée (constat du 25/11). Une cible lue qui est déjà une conversation reste prioritaire,
+    /// une cible déjà consommée (coquille reconstruite) ne revient pas, et une valeur que la fenêtre a déjà tenue
+    /// est un écho, pas une restauration.
+    func take(sceneValue: TrivaWindowTarget) -> TrivaWindowTarget? {
+        if case .newSearch? = pending, case .conversation = sceneValue, !held.contains(sceneValue) {
+            pending = sceneValue
+        }
+        return take()
     }
 
     /// La fenêtre affiche (ou publie) cette cible : un écho de cette valeur n'est pas une restauration.

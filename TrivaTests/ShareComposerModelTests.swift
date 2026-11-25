@@ -75,7 +75,7 @@ struct ShareComposerModelTests {
         #expect(model.canSend)
 
         model.question = "Qui a peint la Joconde, et quand ?"
-        model.send()
+        await model.send()
         #expect(model.phase == .done(ShareMessages.confirmation(hasFile: false, hasQuestion: true)))
         let entry = try #require(fixture.inbox.validEntries().first)
         #expect(entry.text == "Qui a peint la Joconde, et quand ?")
@@ -89,7 +89,7 @@ struct ShareComposerModelTests {
         await model.load()
         model.question = "  \n "
         #expect(!model.canSend)
-        model.send()
+        await model.send()
         #expect(model.phase == .ready)
         #expect(fixture.inbox.validEntries().isEmpty)
     }
@@ -106,7 +106,7 @@ struct ShareComposerModelTests {
         #expect(model.canSend, "un fichier suffit, la question est facultative")
 
         model.question = "Résume ce cours"
-        model.send()
+        await model.send()
         #expect(model.phase == .done(ShareMessages.confirmation(hasFile: true, hasQuestion: true)))
         let entry = try #require(fixture.inbox.validEntries().first)
         #expect(entry.text == "Résume ce cours")
@@ -150,7 +150,7 @@ struct ShareComposerModelTests {
         let fixture = try ModelFixture(); defer { fixture.cleanUp() }
         let model = fixture.model([fixture.textItem("une question")], inbox: .some(nil))
         await model.load()
-        model.send()
+        await model.send()
         #expect(model.phase == .failed(ShareMessages.cannotSave))
         #expect(fixture.stagingIsEmpty())
     }
@@ -160,8 +160,8 @@ struct ShareComposerModelTests {
         let fixture = try ModelFixture(); defer { fixture.cleanUp() }
         let model = fixture.model([fixture.textItem("une seule fois")])
         await model.load()
-        model.send()
-        model.send()
+        await model.send()
+        await model.send()
         #expect(fixture.inbox.validEntries().count == 1)
     }
 

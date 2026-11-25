@@ -29,14 +29,33 @@ final class SystemRouteCenter {
     /// Augmente à chaque dépôt (jamais à la lecture) : déclencheur des `onChange` des fenêtres.
     private(set) var revision = 0
 
-    @ObservationIgnored private var pending: [SystemRoute] = []
+    /// Une route en attente, et ce qu'il faut faire quand une fenêtre l'a prise (ou qu'elle est jetée).
+    private struct Pending {
+        let route: SystemRoute
+        let whenDrained: (@MainActor () -> Void)?
+    }
+
+    @ObservationIgnored private var pending: [Pending] = []
     @ObservationIgnored private let windowLauncher: ExternalSearchLauncher?
     /// Racine du coffre de pièces jointes : un fichier partagé n'est accepté que dans `<racine>/_deposits/`.
     @ObservationIgnored private let depositRoot: URL
 
-    init(windowLauncher: ExternalSearchLauncher?, depositRoot: URL = AttachmentFileVault.defaultRootDirectory) {
+    /// Mac : dit si une conversation existe (branché au lancement par `SystemIntegrations.start()`). Sans lui, tout
+    /// identifiant est accepté. Une lecture qui échoue doit rendre `true` (la fenêtre affichera elle-même l'erreur).
+    @ObservationIgnored var conversationExists: (@MainActor (UUID) -> Bool)?
+    /// Mac : un appel identique (nouvelle recherche, même conversation) qui revient dans cet intervalle est ignoré.
+    static let repeatWindow: TimeInterval = 1
+    @ObservationIgnored private var lastForwarded: (route: SystemRoute, date: Date)?
+    @ObservationIgnored private let now: @MainActor () -> Date
+
+    init(
+        windowLauncher: ExternalSearchLauncher?,
+        depositRoot: URL = AttachmentFileVault.defaultRootDirectory,
+        now: @escaping @MainActor () -> Date = { Date() }
+    ) {
         self.windowLauncher = windowLauncher
         self.depositRoot = depositRoot
+        self.now = now
     }
 
     /// Le Mac ouvre des fenêtres par `ExternalSearchLauncher` ; l'iPhone et l'iPad par la file.
@@ -51,18 +70,28 @@ final class SystemRouteCenter {
     // MARK: Dépôt
 
     /// Une route du système. Un brouillon est assaini ici (`ExternalQuerySanitizer`) ; vide ou illisible, il est jeté.
-    func submit(_ route: SystemRoute) {
-        guard let route = sanitized(route) else { return }
-        if let windowLauncher {
-            forward(route, to: windowLauncher)
+    ///
+    /// - Parameter whenDrained: appelé quand une fenêtre a PRIS la route (`drain()`), ou quand elle est jetée : la
+    ///   boîte de partage n'efface son entrée qu'à ce moment-là, pour qu'une app tuée avant l'application ne perde rien.
+    func submit(_ route: SystemRoute, whenDrained: (@MainActor () -> Void)? = nil) {
+        guard let route = sanitized(route) else {
+            whenDrained?()
             return
         }
-        pending.append(route)
+        if let windowLauncher {
+            forward(route, to: windowLauncher)
+            whenDrained?()
+            return
+        }
+        pending.append(Pending(route: route, whenDrained: whenDrained))
         if pending.count > Self.maxPending {
             // Une route fichier évincée emporte son dépôt : rien ne doit traîner.
-            let evicted = pending.prefix(pending.count - Self.maxPending)
-            evicted.forEach(discardDeposit(of:))
+            let evicted = Array(pending.prefix(pending.count - Self.maxPending))
             pending.removeFirst(evicted.count)
+            for item in evicted {
+                discardDeposit(of: item.route)
+                item.whenDrained?()
+            }
         }
         revision += 1
     }
@@ -77,9 +106,20 @@ final class SystemRouteCenter {
 
     /// Rend les routes en attente et vide la file.
     func drain() -> [SystemRoute] {
-        let routes = pending
+        let taken = pending
         pending.removeAll()
-        return routes
+        taken.forEach { $0.whenDrained?() }
+        return taken.map(\.route)
+    }
+
+    /// « Tout effacer » : les routes qui attendent une fenêtre (un texte et un fichier partagés) sont jetées, avec leurs dépôts.
+    func discardPending() {
+        let taken = pending
+        pending.removeAll()
+        for item in taken {
+            discardDeposit(of: item.route)
+            item.whenDrained?()
+        }
     }
 
     // MARK: Privé
@@ -92,7 +132,7 @@ final class SystemRouteCenter {
             return ExternalQuerySanitizer.sanitize(text).map(SystemRoute.draft)
         case .attachment(let url):
             return Self.isDeposit(url, root: depositRoot) ? route : nil
-        case .newQuestion, .conversation:
+        case .newQuestion, .conversation, .notice:
             return route
         }
     }
@@ -111,19 +151,34 @@ final class SystemRouteCenter {
         AttachmentFileVault.discardDeposit(url, rootDirectory: depositRoot)
     }
 
+    /// Une page ou une app qui ouvre `triva://new` ou `triva://conversation/<UUID>` en rafale ne doit pas ouvrir une
+    /// fenêtre par appel ni activer Triva à chaque fois : un appel identique rapproché est ignoré.
+    private func isRapidRepeat(_ route: SystemRoute) -> Bool {
+        let date = now()
+        defer { lastForwarded = (route, date) }
+        guard let last = lastForwarded, last.route == route else { return false }
+        return date.timeIntervalSince(last.date) < Self.repeatWindow
+    }
+
     private func forward(_ route: SystemRoute, to launcher: ExternalSearchLauncher) {
         switch route {
         case .newQuestion:
+            guard !isRapidRepeat(route) else { return }
             launcher.requestNewSearch()
         case .draft(let text):
             // Origine `.draft` EXPLICITE : seul le panneau de la barre des menus a le droit de faire envoyer.
             launcher.requestSearch(question: text, origin: .draft)
         case .conversation(let id):
+            // Un identifiant inconnu n'ouvre pas de fenêtre (ni n'active Triva) : rien à montrer.
+            guard conversationExists?(id) ?? true, !isRapidRepeat(route) else { return }
             launcher.requestConversation(id)
         case .attachment:
             // L'extension de partage n'existe pas sur Mac (les Services couvrent ce besoin) : un fichier qui
             // arriverait quand même est effacé, jamais ouvert.
             discardDeposit(of: route)
+        case .notice:
+            // Les informations du partage (texte coupé, fichier non copié) n'ont pas d'objet sur Mac.
+            break
         }
     }
 }

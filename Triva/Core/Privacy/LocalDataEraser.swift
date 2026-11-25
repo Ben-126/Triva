@@ -17,6 +17,8 @@ nonisolated enum LocalDataEraseStep: String, Sendable, Equatable, CaseIterable {
     /// Ce que l'app avait publié hors d'elle (widget, boîte de partage, recherche de l'appareil, activités en direct)
     /// n'a pas pu être entièrement retiré (chantier 2.1).
     case systemIntegrations
+    /// Une copie temporaire de document joint est restée sur le disque (`AttachmentFileVault.purgeAll`).
+    case attachmentCopies
 }
 
 /// Échec d'au moins une étape de suppression en base. Les autres étapes ont
@@ -173,7 +175,9 @@ struct LocalDataEraser {
         }
         // Copies temporaires de documents joints (chantier 2.2) : ce sont des données de l'utilisateur aussi.
         if let attachmentVaultRoot {
-            AttachmentFileVault.purgeAll(rootDirectory: attachmentVaultRoot)
+            if !AttachmentFileVault.purgeAll(rootDirectory: attachmentVaultRoot) {
+                failed.append(.attachmentCopies)
+            }
         }
 
         if !failed.isEmpty {

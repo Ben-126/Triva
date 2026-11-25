@@ -37,11 +37,12 @@ struct ShareComposerView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .ready:
-            composer
+            // Très grande taille de texte : la feuille défile au lieu d'être coupée.
+            ScrollView { composer }
         case .done(let message):
-            ShareMessageView(systemImage: "checkmark.circle", message: message)
+            ScrollView { ShareMessageView(systemImage: "checkmark.circle", message: message) }
         case .failed(let message):
-            ShareMessageView(systemImage: "exclamationmark.circle", message: message)
+            ScrollView { ShareMessageView(systemImage: "exclamationmark.circle", message: message) }
         }
     }
 
@@ -82,7 +83,7 @@ struct ShareComposerView: View {
                 Button("Annuler", action: onCancel)
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Envoyer à Triva") { model.send() }
+                Button("Envoyer à Triva") { Task { await model.send() } }
                     .disabled(!model.canSend)
             }
         }

@@ -19,9 +19,11 @@ final class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         let items = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
-        let staging = FileManager.default.temporaryDirectory
+        let stagingRoot = FileManager.default.temporaryDirectory
             .appending(path: "TrivaShareStaging", directoryHint: .isDirectory)
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        // Ce qu'un partage précédent a laissé (feuille balayée, extension tuée) part avant d'en créer un nouveau.
+        ShareItemReader.purgeStaleStaging(in: stagingRoot)
+        let staging = stagingRoot.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let model = ShareComposerModel(items: items, stagingDirectory: staging, inbox: { SharedInbox.live() })
         self.model = model
 
@@ -37,6 +39,12 @@ final class ShareViewController: UIViewController {
         host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(host.view)
         host.didMove(toParent: self)
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        // Feuille balayée : le dossier de travail ne reste pas.
+        model?.finish()
     }
 
     private func cancel() {

@@ -46,8 +46,13 @@ private func lateWindow(_ stores: TrivaSharedStores, _ registry: WindowConversat
 /// Rejoue ce que fait la coquille à sa première apparition (`TrivaRootShell.adoptWindowTarget`) : la cible
 /// lue à la création de la vue est consommée, puis la cible de la fenêtre est notée comme déjà tenue.
 @MainActor
-private func firstAppearance(_ window: TrivaRootCoordinator, _ restoration: WindowRestoration) {
-    if let initial = restoration.take() {
+private func firstAppearance(
+    _ window: TrivaRootCoordinator,
+    _ restoration: WindowRestoration,
+    sceneValue: TrivaWindowTarget? = nil
+) {
+    let initial = sceneValue.map { restoration.take(sceneValue: $0) } ?? restoration.take()
+    if let initial {
         window.restoreWindowTarget(initial)
     } else {
         window.syncWindowTarget()
@@ -181,5 +186,79 @@ struct WindowLateRestorationTests {
 
         #expect(window.windowTarget.conversationID == nil)
         #expect(window.session.chatViewModel?.currentConversationID == nil)
+    }
+}
+
+
+/// Constat du 25/11 (essais du chef, journal `restauration-25-11.log`) : à la première apparition la VALEUR DE SCÈNE
+/// est déjà la conversation restaurée, mais la cible lue à la création de la vue était « recherche neuve ». La
+/// coquille doit suivre la valeur de scène, jamais l'écraser.
+@MainActor
+@Suite("Fenêtres — valeur de scène déjà restaurée à la première apparition")
+struct WindowSceneValueAtAppearanceTests {
+    @Test("Cible lue = recherche neuve, valeur de scène = conversation : la conversation est rouverte")
+    func sceneConversationWinsOverStaleInitial() throws {
+        let stores = try lateStores()
+        let id = try lateConversation(in: stores)
+        let window = lateWindow(stores)
+        let restoration = WindowRestoration(initial: .newSearch(UUID()))
+
+        firstAppearance(window, restoration, sceneValue: .conversation(id))
+
+        #expect(window.windowTarget == .conversation(id))
+        #expect(window.session.chatViewModel?.currentConversationID == id)
+    }
+
+    @Test("La valeur de scène prise n'est pas rendue une seconde fois comme restauration tardive")
+    func sceneValueNotRestoredTwice() throws {
+        let stores = try lateStores()
+        let id = try lateConversation(in: stores)
+        let window = lateWindow(stores)
+        let restoration = WindowRestoration(initial: .newSearch(UUID()))
+        firstAppearance(window, restoration, sceneValue: .conversation(id))
+
+        #expect(!window.receiveLateWindowValue(.conversation(id), restoration: restoration))
+        #expect(window.session.chatViewModel?.currentConversationID == id)
+    }
+
+    @Test("Cible lue = conversation : elle reste prioritaire sur la valeur de scène")
+    func readConversationKeepsPriority() {
+        let id = UUID()
+        let restoration = WindowRestoration(initial: .conversation(id))
+        #expect(restoration.take(sceneValue: .conversation(UUID())) == .conversation(id))
+    }
+
+    @Test("Valeur de scène = recherche neuve : la cible lue est inchangée")
+    func sceneNewSearchLeavesInitial() {
+        let initial = TrivaWindowTarget.newSearch(UUID())
+        let restoration = WindowRestoration(initial: initial)
+        #expect(restoration.take(sceneValue: .newSearch(UUID())) == initial)
+    }
+
+    @Test("Coquille reconstruite (cible déjà consommée) : la valeur de scène ne rouvre rien")
+    func rebuiltShellIgnoresSceneValue() {
+        let restoration = WindowRestoration(initial: .newSearch(UUID()))
+        _ = restoration.take()
+        #expect(restoration.take(sceneValue: .conversation(UUID())) == nil)
+    }
+
+    @Test("Valeur de scène déjà tenue par la fenêtre (écho) : jamais prise comme restauration")
+    func heldSceneValueIgnored() {
+        let id = UUID()
+        let initial = TrivaWindowTarget.newSearch(UUID())
+        let restoration = WindowRestoration(initial: initial)
+        restoration.noteHeld(.conversation(id))
+        #expect(restoration.take(sceneValue: .conversation(id)) == initial)
+    }
+
+    @Test("Conversation de la valeur de scène supprimée entre-temps : recherche neuve")
+    func sceneConversationDeleted() throws {
+        let stores = try lateStores()
+        let window = lateWindow(stores)
+        let restoration = WindowRestoration(initial: .newSearch(UUID()))
+
+        firstAppearance(window, restoration, sceneValue: .conversation(UUID()))
+
+        #expect(window.windowTarget.conversationID == nil)
     }
 }

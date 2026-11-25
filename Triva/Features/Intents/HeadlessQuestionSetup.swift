@@ -20,10 +20,20 @@ struct HeadlessQuestionSetup {
     static func prepare(
         stores: TrivaSharedStores,
         responseMode: ResponseMode?,
+        noticeAcknowledged: Bool = AIUseNoticeStore.isAcknowledged(),
         platform: HeadlessPlatform = .current
     ) -> HeadlessQuestionSetup {
+        guard noticeAcknowledged else {
+            // Avant l'information sur l'IA, aucune session n'est même construite.
+            let context = HeadlessQuestionContext(
+                noticeAcknowledged: false, engine: nil, isEngineReady: false, cloudConsent: .notApplicable, platform: platform
+            )
+            return HeadlessQuestionSetup(decision: HeadlessQuestionPolicy.decide(context), session: nil, runner: nil)
+        }
         guard let engine = stores.engineSettings.selectedOption else {
-            let context = HeadlessQuestionContext(engine: nil, isEngineReady: false, cloudConsent: .notApplicable, platform: platform)
+            let context = HeadlessQuestionContext(
+                noticeAcknowledged: true, engine: nil, isEngineReady: false, cloudConsent: .notApplicable, platform: platform
+            )
             return HeadlessQuestionSetup(decision: HeadlessQuestionPolicy.decide(context), session: nil, runner: nil)
         }
         let session = SearchSession(engine: engine, stores: stores)
@@ -52,9 +62,10 @@ struct HeadlessQuestionSetup {
     ) -> HeadlessQuestionContext {
         switch session.engine {
         case .appleIntelligence:
-            return HeadlessQuestionContext(engine: .appleIntelligence, isEngineReady: true, cloudConsent: .notApplicable, platform: platform)
+            return HeadlessQuestionContext(noticeAcknowledged: true, engine: .appleIntelligence, isEngineReady: true, cloudConsent: .notApplicable, platform: platform)
         case .mlxLocal:
             return HeadlessQuestionContext(
+                noticeAcknowledged: true,
                 engine: .mlxLocal,
                 isEngineReady: session.validatedMLXModel != nil,
                 cloudConsent: .notApplicable,
@@ -66,6 +77,7 @@ struct HeadlessQuestionSetup {
                 .missing(providerName: $0.titleName)
             } ?? .granted
             return HeadlessQuestionContext(
+                noticeAcknowledged: true,
                 engine: .cloudBYOK,
                 isEngineReady: stores.cloudSelection.selection != nil,
                 cloudConsent: consent,
@@ -77,7 +89,10 @@ struct HeadlessQuestionSetup {
 
 extension TrivaAppServices {
     /// Fabrique de la session sans fenêtre des intents (spec 2.1, §2).
-    func prepareHeadlessQuestion(responseMode: ResponseMode?) -> HeadlessQuestionSetup {
-        HeadlessQuestionSetup.prepare(stores: stores, responseMode: responseMode)
+    func prepareHeadlessQuestion(
+        responseMode: ResponseMode?,
+        noticeAcknowledged: Bool = AIUseNoticeStore.isAcknowledged()
+    ) -> HeadlessQuestionSetup {
+        HeadlessQuestionSetup.prepare(stores: stores, responseMode: responseMode, noticeAcknowledged: noticeAcknowledged)
     }
 }

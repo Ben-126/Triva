@@ -234,7 +234,7 @@ struct ChatViewModelProgressTests {
         )
         stores.engineSettings.selectedOption = .appleIntelligence
 
-        let setup = HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, platform: .iOS)
+        let setup = HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, noticeAcknowledged: true, platform: .iOS)
 
         let session = try #require(setup.session)
         #expect(session.progressObserver == nil)

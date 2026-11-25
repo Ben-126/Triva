@@ -23,6 +23,10 @@ nonisolated enum ExternalQuerySanitizer {
     /// avant tout nettoyage (aucune question utile n'en a besoin).
     private static let inputScalarLimit = 100_000
 
+    /// Plafond en scalaires Unicode APRÈS nettoyage. La limite de `maxLength` compte des caractères visibles : un
+    /// emoji suivi de dizaines de milliers de marques invisibles ou combinantes n'en fait qu'UN et passerait entier.
+    static let maxScalarCount = 8_000
+
     /// Texte propre, ou `nil` s'il ne reste rien à chercher.
     /// - sauts de ligne (CRLF, CR, NEL, séparateurs de ligne/paragraphe Unicode) ramenés à `\n` ;
     /// - tabulation remplacée par une espace ;
@@ -50,14 +54,16 @@ nonisolated enum ExternalQuerySanitizer {
             if scalar == "\n" && previousWasCarriageReturn { continue }
             if let replacement = replacement(for: scalar) {
                 cleaned.append(contentsOf: replacement.unicodeScalars)
-            } else if !isRemoved(scalar) {
+            } else if !isRemoved(scalar, after: cleaned.last) {
                 cleaned.append(scalar)
             }
         }
-        let trimmed = String(cleaned).trimmingCharacters(in: .whitespacesAndNewlines)
+        let exceedsScalarCap = cleaned.count > maxScalarCount
+        let capped = exceedsScalarCap ? String(String.UnicodeScalarView(cleaned.prefix(maxScalarCount))) : String(cleaned)
+        let trimmed = capped.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         guard trimmed.count > maxLength else {
-            return SanitizedExternalText(text: trimmed, wasTruncated: exceedsInputLimit)
+            return SanitizedExternalText(text: trimmed, wasTruncated: exceedsInputLimit || exceedsScalarCap)
         }
         let truncated = String(trimmed.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines)
         return truncated.isEmpty ? nil : SanitizedExternalText(text: truncated, wasTruncated: true)
@@ -71,15 +77,28 @@ nonisolated enum ExternalQuerySanitizer {
         }
     }
 
-    private static func isRemoved(_ scalar: Unicode.Scalar) -> Bool {
+    /// - Parameter previous: le dernier scalaire GARDÉ (ou `nil` au début) : un sélecteur de variante ou un joint
+    ///   n'a de sens qu'après autre chose que lui-même ; répétés, ils ne portent que des octets invisibles.
+    private static func isRemoved(_ scalar: Unicode.Scalar, after previous: Unicode.Scalar?) -> Bool {
+        if isIdeographicVariationSelector(scalar) { return true }
         switch scalar.properties.generalCategory {
         case .control:
             return true
         case .format:
-            // ZWJ / ZWNJ : nécessaires aux emoji composés et à certaines écritures (persan, indiennes).
-            return scalar.value != 0x200D && scalar.value != 0x200C
+            // ZWJ / ZWNJ : nécessaires aux emoji composés et à certaines écritures (persan, indiennes), mais jamais
+            // deux de suite.
+            guard isJoiner(scalar) else { return true }
+            return previous.map(isJoiner) ?? false
         default:
-            return false
+            // Un seul sélecteur de variante (U+FE00–FE0F : texte ou emoji) par caractère de base.
+            return isVariationSelector(scalar) && (previous.map(isVariationSelector) ?? false)
         }
     }
+
+    private static func isJoiner(_ scalar: Unicode.Scalar) -> Bool { scalar.value == 0x200D || scalar.value == 0x200C }
+
+    private static func isVariationSelector(_ scalar: Unicode.Scalar) -> Bool { (0xFE00...0xFE0F).contains(scalar.value) }
+
+    /// U+E0100–E01EF : sélecteurs de variante idéographiques, inutiles dans une question et invisibles.
+    private static func isIdeographicVariationSelector(_ scalar: Unicode.Scalar) -> Bool { (0xE0100...0xE01EF).contains(scalar.value) }
 }

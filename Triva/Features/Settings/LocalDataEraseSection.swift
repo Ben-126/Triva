@@ -91,6 +91,9 @@ struct LocalDataEraseSection: View {
         if failedSteps.contains(.systemIntegrations) {
             outside.append("Ce que Triva avait partagé avec le widget ou la recherche de l'appareil n'a pas pu être entièrement retiré.")
         }
+        if failedSteps.contains(.attachmentCopies) {
+            outside.append("Les copies temporaires de tes fichiers joints n'ont pas pu être toutes effacées.")
+        }
         let extra = outside.map { " " + $0 }.joined()
         switch (failedHistory, failedFavorites) {
         case (true, true):

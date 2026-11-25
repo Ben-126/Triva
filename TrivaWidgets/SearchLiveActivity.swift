@@ -6,8 +6,10 @@
 //  Dynamic Island (iPhone et iPad ; ActivityKit n'existe pas sur Mac). L'extension LIT seulement : l'état vient de
 //  l'app (`SearchActivityState`). DA : `DESIGN.md` (police système, couleurs sémantiques, SF Symbols, aucun dégradé).
 //
-//  La question est marquée `privacySensitive` : sur un écran verrouillé, le système la masque tant que l'appareil n'est
-//  pas déverrouillé. Le toucher ouvre la conversation (`triva://conversation/<id>`), ou simplement l'app.
+//  La question est marquée `privacySensitive` : elle n'est masquée sur un écran verrouillé QUE si la personne a choisi
+//  de masquer les contenus sensibles (doc WidgetKit, « Hide sensitive content »). Par défaut elle s'affiche, aussi sur une
+//  montre, un Mac ou CarPlay associés : le réglage « Activité en direct » le dit (mission X1, C5). Le toucher ouvre la
+//  conversation (`triva://conversation/<id>`), ou simplement l'app.
 //
 
 #if os(iOS)
@@ -45,11 +47,13 @@ struct SearchLiveActivity: Widget {
             } compactLeading: {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.tint)
+                    .accessibilityLabel(state.statusText)
             } compactTrailing: {
                 SearchActivityCompactTrailing(state: state)
             } minimal: {
                 Image(systemName: state.symbolName)
                     .foregroundStyle(.tint)
+                    .accessibilityLabel(state.statusText)
             }
             .widgetURL(context.attributes.tapURL)
         }
@@ -87,7 +91,8 @@ private struct SearchActivityCompactTrailing: View {
 
     var body: some View {
         if !isLimitedInWidth {
-            content
+            // VoiceOver lit l'étape (« Lecture de 3 sources… »), pas « 3 » ni le nom d'un symbole.
+            content.accessibilityLabel(state.statusText)
         }
     }
 

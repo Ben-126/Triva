@@ -629,6 +629,9 @@ final class ChatViewModel {
         activeExchangeID = nil
         isGenerating = false
         messages = []
+        // L'envoi qui attendait l'accord cloud appartenait à l'ancien fil : « Autoriser » l'enverrait sinon dans
+        // celui-ci, avec son historique et ses fichiers joints (X2, C1). Le brouillon n'est pas touché.
+        pendingConsent = nil
         errorDescription = nil
         searchKeyInvitation = nil
         fallbackInvitationOffered = false
@@ -639,6 +642,12 @@ final class ChatViewModel {
         // cours de lecture s'attacherait sinon à la nouvelle conversation.
         // `keepingAttachedFiles` : l'appelant trie lui-même les fichiers (`startNewConversationFromSystem`).
         if !keepingAttachedFiles { attachmentController.removeAll() }
+    }
+
+    /// Une ouverture demandée de l'extérieur (widget, Spotlight, raccourci) vise une conversation supprimée : même
+    /// message que `loadConversation`, sans toucher au fil affiché (X2, R2-19).
+    func reportMissingConversation() {
+        persistenceErrorDescription = Self.missingConversationMessage
     }
 
     /// Nombre de fois où l'utilisateur a demandé une nouvelle conversation (bouton de la barre d'outils ou

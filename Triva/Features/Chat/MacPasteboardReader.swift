@@ -41,12 +41,14 @@ nonisolated struct MacPastePayload: Sendable {
 
     /// Les éléments à joindre pour une décision `.files` ou `.image`, copiés dans les dépôts (comme un dépôt).
     @concurrent
-    func attachableItems(date: Date = Date()) async -> [DroppedItem] {
+    func attachableItems(date: Date = Date(), numbering: PastedImageNumbering = .shared) async -> [DroppedItem] {
         if !fileURLs.isEmpty {
             return fileURLs.map { DroppedItem.fromURL($0) }
         }
         guard let imageData, let imageFormat else { return [] }
-        let name = PastedImageNaming.fileName(date: date, index: 0, fileExtension: imageFormat.fileExtension)
+        let name = PastedImageNaming.fileName(
+            date: date, index: numbering.reserve(count: 1, at: date), fileExtension: imageFormat.fileExtension
+        )
         do {
             return [.image(try AttachmentFileVault.stageDeposit(data: imageData, named: name))]
         } catch AttachmentFileVaultError.tooLarge {

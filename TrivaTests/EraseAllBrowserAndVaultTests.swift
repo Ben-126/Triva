@@ -276,3 +276,32 @@ struct AttachmentControllerPurgeTests {
         #expect(controller == nil)
     }
 }
+
+@MainActor
+@Suite("Tout effacer : copies de fichiers impossibles à retirer")
+struct EraseAllVaultFailureTests {
+    @Test("Une copie est restée sur le disque : .incomplete([copies]), jamais « Tout a été effacé »")
+    func remainingCopyIsReported() async throws {
+        let history = CountingDeleter()
+        let vault = try makeVault()
+        let locked = vault.copy.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: locked.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: locked.path)
+            try? FileManager.default.removeItem(at: vault.root)
+        }
+
+        let thrown = await thrownError(by: makeEraser(history: history, vaultRoot: vault.root) { .completed })
+
+        #expect(thrown == .incomplete(failedSteps: [.attachmentCopies]))
+        #expect(history.callCount == 1)
+    }
+
+    @Test("Le message d'échec nomme les copies de fichiers, seules ou avec le reste")
+    func incompleteMessageMentionsCopies() {
+        let alone = LocalDataEraseSection.incompleteMessage(failedSteps: [.attachmentCopies])
+        #expect(alone.contains("copies temporaires"))
+        #expect(alone.contains("Le reste a été effacé"))
+        #expect(LocalDataEraseSection.incompleteMessage(failedSteps: [.history, .attachmentCopies]).contains("copies temporaires"))
+    }
+}

@@ -52,7 +52,11 @@ struct ExternalSearchWindowOpener {
         let targets = launcher.drain()
         guard !targets.isEmpty else { return }
         for target in targets {
-            if let id = target.conversationID, registry.focusHolder(of: id, excluding: nil) { continue }
+            if let id = target.conversationID, registry.focusHolder(of: id, excluding: nil) {
+                // Ramenée sans nouvelle fenêtre : la demande n'a plus d'objet.
+                _ = launcher.inbox.takeConversationRequest(id)
+                continue
+            }
             open(target)
         }
         #if os(macOS)

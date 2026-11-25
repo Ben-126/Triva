@@ -63,7 +63,11 @@ nonisolated enum ShareItemReader {
         if let provider = providers.first(where: { fileTypeIdentifier(of: $0) != nil }), let identifier = fileTypeIdentifier(of: provider) {
             return .file(try await stageFile(from: provider, typeIdentifier: identifier, stagingDirectory: stagingDirectory))
         }
-        if let page = await readPage(providers) { return page }
+        if let page = await readPage(providers) {
+            // Une app qui partage un texte ET une adresse : sans titre de page, le texte vaut mieux que l'adresse brute.
+            if case .page(nil, _) = page, let text = await readText(providers) { return .text(text) }
+            return page
+        }
         if let text = await readText(providers) { return .text(text) }
         throw providers.contains(where: looksLikeAForeignFile) ? ShareReadError.unsupportedFile : ShareReadError.nothingReadable
     }
@@ -71,6 +75,25 @@ nonisolated enum ShareItemReader {
     /// Efface le dossier de travail de l'extension (fin du partage, annulation, erreur).
     static func clearStaging(at directory: URL) {
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// Efface les dossiers de travail LAISSÉS par un partage précédent (feuille balayée, extension tuée par le
+    /// système) : un PDF de 200 Mo ne doit pas rester dans le dossier temporaire de l'extension, hors de portée de
+    /// « Tout effacer ». Un dossier plus récent que `olderThan` est gardé : une autre feuille peut être en cours.
+    static func purgeStaleStaging(
+        in root: URL,
+        olderThan age: TimeInterval = 5 * 60,
+        now: Date = Date()
+    ) {
+        let manager = FileManager.default
+        let names = (try? manager.contentsOfDirectory(atPath: root.path)) ?? []
+        for name in names {
+            let folder = root.appending(path: name, directoryHint: .isDirectory)
+            let modified = (try? manager.attributesOfItem(atPath: folder.path)[.modificationDate]) as? Date
+            // Date illisible : on efface (ce n'est pas un dossier que nous avons écrit).
+            guard modified.map({ now.timeIntervalSince($0) > age }) ?? true else { continue }
+            try? manager.removeItem(at: folder)
+        }
     }
 
     // MARK: - Fichier

@@ -56,7 +56,7 @@ nonisolated enum TrivaURLRoute {
             URL(string: "\(prefix)\(newHost)")
         case .conversation(let id):
             URL(string: "\(prefix)\(conversationHost)/\(id.uuidString)")
-        case .newQuestion(.voice), .draft, .attachment:
+        case .newQuestion(.voice), .draft, .attachment, .notice:
             nil
         }
     }

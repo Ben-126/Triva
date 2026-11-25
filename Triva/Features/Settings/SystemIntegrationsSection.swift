@@ -29,7 +29,7 @@ nonisolated enum SystemIntegrationsText {
 
     static let liveActivityTitle = "Activité en direct pendant une recherche"
     static let liveActivityDetail =
-        "Montre l'avancement de la recherche sur l'écran verrouillé et, selon ton appareil, dans la Dynamic Island."
+        "Montre ta question et l'avancement de la recherche sur l'écran verrouillé, dans la Dynamic Island et, selon tes appareils, sur une montre, un Mac ou un écran CarPlay associés. Elle peut donc se lire sans déverrouiller l'appareil."
 
     static let footer =
         "Éteindre la recherche de l'appareil ou la dernière question du widget retire tout de suite ce que Triva avait publié. « Tout effacer » vide aussi le widget et la recherche de l'appareil."

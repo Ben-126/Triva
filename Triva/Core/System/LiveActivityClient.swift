@@ -25,6 +25,12 @@ nonisolated enum LiveActivityEndPolicy: Sendable, Equatable {
     case after(Date)
 }
 
+/// Une activité encore affichée (en cours, ou terminée mais pas encore disparue de l'écran verrouillé).
+nonisolated struct OpenLiveActivity: Sendable, Equatable {
+    let id: String
+    let conversationID: UUID?
+}
+
 @MainActor
 protocol LiveActivityClient: AnyObject {
     /// Faux si l'utilisateur a coupé les activités pour l'app, ou si la plateforme n'en a pas.
@@ -35,6 +41,10 @@ protocol LiveActivityClient: AnyObject {
     func end(id: String, state: SearchActivityState, policy: LiveActivityEndPolicy) async
     /// Termine TOUTES les activités de recherche encore ouvertes (orphelines après un lancement, « Tout effacer »).
     func endAll() async
+    /// Les activités de recherche encore affichées, avec leur conversation.
+    func openActivities() -> [OpenLiveActivity]
+    /// Retire UNE activité de l'écran tout de suite, sans état final (sa conversation a disparu).
+    func dismiss(id: String) async
 }
 
 /// Mac, et toute plateforme sans ActivityKit : jamais d'activité.
@@ -49,6 +59,8 @@ final class UnavailableLiveActivityClient: LiveActivityClient {
     func update(id: String, state: SearchActivityState, staleDate: Date) async {}
     func end(id: String, state: SearchActivityState, policy: LiveActivityEndPolicy) async {}
     func endAll() async {}
+    func openActivities() -> [OpenLiveActivity] { [] }
+    func dismiss(id: String) async {}
 }
 
 nonisolated struct LiveActivityUnavailableError: Error, Equatable {}
@@ -82,6 +94,22 @@ final class ActivityKitLiveActivityClient: LiveActivityClient {
 
     func endAll() async {
         await Self.endAllActivities()
+    }
+
+    func openActivities() -> [OpenLiveActivity] {
+        Activity<SearchActivityAttributes>.activities.map {
+            OpenLiveActivity(id: $0.id, conversationID: $0.attributes.conversationID)
+        }
+    }
+
+    func dismiss(id: String) async {
+        await Self.dismissActivity(id: id)
+    }
+
+    @concurrent
+    private static func dismissActivity(id: String) async {
+        guard let activity = Activity<SearchActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+        await activity.end(nil, dismissalPolicy: .immediate)
     }
 
     @concurrent

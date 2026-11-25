@@ -121,6 +121,26 @@ final class SearchLiveActivityController: SearchProgressObserving {
         await settle()
     }
 
+    /// Les activités terminées mais encore à l'écran dont la conversation n'existe plus (supprimée) : retirées tout de
+    /// suite, la question n'a pas à rester sur l'écran verrouillé pendant 30 minutes. Les activités d'un échange EN
+    /// COURS ne sont pas touchées (sa conversation peut ne pas être encore enregistrée).
+    ///
+    /// - Parameter exists: dit si une conversation existe ; une lecture qui échoue doit répondre `true`.
+    func endActivities(whereConversationIsMissing exists: @MainActor (UUID) -> Bool) async {
+        let inFlight = Set(entries.values.map(\.activityID))
+        let missing = client.openActivities().filter { activity in
+            guard !inFlight.contains(activity.id), let conversationID = activity.conversationID else { return false }
+            return !exists(conversationID)
+        }
+        guard !missing.isEmpty else { return }
+        let client = client
+        for activity in missing {
+            let id = activity.id
+            enqueue { await client.dismiss(id: id) }
+        }
+        await settle()
+    }
+
     /// « Tout effacer » : plus aucune activité, plus aucun échange suivi, plus aucune tâche d'arrière-plan.
     func endAll() async {
         for entry in entries.values {

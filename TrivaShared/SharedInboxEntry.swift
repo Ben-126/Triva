@@ -27,5 +27,8 @@ nonisolated struct SharedInboxEntry: Codable, Sendable, Equatable {
     let createdAt: Date
     /// Question à placer dans la barre de saisie, déjà assainie. `nil` pour un fichier partagé sans question.
     let text: String?
+    /// `true` quand la question a été COUPÉE à l'assainissement (2 000 caractères) : l'app le dit à l'utilisateur.
+    /// Absent des anciens manifestes (lu comme « non coupée »).
+    let textWasTruncated: Bool?
     let file: File?
 }

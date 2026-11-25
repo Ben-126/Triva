@@ -46,15 +46,21 @@ extension TrivaRootCoordinator {
     ///
     /// Base illisible : on tente quand même d'ouvrir la conversation, le chat affiche alors l'erreur de
     /// persistance plutôt que d'oublier silencieusement la fenêtre.
-    func restoreWindowTarget(_ target: TrivaWindowTarget) {
+    ///
+    /// - Parameter externalInbox: boîte des demandes extérieures. Une conversation que le widget, Spotlight ou un raccourci
+    ///   vient de demander et qui n'existe plus est ANNONCÉE (« Cette conversation n'existe plus. »), comme sur iPhone ; à la
+    ///   restauration d'un relancement, la fenêtre redevient une recherche neuve sans rien dire (R2-19).
+    func restoreWindowTarget(_ target: TrivaWindowTarget, externalInbox: ExternalQueryInbox? = nil) {
         switch target {
         case .newSearch:
             windowTarget = target
         case .conversation(let id):
+            let requestedFromOutside = externalInbox?.takeConversationRequest(id) ?? false
             // Une autre fenêtre tient déjà cette conversation (elle ou une de ses réponses en cours) : deux
             // fenêtres écriraient dedans. Cette fenêtre devient une recherche neuve, sans rien charger.
             let isHeldElsewhere = windowRegistry.isHeld(id, excluding: windowID)
-            let existing: Set<UUID> = conversationExists(id) && !isHeldElsewhere ? [id] : []
+            let exists = conversationExists(id)
+            let existing: Set<UUID> = exists && !isHeldElsewhere ? [id] : []
             let resolved = TrivaWindowTarget.restored(target, existingIDs: existing)
             if case .conversation = resolved {
                 openConversation(id: id)
@@ -62,7 +68,12 @@ extension TrivaRootCoordinator {
                 windowTarget = resolved
                 // Fenêtre créée sur une conversation qu'une autre tient : plutôt que de laisser la seule recherche
                 // vide, la fenêtre qui tient la conversation passe devant (rapport W2-G1, point 4).
-                if isHeldElsewhere { windowRegistry.focusHolder(of: id, excluding: windowID) }
+                if isHeldElsewhere {
+                    windowRegistry.focusHolder(of: id, excluding: windowID)
+                } else if requestedFromOutside && !exists {
+                    session.ensureChatViewModel()
+                    session.chatViewModel?.reportMissingConversation()
+                }
             }
         }
         syncWindowTarget(refreshTitle: true)

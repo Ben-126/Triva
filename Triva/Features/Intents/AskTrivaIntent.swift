@@ -135,7 +135,7 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
         case .answered(let answer):
             return .result(
                 value: TrivaAnswerEntity(answer),
-                dialog: IntentDialog(LocalizedStringResource(stringLiteral: answer.spoken))
+                dialog: IntentDialog(LocalizedStringResource(stringLiteral: Self.spokenText(for: answer)))
             )
         case .consentRequired(let providerName):
             // Ne devrait pas arriver (la politique l'a déjà vu) : même réponse que la politique.
@@ -149,6 +149,11 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
         }
     }
 
+    /// Ce que Siri lit : la réponse, précédée d'un mot si la question a été coupée à 2 000 caractères.
+    static func spokenText(for answer: HeadlessAnswer) -> String {
+        answer.questionWasTruncated ? "\(HeadlessAnswer.truncationNotice) \(answer.spoken)" : answer.spoken
+    }
+
     // MARK: - Ce qui demande d'ouvrir Triva
 
     /// L'erreur à lancer quand la question ne part pas. Si le système permet de passer au premier plan, Triva
@@ -160,6 +165,10 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
             return AskTrivaError.message(HeadlessQuestionOutcome.interruptedMessage)
         case .needsEngineChoice:
             let dialog = HeadlessQuestionPolicy.engineChoiceDialog
+            guard systemContext.currentMode.canContinueInForeground else { return AskTrivaError.message(dialog) }
+            return needsToContinueInForegroundError(IntentDialog(LocalizedStringResource(stringLiteral: dialog)))
+        case .needsAINotice:
+            let dialog = HeadlessQuestionPolicy.aiNoticeDialog
             guard systemContext.currentMode.canContinueInForeground else { return AskTrivaError.message(dialog) }
             return needsToContinueInForegroundError(IntentDialog(LocalizedStringResource(stringLiteral: dialog)))
         case .needsCloudConsent(let providerName):

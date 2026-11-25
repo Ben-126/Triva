@@ -88,7 +88,9 @@ final class ShareComposerModel {
     }
 
     /// « Envoyer à Triva » : écrit dans la boîte. Sans effet si une écriture est déjà en cours ou terminée.
-    func send() {
+    ///
+    /// La copie d'un gros PDF se fait HORS du thread principal : la feuille affiche son état « en cours » au lieu de se figer.
+    func send() async {
         guard canSend else { return }
         phase = .saving
         defer { ShareItemReader.clearStaging(at: stagingDirectory) }
@@ -97,7 +99,9 @@ final class ShareComposerModel {
             return
         }
         do {
-            let entry = try inbox.add(text: question, fileAt: file?.url, displayName: file?.displayName)
+            let entry = try await Self.write(to: inbox, text: question, fileAt: file?.url, displayName: file?.displayName)
+            // Prévient l'app si elle est déjà au premier plan (sinon elle reprendra au prochain passage).
+            ShareInboxSignal.post()
             phase = .done(ShareMessages.confirmation(hasFile: entry.file != nil, hasQuestion: entry.text != nil))
         } catch SharedInbox.Failure.tooLarge {
             phase = .failed(ShareMessages.tooLarge)
@@ -106,6 +110,11 @@ final class ShareComposerModel {
         } catch {
             phase = .failed(ShareMessages.cannotSave)
         }
+    }
+
+    @concurrent
+    private static func write(to inbox: SharedInbox, text: String, fileAt source: URL?, displayName: String?) async throws -> SharedInboxEntry {
+        try inbox.add(text: text, fileAt: source, displayName: displayName)
     }
 
     /// « Annuler » : rien n'est gardé, le dossier de travail est effacé.

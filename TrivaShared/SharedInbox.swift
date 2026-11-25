@@ -28,6 +28,9 @@ nonisolated struct SharedInbox: Sendable {
     /// Total des fichiers gardés : 400 Mo, pour ne pas remplir l'appareil de copies que personne n'a reprises.
     static let maxTotalFileByteCount = 400 * 1_024 * 1_024
 
+    /// Un manifeste fait quelques centaines d'octets (texte de 2 000 caractères au plus) : au-delà, il n'est pas de nous.
+    static let maxManifestByteCount = 64 * 1_024
+
     private static let manifestExtension = "json"
     private static let payloadExtension = "payload"
     private static let partialExtension = "part"
@@ -64,7 +67,8 @@ nonisolated struct SharedInbox: Sendable {
     /// - Parameter displayName: nom d'origine du fichier (assaini ici).
     @discardableResult
     func add(text: String?, fileAt source: URL?, displayName: String?) throws -> SharedInboxEntry {
-        let cleanText = ExternalQuerySanitizer.sanitize(text)
+        let sanitized = ExternalQuerySanitizer.sanitizeReportingTruncation(text)
+        let cleanText = sanitized?.text
         guard cleanText != nil || source != nil else { throw Failure.emptyContent }
 
         do {
@@ -72,9 +76,18 @@ nonisolated struct SharedInbox: Sendable {
         } catch {
             throw Failure.writeFailed
         }
+        // Un PDF jamais repris ne doit pas partir dans une sauvegarde iCloud ou Finder.
+        AppGroupFileStore.excludeFromBackup(directory)
         let id = UUID()
         let file = try source.map { try copyFile(from: $0, id: id, displayName: displayName) }
-        let entry = SharedInboxEntry(version: SharedInboxEntry.currentVersion, id: id, createdAt: now(), text: cleanText, file: file)
+        let entry = SharedInboxEntry(
+            version: SharedInboxEntry.currentVersion,
+            id: id,
+            createdAt: now(),
+            text: cleanText,
+            textWasTruncated: sanitized?.wasTruncated == true ? true : nil,
+            file: file
+        )
         do {
             let manifest = try JSONEncoder().encode(entry)
             try manifest.write(to: manifestURL(id), options: Self.writeOptions)
@@ -127,9 +140,35 @@ nonisolated struct SharedInbox: Sendable {
         removeFiles(of: entry.id)
     }
 
+    /// Même chose, par identifiant (l'app garde l'identifiant d'une entrée le temps que sa route soit appliquée).
+    func remove(id: UUID) {
+        removeFiles(of: id)
+    }
+
     /// Vide TOUT le dossier de la boîte : « Tout effacer », même les fichiers en cours d'écriture.
-    func removeAll() {
-        try? FileManager.default.removeItem(at: directory)
+    ///
+    /// - Returns: `true` seulement si plus RIEN ne reste dans la boîte (dossier absent, ou vide). Une suppression
+    ///   refusée, ou une extension qui dépose un fichier pendant l'effacement, rend `false` : « Tout effacer » ne
+    ///   doit jamais annoncer « tout est effacé » alors qu'un PDF privé reste dans l'App Group.
+    @discardableResult
+    func removeAll() -> Bool {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: directory.path) else { return true }
+        try? manager.removeItem(at: directory)
+        if isEmptyOrAbsent { return true }
+        // Second essai élément par élément (un fichier arrivé pendant la suppression fait échouer le dossier entier).
+        for name in (try? manager.contentsOfDirectory(atPath: directory.path)) ?? [] {
+            try? manager.removeItem(at: directory.appending(path: name, directoryHint: .notDirectory))
+        }
+        try? manager.removeItem(at: directory)
+        return isEmptyOrAbsent
+    }
+
+    private var isEmptyOrAbsent: Bool {
+        guard FileManager.default.fileExists(atPath: directory.path) else { return true }
+        // Un dossier qu'on ne sait pas lister n'est pas « vide » : dans le doute, on ne dit pas « effacé ».
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return false }
+        return names.isEmpty
     }
 
     // MARK: - Interne : écriture d'un fichier
@@ -190,7 +229,11 @@ nonisolated struct SharedInbox: Sendable {
 
     private func readValidEntry(named name: String, stem: String) -> SharedInboxEntry? {
         let url = directory.appending(path: name, directoryHint: .notDirectory)
-        guard let data = try? Data(contentsOf: url),
+        // Un manifeste est un petit fichier RÉGULIER : ni lien symbolique, ni fichier énorme glissé par une autre app du groupe.
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeRegular,
+              let manifestSize = attributes[.size] as? Int, manifestSize <= Self.maxManifestByteCount,
+              let data = try? Data(contentsOf: url),
               let entry = try? JSONDecoder().decode(SharedInboxEntry.self, from: data),
               entry.version == SharedInboxEntry.currentVersion,
               entry.id.uuidString == stem else {
@@ -207,7 +250,18 @@ nonisolated struct SharedInbox: Sendable {
                 return nil
             }
         }
-        return SharedInboxEntry(version: entry.version, id: entry.id, createdAt: entry.createdAt, text: text, file: entry.file)
+        // Le nom est ré-assaini à la lecture : le manifeste peut avoir été écrit par une autre app du groupe.
+        let file = entry.file.map {
+            SharedInboxEntry.File(type: $0.type, displayName: SharedFileName.sanitized($0.displayName, type: $0.type), byteCount: $0.byteCount)
+        }
+        return SharedInboxEntry(
+            version: entry.version,
+            id: entry.id,
+            createdAt: entry.createdAt,
+            text: text,
+            textWasTruncated: text == nil ? nil : entry.textWasTruncated,
+            file: file
+        )
     }
 
     private func removeOrphans(in names: [String], knownIDs: Set<String>) {

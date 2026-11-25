@@ -19,6 +19,8 @@ nonisolated enum SystemRouteOutcome: Equatable, Sendable {
     case conversationMissing
     /// Fichier partagé joint à la conversation de la fenêtre (PDF ou image), rien n'est parti.
     case attachmentPlaced
+    /// Information affichée sous les capsules (texte coupé, fichier non copié), rien d'autre n'a changé.
+    case noticeShown
     /// Route sans effet (texte vide ou illisible).
     case ignored
 }
@@ -31,7 +33,7 @@ extension TrivaRootCoordinator {
     ///   vide, la route doit quand même demander le clavier. Une réponse en cours n'est PAS arrêtée : elle finit en
     ///   arrière-plan, dans l'historique (`startNewConversationFromSystem`). Les fichiers déjà ENVOYÉS restent à
     ///   l'ancienne conversation ; ceux joints mais pas encore envoyés passent à la nouvelle.
-    /// - `draft` : texte assaini dans la barre de saisie, Recherche affichée, JAMAIS envoyé.
+    /// - `draft` : texte assaini ajouté à la barre de saisie (le brouillon en cours est gardé), Recherche affichée, JAMAIS envoyé.
     /// - `attachment` : fichier partagé, joint à la conversation de la fenêtre (voir `applyAttachment`).
     /// - `conversation` : comme depuis la Bibliothèque (`openConversationFromHistory`) : une conversation tenue par
     ///   une autre fenêtre la ramène devant. Inconnue, la Recherche affiche l'erreur « Cette conversation n'existe
@@ -46,16 +48,43 @@ extension TrivaRootCoordinator {
         canUseOtherWindows: Bool = false,
         openInWindow: (UUID) -> Void = { _ in }
     ) -> SystemRouteOutcome {
+        let outcome: SystemRouteOutcome
         switch route {
         case .newQuestion:
-            return applyNewQuestion()
+            outcome = applyNewQuestion()
         case .draft(let text):
-            return applyDraft(text)
+            outcome = applyDraft(text)
         case .conversation(let id):
-            return applyConversation(id, canUseOtherWindows: canUseOtherWindows, openInWindow: openInWindow)
+            outcome = applyConversation(id, canUseOtherWindows: canUseOtherWindows, openInWindow: openInWindow)
         case .attachment(let url):
-            return applyAttachment(url)
+            outcome = applyAttachment(url)
+        case .notice(let notice):
+            outcome = applyNotice(notice)
         }
+        // Une feuille ou une couverture ouverte (choix du moteur, Réglages, Coup d'œil, Safari intégré) cacherait ce que
+        // la route vient de faire : l'utilisateur verrait toujours l'ancien écran (X2, R2-11). Une route sans effet
+        // ne ferme rien.
+        if outcome != .ignored { closePresentations() }
+        return outcome
+    }
+
+    /// Prend les routes du système en attente (iPhone, iPad) et les applique à CETTE fenêtre, sauf pendant la feuille
+    /// d'accord « IA cloud » : elle est modale et son envoi appartient au fil affiché ; une route qui changerait de fil ou
+    /// de pièces jointes dessous ferait partir la question vers le mauvais endroit (X2, C1). Les routes restent dans la file
+    /// et sont prises à la fermeture de la feuille (la coquille rappelle cette méthode quand l'attente disparaît).
+    /// - Returns: le nombre de routes rendues par la file.
+    @discardableResult
+    func consumeSystemRoutes(
+        from center: SystemRouteCenter = .shared,
+        canUseOtherWindows: Bool,
+        openInWindow: (UUID) -> Void
+    ) -> Int {
+        guard session.chatViewModel?.pendingConsent == nil else { return 0 }
+        let routes = center.drain()
+        for route in routes {
+            apply(route, canUseOtherWindows: canUseOtherWindows, openInWindow: openInWindow)
+        }
+        return routes.count
     }
 
     // MARK: - Privé
@@ -68,10 +97,16 @@ extension TrivaRootCoordinator {
         return .newQuestion
     }
 
+    /// Le texte partagé s'AJOUTE au brouillon en cours (décision de Ben, QUESTIONS-BEN 54 : rien n'est perdu), comme un
+    /// texte déposé (`receiveDrop`). Coupé à la limite, une note le dit sous la barre de saisie.
     private func applyDraft(_ text: String) -> SystemRouteOutcome {
-        guard let clean = ExternalQuerySanitizer.sanitize(text) else { return .ignored }
-        session.draft.text = clean
+        guard let clean = ExternalQuerySanitizer.sanitizeReportingTruncation(text) else { return .ignored }
+        session.draft.text = DropPlan.appending([clean.text], to: session.draft.text)
         selection = .search
+        if clean.wasTruncated {
+            session.ensureChatViewModel()
+            session.chatViewModel?.attachmentController.reportTruncatedText()
+        }
         return .draftPlaced
     }
 

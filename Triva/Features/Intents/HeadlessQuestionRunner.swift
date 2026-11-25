@@ -21,6 +21,11 @@ nonisolated struct HeadlessAnswer: Sendable, Equatable {
     /// Adresses web (http, https) seulement.
     let sourceLinks: [URL]
     let conversationID: UUID?
+    /// La question a été coupée aux 2 000 premiers caractères avant d'être posée : Siri le dit avant la réponse.
+    var questionWasTruncated: Bool = false
+
+    /// Texte « à valider par Ben ».
+    static let truncationNotice = "Ta question a été coupée aux 2 000 premiers caractères."
 }
 
 nonisolated enum HeadlessQuestionOutcome: Sendable, Equatable {
@@ -125,9 +130,10 @@ final class HeadlessQuestionRunner {
         question: String,
         onProgress: @escaping @MainActor (HeadlessProgressUpdate) -> Void
     ) async -> HeadlessQuestionOutcome {
-        guard let cleaned = ExternalQuerySanitizer.sanitize(question) else {
+        guard let sanitized = ExternalQuerySanitizer.sanitizeReportingTruncation(question) else {
             return .failed(message: HeadlessQuestionOutcome.unreadableQuestionMessage)
         }
+        let cleaned = sanitized.text
         // Garde du consentement cloud : AVANT tout, rien n'est écrit ni envoyé sans l'accord.
         if let request = chatViewModel.consentRequestBeforeSending() {
             return .consentRequired(providerName: request.titleName)
@@ -142,7 +148,7 @@ final class HeadlessQuestionRunner {
             Task { @MainActor in self.cancel() }
         }
         ticker.cancel()
-        return outcome(for: cleaned)
+        return outcome(for: cleaned, wasTruncated: sanitized.wasTruncated)
     }
 
     /// Arrête la recherche en cours ; la réponse partielle est gardée dans l'historique, comme avec « Stop ».
@@ -176,11 +182,11 @@ final class HeadlessQuestionRunner {
 
     // MARK: - Résultat
 
-    private func outcome(for question: String) -> HeadlessQuestionOutcome {
+    private func outcome(for question: String, wasTruncated: Bool) -> HeadlessQuestionOutcome {
         guard let answer = chatViewModel.messages.last, answer.role == .assistant else { return .interrupted }
         switch answer.status {
         case .completed:
-            return completedOutcome(for: answer, question: question)
+            return completedOutcome(for: answer, question: question, wasTruncated: wasTruncated)
         case .failed:
             if let notice = chatViewModel.offlineNotice { return .failed(message: notice.reason.message) }
             return .failed(message: chatViewModel.errorDescription ?? HeadlessQuestionOutcome.unknownFailureMessage)
@@ -191,7 +197,7 @@ final class HeadlessQuestionRunner {
         }
     }
 
-    private func completedOutcome(for answer: ChatViewModel.Message, question: String) -> HeadlessQuestionOutcome {
+    private func completedOutcome(for answer: ChatViewModel.Message, question: String, wasTruncated: Bool) -> HeadlessQuestionOutcome {
         let visible = ChatViewModel.visibleText(of: answer.segments)
         let text = AnswerPlainText.plain(from: visible)
         guard !text.isEmpty else {
@@ -203,7 +209,8 @@ final class HeadlessQuestionRunner {
             spoken: AnswerPlainText.spoken(from: visible),
             sourceTitles: answer.sources.map(\.title),
             sourceLinks: answer.sources.compactMap { Self.webURL($0.url) },
-            conversationID: chatViewModel.currentConversationID
+            conversationID: chatViewModel.currentConversationID,
+            questionWasTruncated: wasTruncated
         ))
     }
 

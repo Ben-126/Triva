@@ -268,8 +268,20 @@ nonisolated struct AttachmentFileVault: Sendable {
     /// Efface TOUT le coffre. À appeler au lancement de l'app, avant que la moindre fenêtre n'existe : aucune
     /// conversation vivante ne peut alors en dépendre. Les copies d'un lancement précédent (arrêt brutal) sont
     /// ainsi supprimées au plus tard au lancement suivant.
-    static func purgeAll(rootDirectory: URL = AttachmentFileVault.defaultRootDirectory) {
-        try? FileManager.default.removeItem(at: rootDirectory)
+    ///
+    /// - Returns: `false` si la suppression a été refusée (un dossier absent compte comme réussi) : « Tout effacer »
+    ///   ne doit pas annoncer « Tout a été effacé » quand une copie de document est restée sur le disque.
+    @discardableResult
+    static func purgeAll(rootDirectory: URL = AttachmentFileVault.defaultRootDirectory) -> Bool {
+        guard FileManager.default.fileExists(atPath: rootDirectory.path) else { return true }
+        do {
+            try FileManager.default.removeItem(at: rootDirectory)
+            return true
+        } catch {
+            // Dossier du coffre impossible à retirer mais plus rien dedans : aucune copie de document ne reste.
+            let remaining = try? FileManager.default.contentsOfDirectory(atPath: rootDirectory.path)
+            return remaining?.isEmpty == true
+        }
     }
 
     // MARK: - Détails

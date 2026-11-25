@@ -34,6 +34,9 @@ nonisolated enum HeadlessCloudConsent: Sendable, Equatable {
 }
 
 nonisolated struct HeadlessQuestionContext: Sendable, Equatable {
+    /// L'utilisateur a vu l'écran « Triva répond avec une IA » (AI Act art. 50(1)) : sur une installation neuve il
+    /// passe avant le choix du moteur ; une app installée avant cet écran peut avoir un moteur choisi sans l'avoir vu.
+    var noticeAcknowledged: Bool
     /// Moteur choisi par l'utilisateur, `nil` tant qu'il n'en a pas choisi.
     var engine: AIEngineOption?
     /// Le moteur est utilisable (modèle MLX choisi, fournisseur cloud choisi). Sans objet pour Apple Intelligence.
@@ -52,6 +55,8 @@ nonisolated enum HeadlessExecution: Sendable, Equatable {
 
 nonisolated enum HeadlessDecision: Sendable, Equatable {
     case run(HeadlessExecution)
+    /// L'information « Triva répond avec une IA » n'a pas encore été lue : l'utilisateur doit ouvrir Triva.
+    case needsAINotice
     /// Aucun moteur utilisable : l'utilisateur doit ouvrir Triva.
     case needsEngineChoice
     /// Pas d'accord pour ce fournisseur : rien n'est envoyé, la question attend dans la barre de saisie.
@@ -63,12 +68,15 @@ nonisolated enum HeadlessQuestionPolicy {
     static let unknownProviderName = "ton fournisseur d'IA"
 
     static let engineChoiceDialog = "Ouvre Triva pour choisir ton moteur d'IA."
+    /// Texte « à valider par Ben ».
+    static let aiNoticeDialog = "Ouvre Triva pour lire l'information sur l'IA, avant ta première question."
 
     static func consentDialog(providerName: String) -> String {
         "Ouvre Triva pour autoriser l'envoi à \(providerName)."
     }
 
     static func decide(_ context: HeadlessQuestionContext) -> HeadlessDecision {
+        guard context.noticeAcknowledged else { return .needsAINotice }
         guard let engine = context.engine else { return .needsEngineChoice }
         switch engine {
         case .appleIntelligence:

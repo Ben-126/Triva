@@ -18,6 +18,8 @@ struct SetResponseModeIntent: AppIntent {
 
     static var supportedModes: IntentModes { .background }
     static var allowedExecutionTargets: IntentExecutionTargets { .main }
+    /// Un réglage de l'app ne se change pas depuis un téléphone verrouillé (mission X1, S1).
+    static var authenticationPolicy: IntentAuthenticationPolicy { .requiresAuthentication }
 
     @Parameter(title: "Mode")
     var mode: ResponseModeAppEnum

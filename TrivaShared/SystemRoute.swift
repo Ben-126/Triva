@@ -16,6 +16,14 @@ nonisolated enum ComposerEntryKind: Sendable, Equatable, Hashable {
     case voice
 }
 
+/// Une information à montrer sous les capsules de la fenêtre (le texte vit dans l'app, pas ici).
+nonisolated enum SystemNotice: Sendable, Equatable {
+    /// Le texte partagé a été coupé aux 2 000 premiers caractères.
+    case truncatedText
+    /// Le fichier partagé n'a pas pu être copié dans l'app (disque plein, fichier protégé).
+    case fileNotCopied
+}
+
 /// Une demande de navigation venue de l'extérieur de la fenêtre.
 nonisolated enum SystemRoute: Sendable, Equatable {
     /// Recherche vide, curseur dans la barre de saisie.
@@ -28,4 +36,6 @@ nonisolated enum SystemRoute: Sendable, Equatable {
     /// il est joint à la conversation de la fenêtre, JAMAIS envoyé. Une route qui pointe ailleurs que dans les dépôts
     /// est jetée par `SystemRouteCenter`. Elle ne s'exprime pas en URL `triva://`.
     case attachment(URL)
+    /// Une information à afficher (texte coupé, fichier non copié) : n'ouvre rien et n'envoie rien.
+    case notice(SystemNotice)
 }

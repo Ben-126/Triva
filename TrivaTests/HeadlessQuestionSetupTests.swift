@@ -33,7 +33,7 @@ struct HeadlessQuestionSetupTests {
 
     @Test("Aucun moteur choisi : il faut ouvrir Triva, aucune session, aucun lanceur")
     func noEngine() throws {
-        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: nil), responseMode: nil)
+        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: nil), responseMode: nil, noticeAcknowledged: true)
         #expect(setup.decision == .needsEngineChoice)
         #expect(setup.session == nil)
         #expect(setup.runner == nil)
@@ -41,14 +41,14 @@ struct HeadlessQuestionSetupTests {
 
     @Test("Apple Intelligence : prêt, avec un lanceur")
     func appleIntelligence() throws {
-        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: nil, platform: .iOS)
+        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: nil, noticeAcknowledged: true, platform: .iOS)
         #expect(setup.decision == .run(.standard))
         #expect(setup.runner != nil)
     }
 
     @Test("Modèle local non choisi : il faut ouvrir Triva")
     func mlxWithoutModel() throws {
-        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .mlxLocal), responseMode: nil)
+        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .mlxLocal), responseMode: nil, noticeAcknowledged: true)
         #expect(setup.decision == .needsEngineChoice)
         #expect(setup.runner == nil)
     }
@@ -58,13 +58,13 @@ struct HeadlessQuestionSetupTests {
         let stores = try makeStores(engine: .mlxLocal)
         let entry = try #require(try MLXModelCatalog.load().first)
         stores.mlxSelection.selectedModelID = entry.id
-        #expect(HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, platform: .iOS).decision == .run(.backgroundWithGPU))
-        #expect(HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, platform: .mac).decision == .run(.standard))
+        #expect(HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, noticeAcknowledged: true, platform: .iOS).decision == .run(.backgroundWithGPU))
+        #expect(HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, noticeAcknowledged: true, platform: .mac).decision == .run(.standard))
     }
 
     @Test("Cloud sans fournisseur choisi : il faut ouvrir Triva")
     func cloudWithoutProvider() throws {
-        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .cloudBYOK), responseMode: nil)
+        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .cloudBYOK), responseMode: nil, noticeAcknowledged: true)
         #expect(setup.decision == .needsEngineChoice)
         #expect(setup.runner == nil)
     }
@@ -73,7 +73,7 @@ struct HeadlessQuestionSetupTests {
     func cloudWithoutConsent() throws {
         let stores = try makeStores(engine: .cloudBYOK)
         stores.cloudSelection.selection = CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5")
-        let setup = HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil)
+        let setup = HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, noticeAcknowledged: true)
         let name = try #require(CloudAIConsentCatalog.request(providerID: "claude", customPresets: []))
         #expect(setup.decision == .needsCloudConsent(providerName: name.displayName))
         #expect(setup.runner == nil)
@@ -84,14 +84,14 @@ struct HeadlessQuestionSetupTests {
         let stores = try makeStores(engine: .cloudBYOK)
         stores.cloudSelection.selection = CloudProviderSelection(providerID: "claude", model: "claude-sonnet-5")
         stores.cloudConsent.grant(providerID: "claude")
-        let setup = HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil)
+        let setup = HeadlessQuestionSetup.prepare(stores: stores, responseMode: nil, noticeAcknowledged: true)
         #expect(setup.decision == .run(.standard))
         #expect(setup.runner != nil)
     }
 
     @Test("Le mode choisi dans l'intent est celui de la session, sans toucher au mode mémorisé")
     func modeOverrideStaysInSession() throws {
-        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: .reliable)
+        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: .reliable, noticeAcknowledged: true)
         let session = try #require(setup.session)
         #expect(session.responseModeOverride == .reliable)
         #expect(session.chatViewModel?.readResponseMode() == .reliable)
@@ -99,7 +99,7 @@ struct HeadlessQuestionSetupTests {
 
     @Test("Sans mode dans l'intent : la session lit le mode mémorisé, à chaque envoi")
     func noOverrideUsesRememberedMode() throws {
-        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: nil)
+        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: nil, noticeAcknowledged: true)
         let session = try #require(setup.session)
         #expect(session.responseModeOverride == nil)
         #expect(session.chatViewModel?.readResponseMode() == ChatViewModel.persistedResponseMode())
@@ -107,7 +107,7 @@ struct HeadlessQuestionSetupTests {
 
     @Test("La session sans fenêtre ne génère pas de pistes « À creuser »")
     func sessionSkipsSuggestions() throws {
-        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: nil)
+        let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: .appleIntelligence), responseMode: nil, noticeAcknowledged: true)
         #expect(setup.session?.generatesSuggestions == false)
     }
 
@@ -115,6 +115,16 @@ struct HeadlessQuestionSetupTests {
     func servicesFactory() throws {
         let stores = try makeStores(engine: nil)
         let services = TrivaAppServices(stores: stores, routes: SystemRouteCenter(windowLauncher: nil))
-        #expect(services.prepareHeadlessQuestion(responseMode: nil).decision == .needsEngineChoice)
+        #expect(services.prepareHeadlessQuestion(responseMode: nil, noticeAcknowledged: true).decision == .needsEngineChoice)
+    }
+
+    @Test("Information IA pas encore lue : il faut ouvrir Triva, aucune session, aucun lanceur, quel que soit le moteur")
+    func noticeNotAcknowledged() throws {
+        for engine in [AIEngineOption?.none, .appleIntelligence, .mlxLocal, .cloudBYOK] {
+            let setup = HeadlessQuestionSetup.prepare(stores: try makeStores(engine: engine), responseMode: nil, noticeAcknowledged: false)
+            #expect(setup.decision == .needsAINotice)
+            #expect(setup.session == nil)
+            #expect(setup.runner == nil)
+        }
     }
 }

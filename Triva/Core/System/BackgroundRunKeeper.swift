@@ -6,6 +6,9 @@
 //  milieu d'une recherche, pour que l'activité en direct continue d'avancer (environ 30 s ; au-delà, l'activité devient
 //  périmée et affiche « Recherche interrompue »). Une seule tâche d'arrière-plan par échange, TOUJOURS terminée.
 //
+//  Mission X1 : `BackgroundExpiryMonitor` prévient quelques secondes avant la fin (le gestionnaire d'expiration est
+//  synchrone : le système suspend l'app dès qu'il rend la main, trop tard pour envoyer « interrompue »).
+//
 //  Doc Apple vérifiée : `UIApplication.beginBackgroundTask(withName:expirationHandler:)` rend un identifiant à
 //  passer à `endBackgroundTask(_:)` ; le gestionnaire d'expiration est appelé juste avant la fin du temps accordé
 //  (il faut alors terminer la tâche, sinon le système tue l'app) ; l'identifiant vaut `.invalid` si l'arrière-plan
@@ -42,20 +45,36 @@ final class UIKitBackgroundRunKeeper: BackgroundRunKeeping {
     /// Tâches ouvertes : `endBackgroundTask` n'est appelé qu'UNE fois par identifiant (le système proteste sinon).
     private var open: Set<Int> = []
 
+    /// Surveillances du temps restant, par tâche ouverte.
+    private var monitors: [Int: BackgroundExpiryMonitor] = [:]
+
     func begin(name: String, onExpire: @escaping @MainActor @Sendable () -> Void) -> BackgroundRunToken? {
         let box = TokenBox()
-        let identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
-            // Appelé sur le fil principal, juste avant la fin du temps accordé : prévenir, puis terminer la tâche.
+        // `onExpire` ne part qu'UNE fois : d'abord par la surveillance (quelques secondes AVANT la fin, le temps
+        // d'envoyer l'état « interrompue »), sinon par le gestionnaire d'expiration d'UIKit.
+        let notify: @MainActor () -> Void = {
+            guard !box.hasWarned else { return }
+            box.hasWarned = true
             onExpire()
+        }
+        let identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            // Appelé sur le fil principal, juste avant la fin du temps accordé : prévenir si ce n'est pas déjà fait,
+            // puis terminer la tâche (sans quoi le système arrête l'app).
+            notify()
             if let raw = box.raw { self?.end(BackgroundRunToken(rawValue: raw)) }
         }
         guard identifier != .invalid else { return nil }
         box.raw = identifier.rawValue
         open.insert(identifier.rawValue)
+        monitors[identifier.rawValue] = BackgroundExpiryMonitor(
+            remainingTime: { UIApplication.shared.backgroundTimeRemaining },
+            warn: notify
+        )
         return BackgroundRunToken(rawValue: identifier.rawValue)
     }
 
     func end(_ token: BackgroundRunToken) {
+        monitors.removeValue(forKey: token.rawValue)?.cancel()
         guard open.remove(token.rawValue) != nil else { return }
         UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: token.rawValue))
     }
@@ -65,5 +84,6 @@ final class UIKitBackgroundRunKeeper: BackgroundRunKeeping {
 @MainActor
 private final class TokenBox {
     var raw: Int?
+    var hasWarned = false
 }
 #endif

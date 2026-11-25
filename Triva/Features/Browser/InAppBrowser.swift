@@ -69,6 +69,12 @@ enum BrowserPresenter {
         return true
     }
 
+    /// Ferme Safari intégré s'il est affiché au-dessus de la scène active (une route du système doit être visible).
+    static func dismissPresented() {
+        guard let top = topViewController(), top is SFSafariViewController else { return }
+        top.presentingViewController?.dismiss(animated: true)
+    }
+
     /// Contrôleur le plus haut de la scène active (feuilles, plein écran et bulles comprises).
     private static func topViewController() -> UIViewController? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

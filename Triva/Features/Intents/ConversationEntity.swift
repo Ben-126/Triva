@@ -90,11 +90,10 @@ struct ConversationQuery: EntityStringQuery {
     /// Les conversations connues parmi ces identifiants, dans l'ordre demandé ; les inconnues sont absentes.
     @MainActor
     static func entities(for ids: [UUID], in store: ChatHistoryStore) throws -> [ConversationEntity] {
-        let byID = Dictionary(
-            try read { try store.conversations() }.map { ($0.id, entity(from: $0)) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        return ids.compactMap { byID[$0] }
+        // Une lecture par identifiant demandé : jamais tout l'historique chargé pour quelques raccourcis.
+        return try ids.compactMap { id in
+            try read { try store.conversation(with: id).map { [$0] } ?? [] }.first.map(entity(from:))
+        }
     }
 
     /// Recherche dans les titres ET le texte des conversations (casse et accents ignorés), les plus récentes

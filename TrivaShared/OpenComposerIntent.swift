@@ -33,7 +33,7 @@ nonisolated enum ComposerEntryAppEnum: String, AppEnum {
 struct OpenComposerIntent: OpenIntent {
     static var title: LocalizedStringResource { "Ouvrir une nouvelle recherche" }
     static var description: IntentDescription {
-        IntentDescription("Ouvre Triva sur une recherche vide, prête à écrire.")
+        IntentDescription("Ouvre Triva sur une nouvelle recherche, prête à écrire.")
     }
 
     /// Fixé dans l'app : la navigation s'exécute là où vivent les fenêtres (jamais dans une extension).

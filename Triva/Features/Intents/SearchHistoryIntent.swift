@@ -17,6 +17,9 @@ struct SearchHistoryIntent: AppIntent {
 
     static var supportedModes: IntentModes { .background }
     static var allowedExecutionTargets: IntentExecutionTargets { .main }
+    /// La recherche porte sur le TEXTE des messages et rend des titres : sur un téléphone verrouillé, elle servirait
+    /// d'oracle sur le contenu de l'historique. Siri demande donc de déverrouiller (mission X1, S1).
+    static var authenticationPolicy: IntentAuthenticationPolicy { .requiresAuthentication }
 
     @Parameter(title: "Recherche", requestValueDialog: "Que veux-tu retrouver ?")
     var query: String

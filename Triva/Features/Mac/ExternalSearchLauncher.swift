@@ -72,6 +72,8 @@ final class ExternalSearchLauncher {
 
     /// Une conversation de l'historique ; si une fenêtre l'affiche déjà, SwiftUI la ramène au premier plan.
     func requestConversation(_ id: UUID) {
+        // La fenêtre qui s'ouvrira dessus saura que la demande vient de l'extérieur (R2-19).
+        inbox.noteConversationRequested(id)
         enqueue(.conversation(id))
     }
 

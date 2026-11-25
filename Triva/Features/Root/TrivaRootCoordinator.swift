@@ -112,6 +112,13 @@ final class TrivaRootCoordinator {
     /// Titre de la fenêtre de recherche : celui de la conversation affichée, « Nouvelle recherche » sinon.
     var searchTitle = TrivaRootCoordinator.newSearchTitle
 
+    /// Ferme ce que la COQUILLE présente par-dessus la fenêtre et que le coordinateur ne détient pas (le choix du moteur,
+    /// état de `TrivaRootView`). Posée par la coquille ; appelée par `closePresentations()`.
+    @ObservationIgnored var dismissShellPresentations: (@MainActor () -> Void)?
+
+    /// Signal de fermeture des présentations locales aux écrans (Coup d'œil…), voir `PresentationDismissal`.
+    @ObservationIgnored let presentationDismissal = PresentationDismissal()
+
     /// Identité de CETTE fenêtre dans le registre des conversations affichées.
     @ObservationIgnored let windowID = UUID()
     @ObservationIgnored let windowRegistry: WindowConversationRegistry
@@ -155,6 +162,9 @@ final class TrivaRootCoordinator {
             return await DiscoverService(fetcher: discoverFetcher)
                 .fetchTrending(onTopicFinished: onTopicFinished)
         })
+        // Une autre fenêtre demande cette conversation : la fenêtre qui la tient passe devant (`focusHolder`) et
+        // l'affiche sur la Recherche, même si elle était sur la Bibliothèque ou montrait un autre fil.
+        windowRegistry.setRevealAction({ [weak self] id in self?.revealConversation(id) }, in: windowID)
     }
 
     // MARK: - Actions entre espaces

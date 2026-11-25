@@ -29,6 +29,13 @@ final class ExternalQueryInbox {
 
     @ObservationIgnored private var entries: [(id: UUID, query: ExternalQuery)] = []
     @ObservationIgnored private let capacity: Int
+    /// Conversations dont une route extérieure (widget, Spotlight, raccourci) a demandé l'ouverture, avec l'heure.
+    @ObservationIgnored private var requestedConversations: [(id: UUID, at: Date)] = []
+
+    /// Durée pendant laquelle une demande d'ouverture reste valable : la fenêtre s'ouvre dans la seconde, une demande
+    /// plus ancienne (fenêtre déjà ouverte, ramenée sans passer par ici) ne doit pas se confondre avec une restauration
+    /// au relancement.
+    static let requestLifetime: TimeInterval = 30
 
     init(capacity: Int = ExternalQueryInbox.defaultCapacity) {
         self.capacity = max(1, capacity)
@@ -61,7 +68,26 @@ final class ExternalQueryInbox {
         return entries.remove(at: index).query
     }
 
+    /// Une route extérieure demande d'ouvrir cette conversation (X2, R2-19). La fenêtre qui s'ouvrira dessus le saura par
+    /// `takeConversationRequest` : une conversation supprimée est alors annoncée, au lieu d'une fenêtre vide muette.
+    func noteConversationRequested(_ id: UUID, at now: Date = Date()) {
+        requestedConversations.removeAll { $0.id == id }
+        requestedConversations.append((id, now))
+        if requestedConversations.count > capacity {
+            requestedConversations.removeFirst(requestedConversations.count - capacity)
+        }
+    }
+
+    /// `true` UNE seule fois si cette conversation a été demandée de l'extérieur il y a moins de `requestLifetime`.
+    func takeConversationRequest(_ id: UUID, at now: Date = Date()) -> Bool {
+        let live = requestedConversations.filter { now.timeIntervalSince($0.at) <= Self.requestLifetime }
+        let found = live.contains { $0.id == id }
+        requestedConversations = live.filter { $0.id != id }
+        return found
+    }
+
     func discardAll() {
         entries.removeAll()
+        requestedConversations.removeAll()
     }
 }

@@ -16,6 +16,8 @@ struct OpenConversationIntent: OpenIntent {
     }
 
     static var allowedExecutionTargets: IntentExecutionTargets { .main }
+    /// Ouvrir une conversation de l'historique demande un appareil déverrouillé (mission X1, S1).
+    static var authenticationPolicy: IntentAuthenticationPolicy { .requiresAuthentication }
 
     @Parameter(title: "Conversation", requestValueDialog: "Quelle conversation ouvrir ?")
     var target: ConversationEntity

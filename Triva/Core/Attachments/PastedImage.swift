@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import Synchronization
 
 /// Format d'une image collée : identifiant de type du presse-papiers et extension du fichier déposé.
 nonisolated struct PastedImageFormat: Sendable, Equatable {
@@ -51,5 +52,38 @@ nonisolated enum PastedImageNaming {
         )
         let suffix = index > 0 ? " (\(index + 1))" : ""
         return "\(prefix) \(stamp)\(suffix).\(fileExtension)"
+    }
+}
+
+/// Rang des images collées d'une MÊME seconde, pour toute l'app (X2). Le nom d'une image collée porte l'horodatage à la
+/// seconde : deux collages dans la même seconde (⌘V deux fois de suite, deux fenêtres) donnaient le même nom, et le
+/// dédoublonnage du contrôleur refusait le second (« Déjà joint »). Le compteur continue d'une demande à l'autre tant
+/// que la seconde ne change pas, et repart à 0 à la seconde suivante : une image seule garde son nom court, sans suffixe.
+nonisolated final class PastedImageNumbering: Sendable {
+    /// Exemplaire de l'app : le compteur est commun aux fenêtres, aux collages du presse-papiers et à la photothèque.
+    static let shared = PastedImageNumbering()
+
+    private struct State {
+        var second: Int64?
+        var next = 0
+    }
+
+    private let state = Mutex(State())
+
+    init() {}
+
+    /// Réserve `count` rangs pour des images collées à `date` (au moins 1).
+    /// - Returns: le rang de la première image (0 pour la première de la seconde), à passer à `PastedImageNaming.fileName`.
+    func reserve(count: Int, at date: Date) -> Int {
+        let second = Int64(date.timeIntervalSince1970.rounded(.down))
+        return state.withLock { state in
+            if state.second != second {
+                state.second = second
+                state.next = 0
+            }
+            let first = state.next
+            state.next += max(count, 1)
+            return first
+        }
     }
 }

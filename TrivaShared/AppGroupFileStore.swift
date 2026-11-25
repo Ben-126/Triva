@@ -60,6 +60,7 @@ nonisolated struct AppGroupFileStore: Sendable {
         let target = try url(for: path)
         do {
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            Self.excludeFromBackup(directory)
             try data.write(to: target, options: Self.writeOptions)
         } catch {
             throw StoreError.writeFailed(error.localizedDescription)
@@ -92,6 +93,16 @@ nonisolated struct AppGroupFileStore: Sendable {
     func exists(_ path: String) -> Bool {
         guard let target = try? url(for: path) else { return false }
         return FileManager.default.fileExists(atPath: target.path)
+    }
+
+    /// Sort le dossier (et tout ce qu'il contient) des sauvegardes iCloud et Finder : ce qui est ici est un relais
+    /// éphémère (instantané du widget, partages jamais repris), pas une donnée à restaurer. Au mieux : un échec
+    /// n'empêche rien.
+    static func excludeFromBackup(_ folder: URL) {
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var url = folder
+        try? url.setResourceValues(values)
     }
 
     // MARK: Interne

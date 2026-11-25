@@ -44,9 +44,13 @@ nonisolated enum PasteImport {
         _ items: [DroppedItem],
         imagePrefix: String,
         date: Date = Date(),
-        depositRoot: URL = AttachmentFileVault.defaultRootDirectory
+        depositRoot: URL = AttachmentFileVault.defaultRootDirectory,
+        numbering: PastedImageNumbering = .shared
     ) -> [DroppedItem] {
-        var imageIndex = 0
+        // Le rang continue d'un collage à l'autre dans la même seconde : sans cela, deux collages rapprochés
+        // donnaient le même nom et le second était refusé (« Déjà joint »).
+        let imageCount = items.filter { if case .image = $0 { true } else { false } }.count
+        var imageIndex = imageCount == 0 ? 0 : numbering.reserve(count: imageCount, at: date)
         return items.map { item in
             guard case .image(let url) = item else { return item }
             let name = PastedImageNaming.fileName(

@@ -30,6 +30,9 @@ final class SystemIntegrations {
     private let spotlightClient: any SpotlightIndexing
     private let spotlightDelay: Duration
     private let endLiveActivities: @MainActor () async -> Void
+    /// Termine les activités terminées dont la conversation a disparu ; reçoit « cette conversation existe-t-elle ? ».
+    private let endOrphanedLiveActivities: @MainActor (@escaping @MainActor (UUID) -> Bool) async -> Void
+    private let routes: SystemRouteCenter
     private let accessPolicy: AppGroupAccessPolicy
     /// L'historique de l'app, relié au lancement par `bind(chatHistory:)`. Sans lui (tests, lancement précoce),
     /// il n'y a rien à publier : on ne publie surtout pas un historique « vide » qui serait faux.
@@ -41,13 +44,17 @@ final class SystemIntegrations {
     /// Dernière valeur vue de « Dernière question dans le widget » : on ne republie que quand elle bascule.
     private var lastShowsLastQuestion: Bool
     private var lastSpotlightEnabled: Bool
+    private var lastLiveActivityEnabled: Bool
     private var defaultsObserver: (any NSObjectProtocol)?
+    private var shareSignal: ShareInboxSignal.Observation?
 
     /// - Parameters:
     ///   - makeWidgetPublisher, makeSharedInbox: fabriques appelées à la première utilisation seulement (`nil` = les
     ///     vrais éléments, sur l'App Group réel). Les tests passent des éléments sur un dossier temporaire.
     ///   - spotlightClient: `nil` = l'index Spotlight réel de l'app. Les tests passent un faux client.
     ///   - endLiveActivities: `nil` = termine les activités en direct réelles.
+    ///   - endOrphanedLiveActivities: `nil` = retire les activités en direct réelles dont la conversation a disparu.
+    ///   - routes: le routeur de l'app (Mac : on lui apprend à reconnaître les conversations existantes).
     ///   - isMac: décide de l'accès au conteneur de l'App Group (voir `AppGroupAccessPolicy`).
     init(
         makeWidgetPublisher: (@MainActor () -> WidgetSnapshotPublisher)? = nil,
@@ -55,6 +62,8 @@ final class SystemIntegrations {
         spotlightClient: (any SpotlightIndexing)? = nil,
         spotlightDelay: Duration = .seconds(2),
         endLiveActivities: (@MainActor () async -> Void)? = nil,
+        endOrphanedLiveActivities: (@MainActor (@escaping @MainActor (UUID) -> Bool) async -> Void)? = nil,
+        routes: SystemRouteCenter = .shared,
         defaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default,
         isMac: Bool = SystemIntegrations.runsOnMac
@@ -64,6 +73,10 @@ final class SystemIntegrations {
         self.spotlightClient = spotlightClient ?? CoreSpotlightIndexClient()
         self.spotlightDelay = spotlightDelay
         self.endLiveActivities = endLiveActivities ?? { await SearchLiveActivityController.shared.endAll() }
+        self.endOrphanedLiveActivities = endOrphanedLiveActivities ?? { exists in
+            await SearchLiveActivityController.shared.endActivities(whereConversationIsMissing: exists)
+        }
+        self.routes = routes
         self.accessPolicy = AppGroupAccessPolicy(isMac: isMac, defaults: defaults)
         self.defaults = defaults
         self.notificationCenter = notificationCenter
@@ -71,6 +84,7 @@ final class SystemIntegrations {
         self.preferences = preferences
         self.lastShowsLastQuestion = preferences.showsLastQuestionInWidget
         self.lastSpotlightEnabled = preferences.isSpotlightEnabled
+        self.lastLiveActivityEnabled = preferences.isLiveActivityEnabled
     }
 
     static var runsOnMac: Bool {
@@ -118,6 +132,8 @@ final class SystemIntegrations {
     func start() {
         // Mac : le conteneur de l'App Group n'est touché que si le widget a déjà été allumé un jour.
         if preferences.showsLastQuestionInWidget { accessPolicy.noteWidgetEnabled() }
+        routes.conversationExists = { [weak self] id in self?.conversationExists(id) ?? true }
+        observeShareSignal()
         refreshWidget()
         observePreferences()
         Task { await spotlight.settingChanged() }
@@ -133,6 +149,28 @@ final class SystemIntegrations {
     /// iPhone et iPad seulement : l'extension de partage n'existe pas sur Mac, qui n'a donc pas à ouvrir le conteneur
     /// de l'App Group (sur Mac, un groupe hors préfixe d'équipe peut déclencher une invite d'accès).
     func sceneDidBecomeActive() {
+        // Une conversation supprimée alors que l'app était en arrière-plan : son activité ne reste pas à l'écran.
+        reapOrphanedLiveActivities()
+        #if os(iOS)
+        guard accessPolicy.mayTouchShareInbox else { return }
+        let inbox = sharedInbox
+        Task { await inbox.takeOver() }
+        #endif
+    }
+
+    /// Un partage vient d'être déposé alors que l'app est peut-être déjà au premier plan (Safari intégré, iPad en
+    /// Split View) : sans ce signal, rien ne le reprendrait avant le prochain passage au premier plan.
+    private func observeShareSignal() {
+        #if os(iOS)
+        guard shareSignal == nil, accessPolicy.mayTouchShareInbox else { return }
+        shareSignal = ShareInboxSignal.observe { [weak self] in
+            Task { @MainActor in self?.shareInboxChanged() }
+        }
+        #endif
+    }
+
+    /// Reprise déclenchée par le signal de l'extension (même reprise que `sceneDidBecomeActive`).
+    func shareInboxChanged() {
         #if os(iOS)
         guard accessPolicy.mayTouchShareInbox else { return }
         let inbox = sharedInbox
@@ -144,6 +182,7 @@ final class SystemIntegrations {
     func historyDidChange() {
         refreshWidget()
         spotlight.scheduleSync()
+        reapOrphanedLiveActivities()
     }
 
     /// Un réglage de la section « Intégrations » a changé (l'écran de la mission F l'appelle à chaque bascule) :
@@ -155,9 +194,11 @@ final class SystemIntegrations {
     func preferencesDidChange() {
         lastShowsLastQuestion = preferences.showsLastQuestionInWidget
         lastSpotlightEnabled = preferences.isSpotlightEnabled
+        lastLiveActivityEnabled = preferences.isLiveActivityEnabled
         if lastShowsLastQuestion { accessPolicy.noteWidgetEnabled() }
         refreshWidget()
         Task { await spotlight.settingChanged() }
+        if !lastLiveActivityEnabled { Task { [endLiveActivities] in await endLiveActivities() } }
     }
 
     /// Le système demande de reconstruire l'index Spotlight (`IndexedEntityQuery.reindexAllEntities`).
@@ -177,7 +218,9 @@ final class SystemIntegrations {
             if case .failed = widgetPublisher.erase() { complete = false }
         }
         if accessPolicy.mayTouchShareInbox {
-            sharedInbox.eraseAll()
+            // Une suppression refusée (ou une extension qui écrit pendant l'effacement) laisse un fichier privé
+            // dans l'App Group : on ne dit pas « tout est effacé ».
+            if !sharedInbox.eraseAll() { complete = false }
         }
         if await spotlight.eraseAll() == false { complete = false }
         await endLiveActivities()
@@ -218,12 +261,26 @@ final class SystemIntegrations {
             lastSpotlightEnabled = spotlightEnabled
             Task { await spotlight.settingChanged() }
         }
+        let liveActivityEnabled = preferences.isLiveActivityEnabled
+        if liveActivityEnabled != lastLiveActivityEnabled {
+            lastLiveActivityEnabled = liveActivityEnabled
+            // Éteint : l'activité en cours (et celles qui attendent de disparaître) s'arrêtent tout de suite, la
+            // question ne reste pas sur l'écran verrouillé.
+            if !liveActivityEnabled { Task { [endLiveActivities] in await endLiveActivities() } }
+        }
     }
 
     // MARK: Widget
 
     private func refreshWidget() {
-        guard accessPolicy.mayTouchWidgetContainer, let chatHistory else { return }
+        guard accessPolicy.mayTouchWidgetContainer else { return }
+        // Réglage éteint : l'instantané est retiré SANS lire l'historique. Un historique illisible (état prévu) ne doit
+        // pas laisser un titre dans le widget quand l'écran promet « retire tout de suite ».
+        guard preferences.showsLastQuestionInWidget else {
+            widgetPublisher.publish(latest: nil)
+            return
+        }
+        guard let chatHistory else { return }
         let latest: StoredConversation?
         do {
             latest = try chatHistory.conversations(limit: 1).first
@@ -234,6 +291,28 @@ final class SystemIntegrations {
         widgetPublisher.publish(latest: latest.map {
             WidgetSnapshotPublisher.LatestConversation(id: $0.id, title: $0.title, updatedAt: $0.updatedAt)
         })
+    }
+
+    // MARK: Activité en direct
+
+    /// Retire de l'écran les activités terminées dont la conversation a été supprimée (la toucher donnerait « Cette
+    /// conversation n'existe plus. », et la question resterait jusqu'à 30 minutes sur l'écran verrouillé).
+    private func reapOrphanedLiveActivities() {
+        guard chatHistory != nil else { return }
+        Task { [weak self, endOrphanedLiveActivities] in
+            await endOrphanedLiveActivities { id in self?.conversationExists(id) ?? true }
+        }
+    }
+
+    /// Vrai si la conversation existe. Une lecture qui échoue, ou un historique pas encore relié, comptent comme
+    /// « existe » : on ne retire jamais quelque chose faute de pouvoir lire.
+    private func conversationExists(_ id: UUID) -> Bool {
+        guard let chatHistory else { return true }
+        do {
+            return try chatHistory.conversation(with: id) != nil
+        } catch {
+            return true
+        }
     }
 
     // MARK: Spotlight

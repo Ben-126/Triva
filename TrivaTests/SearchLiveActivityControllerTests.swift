@@ -17,6 +17,7 @@ private final class FakeLiveActivityClient: LiveActivityClient {
         case update(id: String, state: SearchActivityState, staleDate: Date)
         case end(id: String, state: SearchActivityState, policy: LiveActivityEndPolicy)
         case endAll
+        case dismiss(id: String)
     }
 
     var areActivitiesEnabled = true
@@ -46,6 +47,11 @@ private final class FakeLiveActivityClient: LiveActivityClient {
     }
 
     func endAll() async { calls.append(.endAll) }
+
+    /// Activités « encore à l'écran » que le test choisit (id, conversation).
+    var open: [OpenLiveActivity] = []
+    func openActivities() -> [OpenLiveActivity] { open }
+    func dismiss(id: String) async { calls.append(.dismiss(id: id)) }
 
     var starts: [Call] { calls.filter { if case .start = $0 { true } else { false } } }
     var updates: [Call] { calls.filter { if case .update = $0 { true } else { false } } }
