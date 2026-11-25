@@ -20,8 +20,9 @@ import Observation
 @Observable
 @MainActor
 final class SystemRouteCenter {
-    /// Routes en attente au plus : si personne ne les prend, la file ne grossit pas.
-    static let maxPending = 8
+    /// Routes en attente au plus : si personne ne les prend, la file ne grossit pas. 24 : huit partages (la limite de la
+    /// boîte de partage) peuvent chacun apporter un fichier et un texte, plus les deux informations communes.
+    static let maxPending = 24
 
     /// Exemplaire de l'app. Les tests construisent le leur.
     static let shared = SystemRouteCenter(windowLauncher: platformWindowLauncher)

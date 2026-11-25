@@ -357,7 +357,7 @@ struct AttachmentExtractorTextTests {
 @Suite("Extraction — types de fichiers")
 struct AttachmentExtractorTypeTests {
     @Test("Types refusés explicitement, avec leur extension", arguments: [
-        "rapport.docx", "dessin.svg", "page.html", "lettre.rtf", "archive.zip", "données.xml", "sans_extension",
+        "rapport.doc", "rapport.docm", "modele.dotx", "texte.pages", "texte.odt", "dessin.svg", "page.html", "lettre.rtf", "archive.zip", "données.xml", "sans_extension",
     ])
     func unsupportedTypes(fileName: String) {
         let fileExtension = (fileName as NSString).pathExtension.lowercased()
@@ -414,11 +414,11 @@ struct AttachmentExtractorFileTests {
         }
     }
 
-    @Test("Type refusé AVANT tout accès disque : un .docx inexistant est refusé pour son type")
+    @Test("Type refusé AVANT tout accès disque : un .doc inexistant est refusé pour son type")
     func typeCheckedBeforeDiskAccess() async {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("absent-\(UUID().uuidString).docx")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("absent-\(UUID().uuidString).doc")
 
-        await #expect(throws: AttachmentExtractionError.unsupportedFileType(fileExtension: "docx")) {
+        await #expect(throws: AttachmentExtractionError.unsupportedFileType(fileExtension: "doc")) {
             try await extractor.extract(from: url)
         }
     }
@@ -492,15 +492,16 @@ struct AttachmentExtractorMessageTests {
     @Test("Chaque erreur a un message en français, sans reprendre de donnée du fichier")
     func everyErrorHasAMessage() {
         let errors: [AttachmentExtractionError] = [
-            .unsupportedFileType(fileExtension: "docx"), .fileUnreadable,
+            .unsupportedFileType(fileExtension: "zzqx"), .fileUnreadable,
             .fileTooLarge(byteCount: 20_971_520, maximumByteCount: 10_485_760), .emptyFile, .binaryContent,
             .undecodableText, .invalidPDF, .passwordProtectedPDF, .noExtractableText(pageCount: 3),
             .invalidImage, .imageTooLarge(byteCount: 60_000_000, maximumByteCount: 52_428_800), .imageDimensionsTooLarge, .noTextInImage,
+            .invalidDocx, .protectedOrLegacyWord, .docxTooLarge, .noTextInDocument,
         ]
 
         for error in errors {
             #expect(!error.userFacingMessage.isEmpty)
-            #expect(!error.userFacingMessage.contains("docx"))
+            #expect(!error.userFacingMessage.contains("zzqx"))
         }
         #expect(AttachmentExtractionError.fileTooLarge(byteCount: 20_971_520, maximumByteCount: 10_485_760)
             .userFacingMessage.contains("10 Mo"))

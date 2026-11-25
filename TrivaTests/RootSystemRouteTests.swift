@@ -75,8 +75,8 @@ struct RootSystemRouteTests {
         #expect(window.windowTarget.conversationID == nil)
     }
 
-    @Test("Nouvelle question sur un fil vide : le fichier déjà joint reste joint, le clavier est demandé")
-    func newQuestionOnEmptyThreadKeepsAttachedFile() async throws {
+    @Test("Nouvelle question sur un fil vide : le fichier joint pas encore envoyé est retiré (décision du 25/11), le clavier est demandé")
+    func newQuestionOnEmptyThreadRemovesUnsentAttachedFile() async throws {
         let window = try readyWindow()
         window.session.ensureChatViewModel()
         let chat = try #require(window.session.chatViewModel)
@@ -88,7 +88,7 @@ struct RootSystemRouteTests {
 
         window.apply(.newQuestion(.keyboard))
 
-        #expect(chat.attachmentController.attachments.count == 1)
+        #expect(chat.attachmentController.attachments.isEmpty)
         #expect(chat.consumePendingFocusRequest() == true)
     }
 

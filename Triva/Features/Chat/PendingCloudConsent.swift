@@ -18,6 +18,8 @@ nonisolated enum PendingSendAction: Equatable, Sendable {
     case suggestion(String)
     /// « Réessayer en mode Rapide » sur une réponse sans source fiable.
     case retryInQuickMode(messageID: UUID)
+    /// « Réessayer » sous une réponse interrompue.
+    case retryInterrupted(messageID: UUID)
     /// « Lire cette page » : la réponse est refaite avec la page lue.
     case regenerateWithReadPages
     /// « Relancer » après un envoi bloqué hors connexion.

@@ -3,7 +3,7 @@
 //  Triva
 //
 //  Mission X2 : ce qu'une fenêtre fait quand une route ou une autre fenêtre lui demande d'afficher quelque chose
-//  (présentations à fermer, conversation à montrer) et quand l'app quitte le premier plan.
+//  (présentations à fermer, conversation à montrer).
 //
 
 import Foundation
@@ -37,17 +37,5 @@ extension TrivaRootCoordinator {
         } else {
             openConversation(id: id)
         }
-    }
-
-    /// L'app change de phase. Sur iPhone et iPad, un modèle MLX ne peut pas travailler pour le GPU en arrière-plan : la réponse
-    /// en cours est arrêtée AVANT (partie déjà écrite gardée, marquée interrompue) plutôt que de laisser MLX faire planter
-    /// l'app (R2-01). Voir `BackgroundGPUPolicy`.
-    /// - Returns: `true` si l'arrêt a été demandé.
-    @discardableResult
-    func scenePhaseDidChange(_ phase: ScenePhase, restrictsGPU: Bool = BackgroundGPUPolicy.platformRestrictsGPU) -> Bool {
-        guard BackgroundGPUPolicy.shouldStopGeneration(phase: phase, engine: session.engine, restrictsGPU: restrictsGPU),
-              let chat = session.chatViewModel else { return false }
-        chat.stop()
-        return true
     }
 }

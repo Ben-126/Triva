@@ -43,20 +43,24 @@ extension FileAttachmentController {
             receivePasted(await PasteImport.items(from: attachable))
         case .text:
             if let text = snapshot.text { Self.appendPastedText(text, to: &draft.wrappedValue) }
+        case .unsupportedFile:
+            reportRefusal(DropRefusal.unsupportedTypeMessage)
         case .nothing:
             reportInformation(FileAttachmentPresentation.nothingToPasteMessage)
         }
     }
 
     private static func isFileOrImage(_ provider: NSItemProvider) -> Bool {
-        provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        PasteboardClassifier.kind(ofTypeIdentifiers: provider.registeredTypeIdentifiers) == .file
             || PastedImageFormat.best(among: provider.registeredTypeIdentifiers) != nil
             || provider.hasItemConformingToTypeIdentifier(UTType.image.identifier)
     }
 
     private static func snapshot(of providers: [NSItemProvider]) async -> PasteboardSnapshot {
         var snapshot = PasteboardSnapshot()
-        snapshot.hasFileItem = providers.contains { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        let kinds = providers.map { PasteboardClassifier.kind(ofTypeIdentifiers: $0.registeredTypeIdentifiers) }
+        snapshot.hasFileItem = kinds.contains(.file)
+        snapshot.hasUnsupportedFileItem = kinds.contains(.unsupportedFile)
         snapshot.hasImage = providers.contains {
             PastedImageFormat.best(among: $0.registeredTypeIdentifiers) != nil || $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
         }

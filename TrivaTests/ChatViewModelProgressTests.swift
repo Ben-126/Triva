@@ -66,7 +66,7 @@ struct ChatViewModelProgressTests {
 
     // MARK: Cas nominal
 
-    @Test("Réponse normale : début, sources lues, premier texte, réponse prête, dans cet ordre")
+    @Test("Réponse normale : début, recherche, sources lues, premier texte, réponse prête, dans cet ordre")
     func normalSequence() async throws {
         let stores = try Base.PersistenceStores()
         let viewModel = makeViewModel(
@@ -79,6 +79,7 @@ struct ChatViewModelProgressTests {
         let conversationID = try #require(viewModel.currentConversationID)
         #expect(observer.events == [
             .started(question: "Capitale de la France ?", conversationID: conversationID),
+            .searching,
             .sources(count: 2),
             .writing,
             .completed,
@@ -109,6 +110,56 @@ struct ChatViewModelProgressTests {
         #expect(writingIndex != nil)
         #expect(completedIndex != nil)
         if let writingIndex, let completedIndex { #expect(writingIndex < completedIndex) }
+    }
+
+    // MARK: Réflexion du modèle
+
+    @Test("Le modèle réfléchit avant d'écrire : « réflexion » d'abord, « rédaction » seulement au premier mot de la réponse")
+    func modelReasoningThenWriting() async {
+        let provider = Base.MockStreamingAIGenerating(chunks: [
+            "<think>Je cherche la capitale",
+            "<think>Je cherche la capitale</think>",
+            "<think>Je cherche la capitale</think>Paris est la capitale.",
+        ])
+        let viewModel = makeViewModel(provider: provider)
+
+        await viewModel.send(query: "Capitale de la France ?")
+
+        #expect(observer.events.filter { $0 == .reasoning }.count == 1)
+        #expect(observer.events.filter { $0 == .writing }.count == 1)
+        let reasoningIndex = observer.events.firstIndex(of: .reasoning)
+        let writingIndex = observer.events.firstIndex(of: .writing)
+        #expect(reasoningIndex != nil)
+        #expect(writingIndex != nil)
+        if let reasoningIndex, let writingIndex { #expect(reasoningIndex < writingIndex) }
+        // Le CONTENU du raisonnement n'apparaît dans aucun événement : seulement le nom de l'étape.
+        #expect(observer.events.allSatisfy { !String(describing: $0).contains("Je cherche") })
+    }
+
+    @Test("Un modèle qui ne réfléchit pas ne produit aucun événement de réflexion")
+    func noReasoningEvent() async {
+        let viewModel = makeViewModel(provider: Base.MockStreamingAIGenerating(chunks: ["Paris est la capitale."]))
+
+        await viewModel.send(query: "Capitale de la France ?")
+
+        #expect(!observer.events.contains(.reasoning))
+    }
+
+    @Test("Ce que dit un instantané du flux : rien, la réflexion du modèle, ou la rédaction", arguments: [
+        ("", nil as SearchProgressEvent?),
+        ("  \n ", nil),
+        ("<", nil),
+        ("<thi", nil),
+        ("<think>", nil),
+        ("<think></think>", nil),
+        ("Paris", .writing),
+        ("<think>Je dois chercher", .reasoning),
+        ("<think>Je dois chercher</think>", .reasoning),
+        ("<think>Je dois chercher</think>\n\nParis", .writing),
+        ("<tldr>Paris, capitale.", .writing),
+    ])
+    func streamSnapshotEvent(snapshot: String, expected: SearchProgressEvent?) {
+        #expect(SearchProgressEvent.forStreamSnapshot(snapshot) == expected)
     }
 
     // MARK: Échecs et arrêt

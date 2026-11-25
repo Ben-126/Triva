@@ -86,6 +86,25 @@ struct MacPasteboardReaderTests {
         #expect(PasteboardClassifier.decision(for: MacPastePayload.read(from: pasteboard).snapshot) == .nothing)
     }
 
+    @Test("Octets d'un ancien .doc sans adresse de fichier (pièce jointe de mail) : refus expliqué, pas « rien »")
+    func legacyWordWithoutAddress() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.setData(Data([0xD0, 0xCF, 0x11, 0xE0]), forType: NSPasteboard.PasteboardType("com.microsoft.word.doc"))
+        #expect(PasteboardClassifier.decision(for: MacPastePayload.read(from: pasteboard).snapshot) == .unsupportedFile)
+    }
+
+    @Test("Le texte copié avec un fichier d'un autre genre reste un collage de texte ordinaire")
+    func textBeatsForeignBytes() {
+        let pasteboard = makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.setData(Data([0xD0, 0xCF, 0x11, 0xE0]), forType: NSPasteboard.PasteboardType("com.microsoft.word.doc"))
+        pasteboard.setString("une phrase", forType: .string)
+        #expect(PasteboardClassifier.decision(for: MacPastePayload.read(from: pasteboard).snapshot) == .text)
+    }
+
     @Test("Une image collée est copiée dans les dépôts sous un nom unique « Image collée … », lue comme une image")
     func imageIsStaged() async throws {
         var payload = MacPastePayload()
@@ -103,9 +122,9 @@ struct MacPasteboardReaderTests {
         #expect(AttachmentKind(fileName: url.lastPathComponent) == .image)
     }
 
-    @Test("Un fichier copié passe par le chemin du dépôt : un .docx est refusé avec le message habituel")
-    func docxIsRefused() async throws {
-        try await withTempFile("lettre.docx") { url in
+    @Test("Un fichier copié passe par le chemin du dépôt : un ancien .doc est refusé avec le message habituel")
+    func legacyWordIsRefused() async throws {
+        try await withTempFile("lettre.doc") { url in
             var payload = MacPastePayload()
             payload.fileURLs = [url]
             let items = await payload.attachableItems()

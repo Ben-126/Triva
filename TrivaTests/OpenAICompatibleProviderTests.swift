@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import Security
 @testable import Triva
 
 /// Faux magasin de clés API, même pattern que `CloudBYOKProviderTests`.
@@ -63,6 +64,20 @@ struct OpenAICompatibleProviderTests {
         )
 
         await #expect(throws: OpenAICompatibleProviderError.missingAPIKey) {
+            _ = try await provider.generate(prompt: "Bonjour")
+        }
+    }
+
+    @Test("Trousseau verrouillé (-25308, appareil verrouillé) : une erreur « verrouillé » dédiée, pas « clé absente »")
+    func lockedKeychainIsALockedDeviceError() async throws {
+        let locked = KeychainAPIKeyStoreError.unexpectedStatus(errSecInteractionNotAllowed)
+        let provider = OpenAICompatibleProvider(
+            preset: preset,
+            keyStore: MockAPIKeyStore(readError: locked),
+            client: MockOpenAICompatibleClient()
+        )
+
+        await #expect(throws: LockedDeviceError.deviceLocked) {
             _ = try await provider.generate(prompt: "Bonjour")
         }
     }

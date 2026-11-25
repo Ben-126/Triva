@@ -91,6 +91,7 @@ struct PerplexityAgentProvider: AIGenerating {
         do {
             storedKey = try keyStore.apiKey(account: account)
         } catch {
+            if LockedDeviceError.isLockedKeychain(error) { throw LockedDeviceError.deviceLocked }
             throw PerplexityAgentError.keychainUnavailable
         }
         guard let apiKey = storedKey, !apiKey.isEmpty else {

@@ -133,6 +133,48 @@ struct SharedAttachmentWindowTests {
         controller.removeAll()
     }
 
+    @Test("Plusieurs partages repris d'un coup : textes ajoutés à la suite du brouillon sans l'écraser, fichiers tous joints")
+    func severalSharesAreAppended() async throws {
+        let fixture = try RouteFixture(); defer { fixture.cleanUp() }
+        let coordinator = try makeCoordinator()
+        coordinator.session.draft.text = "déjà là"
+        let center = SystemRouteCenter(windowLauncher: nil)
+        let deposits = try (1...3).map { index in
+            try AttachmentFileVault.stageDeposit(of: try TestFiles.write(Data("# Note \(index)".utf8), named: "Note\(index).md", in: fixture.root))
+        }
+        deposits.forEach { center.submit(.attachment($0)) }
+        center.submit(.draft("premier"))
+        center.submit(.draft("second"))
+
+        #expect(coordinator.consumeSystemRoutes(from: center, canUseOtherWindows: false, openInWindow: { _ in }) == 5)
+        #expect(coordinator.session.draft.text == "déjà là premier second")
+        let controller = try #require(coordinator.session.chatViewModel).attachmentController
+        #expect(await waitFor { controller.attachments.count == 3 })
+        #expect(controller.notices.isEmpty)
+        controller.removeAll()
+    }
+
+    @Test("Trop de fichiers pour la conversation : l'excédent est refusé et la fenêtre le dit, avec les noms de tous les refusés")
+    func tooManySharedFilesAreReported() async throws {
+        let fixture = try RouteFixture(); defer { fixture.cleanUp() }
+        let coordinator = try makeCoordinator()
+        let limit = FileAttachmentRules.maxAttachmentCount
+        let center = SystemRouteCenter(windowLauncher: nil)
+        for index in 1...(limit + 3) {
+            let source = try TestFiles.write(Data("# Note \(index)".utf8), named: "Note\(index).md", in: fixture.root)
+            center.submit(.attachment(try AttachmentFileVault.stageDeposit(of: source)))
+        }
+        center.submit(.notice(.truncatedText))
+
+        coordinator.consumeSystemRoutes(from: center, canUseOtherWindows: false, openInWindow: { _ in })
+        let controller = try #require(coordinator.session.chatViewModel).attachmentController
+        let overflow = try #require(controller.notices.first { $0.message == FileAttachmentPresentation.tooManyFilesMessage(limit: limit) })
+        #expect(overflow.fileNames == ["Note\(limit + 1).md", "Note\(limit + 2).md", "Note\(limit + 3).md"])
+        #expect(controller.notices.count == 2, "l'information « texte coupé » reste affichée à côté")
+        #expect(await waitFor { controller.attachments.count == limit })
+        controller.removeAll()
+    }
+
     @Test("Un fichier hors des dépôts n'est jamais joint par la fenêtre")
     func outsideDepositsIsIgnored() throws {
         let fixture = try RouteFixture(); defer { fixture.cleanUp() }

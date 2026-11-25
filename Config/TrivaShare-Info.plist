@@ -6,8 +6,9 @@
   Le nom affiché dans la feuille de partage vient de INFOPLIST_KEY_CFBundleDisplayName (projet).
   Règles d'activation de la spec §4.6 : texte, une URL web, une page web (la page passe par le script
   de prétraitement Safari ShareSafariPreprocessor.js, qui renvoie son titre et son adresse).
-  Mission E (décision de Ben du 24/11) : un fichier ET une image à la fois (PDF et images). La règle « fichier »
-  du dictionnaire n'a pas de variante « PDF seulement » : Triva apparaît donc aussi pour un autre type de fichier,
+  Mission E (décision de Ben du 24/11) : un fichier ET une image à la fois (PDF et images) ; mission W (25/11) : les
+  documents Word .docx s'y ajoutent, sans changer la règle. La règle « fichier » du dictionnaire n'a pas de variante
+  « PDF seulement » : Triva apparaît donc aussi pour un autre type de fichier,
   que la feuille refuse alors clairement (« Triva ne lit pas ce type de fichier. »). Une règle à prédicat
   (SUBQUERY … UTI-CONFORMS-TO) serait plus précise mais ne se vérifie pas sans appareil : si elle échoue, TOUT le
   partage (texte, page) disparaît en silence ; choix prudent, réversible.

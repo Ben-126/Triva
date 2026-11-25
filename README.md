@@ -55,7 +55,7 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Des suggestions de questions de suivi
 - Le fil d'actualités « Découvrir »
 - L'historique des conversations et les favoris, stockés uniquement sur ton appareil
-- Les pièces jointes : poser une question sur un PDF ou un fichier texte, sans qu'il quitte l'appareil
+- Les pièces jointes : poser une question sur un PDF, un document Word (.docx) ou un fichier texte, sans qu'il quitte l'appareil
 - L'affichage du raisonnement du modèle, quand il en produit un
 - iPhone, iPad (barre latérale, plusieurs fenêtres) et Mac
 - Un usage honnête de l'IA et du web : un écran explique dès le premier lancement que les réponses sont écrites par une IA, chaque réponse porte un avertissement, et le texte copié ou partagé reste marqué « généré par IA ». Triva se présente sous son nom aux sites qu'elle lit et respecte ceux qui refusent la lecture automatique (`robots.txt`)
@@ -67,9 +67,9 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Le Mac approfondi : une recherche par fenêtre, les menus et raccourcis clavier complets, « Rechercher avec Triva » depuis n'importe quelle app (Services), une barre des menus et un menu du Dock en option, le glisser-déposer de fichiers et d'images (texte lu sur l'appareil) dans les deux sens, et Coup d'œil sur les pièces jointes (aussi sur iPad et iPhone)
 - L'intégration au système, codée mais encore à vérifier sur appareil réel :
   - un **widget** « Recherche rapide » (iPhone, iPad, Mac, écran verrouillé) et une commande « Nouvelle question » (Centre de contrôle, bouton Action). Le widget peut afficher le titre de ta dernière conversation, **seulement si tu l'actives** dans Réglages > Intégrations (éteint par défaut : rien n'est alors écrit pour lui) ;
-  - ton historique (titres et dates, **jamais le texte des réponses**) dans la **recherche de l'appareil** (Spotlight), réglable et allumé par défaut ;
-  - une **activité en direct** pendant une recherche (écran verrouillé, Dynamic Island ; iPhone et iPad), réglable et allumée par défaut : elle montre ta question, donc elle peut se lire sans déverrouiller l'appareil ;
-  - le **partage** vers Triva depuis la feuille de partage (iPhone et iPad) : un texte, une page web, un PDF ou une image arrivent dans la barre de saisie ou en pièce jointe, jamais envoyés sans toi ;
+  - ton historique (titres et dates, **jamais le texte des réponses**) dans **Spotlight**, réglable et allumé par défaut ;
+  - une **activité en direct** pendant une recherche (écran verrouillé, Dynamic Island ; iPhone et iPad), réglable et allumée par défaut : elle montre l'étape (réflexion, sources, rédaction) et, si le réglage « Afficher la question » est allumé (par défaut), ta question, qui peut alors se lire sans déverrouiller l'appareil ;
+  - le **partage** vers Triva depuis la feuille de partage (iPhone et iPad) : un texte, une page web, un PDF, un document Word (.docx) ou une image arrivent dans la barre de saisie ou en pièce jointe, jamais envoyés sans toi ;
   - **Siri et Raccourcis** : poser une question, ouvrir une nouvelle recherche, chercher dans l'historique, ouvrir une conversation, choisir le mode de réponse ; une question ne part jamais vers une IA en ligne sans ton accord pour ce fournisseur ;
   - **coller** une image ou un fichier, et joindre des photos choisies dans la **photothèque** (le sélecteur du système : Triva ne voit que les photos choisies).
 - À venir : la voix, la synchronisation iCloud et la traduction en anglais et en espagnol
@@ -90,9 +90,9 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Aucune donnée envoyée à un serveur intermédiaire
 - Les clés API et les clés de recherche restent en local, dans le Trousseau de ton appareil
 - Uniquement des widgets de réponse (météo, calculatrice) qui ne demandent ni clé API ni compte — pas de service tiers caché derrière une fonctionnalité en apparence gratuite
-- Le widget, la recherche de l'appareil, l'activité en direct et le partage restent sur ton appareil : ils n'envoient rien sur Internet et rien à l'éditeur
+- Le widget, Spotlight, l'activité en direct et le partage restent sur ton appareil : ils n'envoient rien sur Internet et rien à l'éditeur
 - Pour l'aperçu et le glisser-déposer, Triva garde une copie temporaire du fichier joint, uniquement sur ton appareil, effacée quand tu retires le fichier, commences une nouvelle conversation, fermes la fenêtre ou utilises « Tout effacer », et au plus tard au prochain lancement de Triva
-- « Tout effacer » (Réglages > Données) supprime d'un coup l'historique, les favoris, les caches, les copies temporaires de fichiers, ce que Triva avait publié dans le widget et la recherche de l'appareil, et les données du navigateur intégré
+- « Tout effacer » (Réglages > Données) supprime d'un coup l'historique, les favoris, les caches, les copies temporaires de fichiers, ce que Triva avait publié dans le widget et Spotlight, et les données du navigateur intégré
 
 Le détail est dans la [politique de confidentialité](docs/confidentialite.md) ([English](docs/en/privacy.md)), avec les [conditions d'utilisation](docs/conditions.md), les [mentions légales](docs/mentions-legales.md), les [licences et attributions](docs/licences.md) et l'[assistance](docs/assistance.md).
 

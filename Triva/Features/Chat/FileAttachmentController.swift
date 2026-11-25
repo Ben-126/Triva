@@ -33,10 +33,12 @@ nonisolated private struct QueuedFile: Sendable {
 ///   alors qu'il n'en consommera que 2 000. Une seule tâche vide donc la file :
 ///   chaque réservation est libérée avant la lecture suivante.
 /// - **Retirer un fichier pas encore joint** : sa capsule disparaît aussitôt.
-///   En file, il n'est jamais lu ; en lecture, celle-ci va à son terme (1 s
-///   au plus pour 500 pages) puis son résultat est écarté dans le même tour du
-///   main actor que son ajout, sans jamais s'afficher. Pas d'annulation de
-///   tâche : l'unique tâche vide la file, l'annuler ferait échouer la suite.
+///   En file, il n'est jamais lu ; en lecture, la lecture de CE fichier est
+///   annulée (W4-V : la première lecture d'une image peut durer ~40 s ; Vision
+///   s'arrête aussitôt) et, si elle va tout de même à son terme (un PDF), son
+///   résultat est écarté dans le même tour du main actor que son ajout, sans
+///   jamais s'afficher. Seule la tâche de LECTURE est annulée, jamais l'unique
+///   tâche qui vide la file : l'annuler ferait échouer la suite.
 /// - **Nouvelle conversation : `removeAll()`, jamais `store.removeAll()`
 ///   seul.** La génération du store écarte la lecture EN COURS, pas les
 ///   fichiers EN FILE, qui s'attacheraient sinon à la nouvelle conversation.
@@ -49,6 +51,9 @@ nonisolated private struct QueuedFile: Sendable {
 final class FileAttachmentController {
     let store: AttachmentStore
     let maxAttachmentCount: Int
+    /// Préparation de la lecture d'image (W4-V) : `nil` sous les tests unitaires. Lue par la rangée de capsules pour dire
+    /// qu'une image attend cette préparation.
+    let imageReadiness: ImageRecognitionReadiness?
     private(set) var pendingAttachments: [PendingFileAttachment] = []
     private(set) var notices: [FileAttachmentNotice] = []
     /// Sélecteur de fichiers présenté : posé par le bouton trombone ET par le menu Fichier > « Joindre des
@@ -65,6 +70,9 @@ final class FileAttachmentController {
     @ObservationIgnored private var purgeObservation: AttachmentVaultPurgeObservation?
     @ObservationIgnored private var queue: [QueuedFile] = []
     @ObservationIgnored private var worker: Task<Void, Never>?
+    /// Lecture EN COURS, annulable pour de vrai (W4-V) : retirer une image dont la première lecture dure ~40 s doit
+    /// libérer la file aussitôt, pas à la fin du calcul. Seule cette tâche est annulée, jamais `worker`.
+    @ObservationIgnored private var currentReadTask: Task<IndexedAttachment, any Error>?
     @ObservationIgnored private var currentFileID: UUID?
     @ObservationIgnored private var discardsCurrentResult = false
 
@@ -72,9 +80,11 @@ final class FileAttachmentController {
         store: AttachmentStore,
         maxAttachmentCount: Int = FileAttachmentRules.maxAttachmentCount,
         vault: AttachmentFileVault = AttachmentFileVault(),
-        purgeSignalCenter: NotificationCenter = .default
+        purgeSignalCenter: NotificationCenter = .default,
+        imageReadiness: ImageRecognitionReadiness? = ImageRecognitionReadiness.forCurrentProcess
     ) {
         self.store = store
+        self.imageReadiness = imageReadiness
         self.maxAttachmentCount = max(1, maxAttachmentCount)
         self.vault = vault
         purgeObservation = AttachmentVaultPurgeObservation(center: purgeSignalCenter) { [weak self] root in
@@ -173,6 +183,10 @@ final class FileAttachmentController {
         }
         pendingAttachments += files.map { PendingFileAttachment(id: $0.id, fileName: $0.fileName) }
         queue += files
+        // Une image qui arrive : la préparation de la lecture part tout de suite (ou continue), et la capsule le dit.
+        if files.contains(where: { AttachmentKind(fileName: $0.fileName) == .image }) {
+            imageReadiness?.prepareForUserRequest()
+        }
         startWorkerIfNeeded()
     }
 
@@ -208,7 +222,11 @@ final class FileAttachmentController {
         pendingAttachments.removeAll { $0.id == id }
         Self.discardDeposits(in: queue.filter { $0.id == id }, rootDirectory: vault.rootDirectory)
         queue.removeAll { $0.id == id }
-        if currentFileID == id { discardsCurrentResult = true }
+        if currentFileID == id {
+            discardsCurrentResult = true
+            currentReadTask?.cancel()
+        }
+        releaseImageWaitIfNoImageLeft()
     }
 
     /// À l'envoi d'une question, par exemple : ces messages sont caducs.
@@ -222,10 +240,20 @@ final class FileAttachmentController {
         queue.removeAll()
         pendingAttachments.removeAll()
         notices = []
-        if currentFileID != nil { discardsCurrentResult = true }
+        if currentFileID != nil {
+            discardsCurrentResult = true
+            currentReadTask?.cancel()
+        }
         store.removeAll()
         storedFileURLs = [:]
         vault.removeAll()
+        releaseImageWaitIfNoImageLeft()
+    }
+
+    /// Plus aucune image en file ni en lecture : la préparation de la lecture d'image n'est plus attendue par personne.
+    private func releaseImageWaitIfNoImageLeft() {
+        guard !pendingAttachments.contains(where: { AttachmentKind(fileName: $0.fileName) == .image }) else { return }
+        imageReadiness?.userRequestDidEnd()
     }
 
     /// Efface les copies des dépôts qui ne seront jamais lus (retirés, file vidée, budget épuisé, fenêtre fermée) :
@@ -265,7 +293,10 @@ final class FileAttachmentController {
         // La lecture se fait sur la copie du coffre (hors du main actor) : le fichier d'origine n'est ouvert qu'une fois.
         let placement = await vault.place(file.url, isDeposit: file.isDeposit)
         do {
-            let attachment = try await store.attach(fileAt: placement.readURL)
+            let readTask = Task { try await store.attach(fileAt: placement.readURL) }
+            currentReadTask = readTask
+            defer { currentReadTask = nil }
+            let attachment = try await readTask.value
             pendingAttachments.removeAll { $0.id == file.id }
             if discardsCurrentResult {
                 store.remove(id: attachment.id)
@@ -279,6 +310,7 @@ final class FileAttachmentController {
             vault.remove(storedURL: placement.storedURL)
             handleFailure(error, for: file)
         }
+        releaseImageWaitIfNoImageLeft()
         // Dépôt que le coffre n'a pas pu adopter : lu en place, puis effacé (jamais laissé dans les dépôts).
         if file.isDeposit, placement.storedURL == nil { AttachmentFileVault.discardDeposit(file.url, rootDirectory: vault.rootDirectory) }
     }

@@ -31,8 +31,8 @@ extension TrivaRootCoordinator {
     /// - `newQuestion` : le fil repart à neuf, la Recherche s'affiche, le curseur va dans la barre de saisie (demande
     ///   gardée jusqu'à l'apparition de la vue), SANS la garde du menu : l'item de menu est grisé quand le fil est
     ///   vide, la route doit quand même demander le clavier. Une réponse en cours n'est PAS arrêtée : elle finit en
-    ///   arrière-plan, dans l'historique (`startNewConversationFromSystem`). Les fichiers déjà ENVOYÉS restent à
-    ///   l'ancienne conversation ; ceux joints mais pas encore envoyés passent à la nouvelle.
+    ///   arrière-plan, dans l'historique (`startNewConversationFromSystem`, le même chemin que le bouton et ⇧⌘O). Les
+    ///   fichiers joints, envoyés ou non, sont retirés avec leur copie ; un partage qui arrive ENSUITE est joint normalement.
     /// - `draft` : texte assaini ajouté à la barre de saisie (le brouillon en cours est gardé), Recherche affichée, JAMAIS envoyé.
     /// - `attachment` : fichier partagé, joint à la conversation de la fenêtre (voir `applyAttachment`).
     /// - `conversation` : comme depuis la Bibliothèque (`openConversationFromHistory`) : une conversation tenue par
@@ -81,9 +81,19 @@ extension TrivaRootCoordinator {
     ) -> Int {
         guard session.chatViewModel?.pendingConsent == nil else { return 0 }
         let routes = center.drain()
+        // Des fichiers qui se suivent (plusieurs partages repris d'un coup) sont joints D'UN BLOC : un dépôt remplace les
+        // informations déjà affichées, et la limite de fichiers doit citer tous les refusés, pas seulement le dernier.
+        var attachments: [URL] = []
         for route in routes {
+            if case .attachment(let url) = route {
+                attachments.append(url)
+                continue
+            }
+            applyAttachments(attachments)
+            attachments = []
             apply(route, canUseOtherWindows: canUseOtherWindows, openInWindow: openInWindow)
         }
+        applyAttachments(attachments)
         return routes.count
     }
 
@@ -114,9 +124,23 @@ extension TrivaRootCoordinator {
     /// (`receiveDrop`), donc lu en local, copie pour le Coup d'œil, JAMAIS envoyé. Seul un fichier des dépôts de l'app est
     /// accepté : une route ne peut pas faire lire un autre fichier de l'utilisateur.
     private func applyAttachment(_ url: URL) -> SystemRouteOutcome {
-        guard SystemRouteCenter.isDeposit(url, root: AttachmentFileVault.defaultRootDirectory) else { return .ignored }
-        let item: DroppedItem = AttachmentKind(fileName: url.lastPathComponent) == .image ? .image(url) : .attachment(url)
-        guard receiveDrop([item]) != nil else { return .ignored }
+        applyAttachmentBatch([url])
+    }
+
+    /// Plusieurs fichiers partagés d'un bloc (même effet qu'une `apply` par fichier, sans perdre les refus des premiers).
+    @discardableResult
+    private func applyAttachments(_ urls: [URL]) -> SystemRouteOutcome {
+        guard !urls.isEmpty else { return .ignored }
+        let outcome = applyAttachmentBatch(urls)
+        if outcome != .ignored { closePresentations() }
+        return outcome
+    }
+
+    private func applyAttachmentBatch(_ urls: [URL]) -> SystemRouteOutcome {
+        let items: [DroppedItem] = urls
+            .filter { SystemRouteCenter.isDeposit($0, root: AttachmentFileVault.defaultRootDirectory) }
+            .map { AttachmentKind(fileName: $0.lastPathComponent) == .image ? .image($0) : .attachment($0) }
+        guard !items.isEmpty, receiveDrop(items) != nil else { return .ignored }
         return .attachmentPlaced
     }
 

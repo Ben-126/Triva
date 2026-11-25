@@ -2,7 +2,8 @@
 //  ShareItemReader.swift
 //  TrivaShared
 //
-//  Chantier 2.1 (mission E) : ce que l'extension de partage comprend de ce qu'on lui envoie : un PDF, une image, une
+//  Chantier 2.1 (mission E) : ce que l'extension de partage comprend de ce qu'on lui envoie : un PDF, un document Word
+//  (.docx, mission W), une image, une
 //  page web (titre et adresse, via le prétraitement Safari `ShareSafariPreprocessor.js`) ou du texte.
 //  Placé dans `TrivaShared` pour être TESTÉ avec de vrais `NSItemProvider` (l'extension elle-même ne l'est pas).
 //
@@ -45,7 +46,7 @@ nonisolated enum ShareContent: Sendable, Equatable {
 nonisolated enum ShareReadError: Error, Equatable, Sendable {
     /// Rien que Triva sache lire (« Triva n'a pas pu lire ce contenu. »).
     case nothingReadable
-    /// Un fichier, mais pas un PDF ni une image reconnus (« Triva ne lit pas ce type de fichier. »).
+    /// Un fichier, mais pas un PDF, un document Word ni une image reconnus (« Triva ne lit pas ce type de fichier. »).
     case unsupportedFile
     case tooLarge
 }
@@ -98,10 +99,12 @@ nonisolated enum ShareItemReader {
 
     // MARK: - Fichier
 
-    /// L'identifiant de type sous lequel demander le fichier : PDF d'abord, puis un format d'image précis, puis « image ».
+    /// L'identifiant de type sous lequel demander le fichier : PDF d'abord, puis un document Word, puis un format d'image
+    /// précis, puis « image ». Seul le type EXACT du .docx convient (`.docm` et `.dotx` en sont des cousins refusés).
     private static func fileTypeIdentifier(of provider: NSItemProvider) -> String? {
         let types = provider.registeredTypeIdentifiers.compactMap { identifier in UTType(identifier).map { (identifier, $0) } }
         if let pdf = types.first(where: { $0.1.conforms(to: .pdf) }) { return pdf.0 }
+        if let docx = types.first(where: { $0.1 == SharedFileType.docxContentType }) { return docx.0 }
         if let image = types.first(where: { entry in imageTypes.contains { entry.1.conforms(to: $0) } }) { return image.0 }
         return types.first(where: { $0.1 == .image })?.0
     }
@@ -110,7 +113,7 @@ nonisolated enum ShareItemReader {
     private static func looksLikeAForeignFile(_ provider: NSItemProvider) -> Bool {
         provider.registeredTypeIdentifiers.contains { identifier in
             guard let type = UTType(identifier) else { return false }
-            return type.conforms(to: .data) && !type.conforms(to: .text) && !type.conforms(to: .url) && !type.conforms(to: .propertyList)
+            return type.conforms(to: .item) && !type.conforms(to: .text) && !type.conforms(to: .url) && !type.conforms(to: .propertyList)
         }
     }
 

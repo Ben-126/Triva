@@ -32,7 +32,7 @@ nonisolated enum DropRefusal: Sendable, Equatable {
 /// Élément reçu. Un fichier est déjà COPIÉ dans les dépôts du coffre (le fichier reçu n'existe que dans la
 /// fermeture d'import) : `url` est donc valable après le dépôt.
 nonisolated enum DroppedItem: Sendable, Equatable, Transferable {
-    /// Fichier lisible comme pièce jointe (PDF, texte, Markdown, CSV, JSON).
+    /// Fichier lisible comme pièce jointe (PDF, Word .docx, texte, Markdown, CSV, JSON).
     case attachment(URL)
     /// Image : son texte est lu en local (Vision, M6) à la jointure. Copiée dans les dépôts comme un fichier.
     case image(URL)
@@ -49,6 +49,7 @@ nonisolated enum DroppedItem: Sendable, Equatable, Transferable {
         // 2. Fichiers sans adresse (pièce jointe d'un mail, promesse de fichier). PAS de `.plainText` : il
         //    s'appliquerait aussi à du texte glissé depuis une page, qui doit aller dans le brouillon.
         FileRepresentation(importedContentType: .pdf) { DroppedItem.receive($0) }
+        FileRepresentation(importedContentType: docxType) { DroppedItem.receive($0) }
         FileRepresentation(importedContentType: markdownType) { DroppedItem.receive($0) }
         FileRepresentation(importedContentType: .commaSeparatedText) { DroppedItem.receive($0) }
         FileRepresentation(importedContentType: .json) { DroppedItem.receive($0) }
@@ -57,6 +58,16 @@ nonisolated enum DroppedItem: Sendable, Equatable, Transferable {
         DataRepresentation(importedContentType: .utf8PlainText) { data in
             DroppedItem.text(String(decoding: data, as: UTF8.self))
         }
+        // 4. TOUT AUTRE fichier sans adresse (ancien .doc, .pages, .odt, archive… glissés ou collés depuis un mail, par
+        //    exemple) : reçu pour être REFUSÉ avec un message (`receiveFile` le classe par son extension), au lieu d'un
+        //    dépôt qui ne fait rien en silence. EN DERNIER : le texte et les images passent avant.
+        FileRepresentation(importedContentType: .item) { DroppedItem.receive($0) }
+    }
+
+    /// `org.openxmlformats.wordprocessingml.document` (le .docx). Repli sur `.data` si le système ne le déclarait pas :
+    /// `receiveFile` classe de toute façon par l'extension.
+    private static var docxType: UTType {
+        AttachmentKind.docxType ?? .data
     }
 
     /// `net.daringfireball.markdown`, repli sur le texte brut si le système ne le déclare pas.

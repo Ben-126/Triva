@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import Security
 @testable import Triva
 
 private struct PplxKeyStore: APIKeyStoring {
@@ -206,6 +207,14 @@ struct PerplexityAgentProviderTests {
     func missingKey() async {
         await #expect(throws: PerplexityAgentError.missingAPIKey) { try await provider(key: nil).generate(prompt: "x") }
         await #expect(throws: PerplexityAgentError.missingAPIKey) { _ = try await collect(provider(key: "").streamGenerate(prompt: "x")) }
+    }
+
+    @Test("Trousseau verrouillé (-25308, appareil verrouillé) : une erreur « verrouillé » dédiée, pas le message du trousseau")
+    func lockedKeychain() async {
+        let locked = KeychainAPIKeyStoreError.unexpectedStatus(errSecInteractionNotAllowed)
+        await #expect(throws: LockedDeviceError.deviceLocked) {
+            try await provider(keyError: locked).generate(prompt: "x")
+        }
     }
 
     @Test("Erreur Keychain → message fixe")

@@ -33,15 +33,16 @@ enum ChatViewModelError: Error, Sendable, Equatable {
 /// ## Annulation
 /// L'échange tourne dans une `Task` interne reliée à l'appelant par
 /// `withTaskCancellationHandler` : `stop()` (le bouton Stop de `ChatView`) et
-/// `startNewConversation()` aboutissent au même
+/// `startNewConversation()` (remise à zéro qui annule) aboutissent au même
 /// `Task.isCancelled`, vérifié dans LES DEUX `catch` — une annulation n'est
 /// jamais un échec ni une réponse vide.
 ///
 /// ## Réponse qui continue en arrière-plan (mission C5, décision R3-2 de Ben)
 /// Ouvrir une autre conversation (Bibliothèque, favori) n'annule plus la génération en cours : elle
 /// passe en arrière-plan (`ChatViewModel+Background.swift`), finit, et écrit sa réponse dans SA
-/// conversation de l'historique. Une seule génération à la fois ; une question envoyée ailleurs
-/// pendant ce temps l'arrête (réponse partielle gardée), comme Stop.
+/// conversation de l'historique. « Nouvelle conversation » (bouton, ⇧⌘O, widget, Siri…) fait de même (décision de
+/// Ben du 25/11) : plusieurs générations peuvent tourner en même temps, une question envoyée ailleurs n'arrête
+/// PAS celles restées en arrière-plan ; Stop n'arrête que le fil affiché, `stopEverything()` toutes.
 ///
 /// ## La génération appartient au modèle, pas à la vue
 /// `startSend(query:)` (et `startRetryInQuickMode`, `startRetryAfterOffline`)
@@ -49,9 +50,9 @@ enum ChatViewModelError: Error, Sendable, Equatable {
 /// démontée à chaque bascule de classe de taille (iPhone Duo ouvert ou fermé,
 /// Split View, Stage Manager) et à chaque changement de destination : si la
 /// `Task` était à elle, ce démontage coupait la réponse en plein milieu
-/// (revue R3-1). Seuls Stop, « Nouvelle conversation », une conversation
-/// rouverte et la fin de la session (`SearchSession.deinit`, changement de
-/// moteur ou fenêtre fermée) l'annulent. Le jeton `activeExchangeID` empêche un
+/// (revue R3-1). Seuls Stop (sur le fil affiché), la fin de la session
+/// (`SearchSession.deinit`, changement de moteur ou fenêtre fermée) et la suppression de
+/// leur conversation les annulent. Le jeton `activeExchangeID` empêche un
 /// échange remplacé, qui finit de se dérouler, de toucher l'état du suivant.
 ///
 /// Extensions, pour garder ce fichier sous les 800 lignes :
@@ -148,8 +149,9 @@ final class ChatViewModel {
     let grantConsent: @MainActor (CloudAIConsentRequest) -> Void
 
     @ObservationIgnored var activeExchangeID: UUID?
-    /// Génération passée en arrière-plan par l'ouverture d'une autre conversation (`ChatViewModel+Background`).
-    @ObservationIgnored var backgroundExchange: BackgroundExchange?
+    /// Générations passées en arrière-plan (« Nouvelle conversation », ouverture d'une autre conversation), par
+    /// conversation : plusieurs peuvent tourner à la fois (`ChatViewModel+Background`).
+    @ObservationIgnored var backgroundExchanges: [UUID: BackgroundExchange] = [:]
     @ObservationIgnored var generationTask: Task<Void, Never>?
     /// `Task` de l'envoi en cours lancé par `startSend` et consorts : voir « La génération appartient
     /// au modèle ». L'annuler annule `generationTask` via `runExchange`.
@@ -308,11 +310,12 @@ final class ChatViewModel {
         sendTask = Task { await self.retryAfterOffline(quickMode: quickMode) }
     }
 
-    /// Bouton Stop : arrête l'échange en cours. La réponse partielle est conservée, marquée interrompue.
+    /// Bouton Stop : arrête l'échange AFFICHÉ. La réponse partielle est conservée, marquée interrompue. Les réponses
+    /// laissées en arrière-plan ne sont pas touchées : on ne les voit pas, c'est en revenant sur leur conversation
+    /// qu'on peut les arrêter (`stopEverything()` les arrête toutes, quand plus rien ne les attend).
     func stop() {
         sendTask?.cancel()
         generationTask?.cancel()
-        cancelBackgroundGeneration()
     }
 
     /// Le bouton « Relancer en mode Rapide » n'a de sens que sur la DERNIÈRE
@@ -356,11 +359,12 @@ final class ChatViewModel {
     }
 
     func runExchange(_ exchange: Exchange) async {
-        // Une seule génération à la fois : une question envoyée ici arrête celle restée en arrière-plan.
-        cancelBackgroundGeneration()
+        // Une réponse restée en arrière-plan n'est PAS arrêtée par cette question : elle finit dans sa conversation.
         let exchangeID = UUID()
         activeExchangeID = exchangeID
         isGenerating = true
+        ActiveExchangeRegistry.shared.begin(exchange.conversationID)
+        defer { ActiveExchangeRegistry.shared.end(exchange.conversationID) }
         emitProgress(.started(question: exchange.question, conversationID: exchange.conversationID), answerID: exchange.answerID)
         errorDescription = nil
         searchKeyInvitation = nil
@@ -421,6 +425,7 @@ final class ChatViewModel {
                 attachments: exchange.attachments,
                 media: [],
                 onSearchStarted: { [weak self] in
+                    self?.emitProgress(.searching, answerID: exchange.answerID)
                     self?.updateMessage(id: exchange.answerID) { message in
                         // Jamais en arrière depuis « Rédaction… » (hors connexion avec un fichier joint).
                         if message.generationStage == .analyzing { message.generationStage = .searching }
@@ -496,14 +501,24 @@ final class ChatViewModel {
         var answer = draft
         var gate = CitedAnswerGate(artifacts: artifacts)
         var announcedWriting = false
+        var announcedReasoning = false
         do {
             for try await snapshot in textStream {
                 answer.text = snapshot
-                // « Rédaction » à partir du premier instantané non vide du FLUX, même si la porte du mode Fiable
-                // retient encore le texte : le modèle écrit, l'affichage attend seulement une citation.
-                if !announcedWriting, !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    announcedWriting = true
-                    emitProgress(.writing, answerID: exchange.answerID)
+                // « Rédaction » à partir du premier MOT de réponse du FLUX, même si la porte du mode Fiable retient
+                // encore le texte : le modèle écrit, l'affichage attend seulement une citation. Tant que le modèle n'a
+                // écrit que son raisonnement : « Réflexion » (le nom de l'étape, jamais le contenu).
+                if !announcedWriting, let event = SearchProgressEvent.forStreamSnapshot(snapshot) {
+                    switch event {
+                    case .writing:
+                        announcedWriting = true
+                        emitProgress(.writing, answerID: exchange.answerID)
+                    case .reasoning where !announcedReasoning:
+                        announcedReasoning = true
+                        emitProgress(.reasoning, answerID: exchange.answerID)
+                    default:
+                        break
+                    }
                 }
                 let wasOpen = gate.isOpen
                 guard gate.admits(snapshot) else { continue }
@@ -611,11 +626,15 @@ final class ChatViewModel {
 
     // MARK: - Conversation
 
-    /// Décision 1 de Ben, « Nouvelle conversation » : annule ce qui est en
-    /// cours (la réponse partielle est persistée dans l'ANCIENNE conversation,
-    /// qui reste dans la Bibliothèque), vide le fil et les fichiers joints.
+    /// Remise à zéro du fil : ANNULE ce qui est en cours (la réponse partielle est persistée dans l'ancienne
+    /// conversation, qui reste dans la Bibliothèque), vide le fil et retire les fichiers joints avec leur copie.
     /// `isGenerating` repasse à `false` sans attendre la fin de l'échange annulé.
-    func startNewConversation(keepingAttachedFiles: Bool = false) {
+    ///
+    /// Ce n'est PAS ce que fait l'utilisateur en touchant « Nouvelle conversation » : ce chemin-là met d'abord la réponse
+    /// de côté pour qu'elle finisse (`startNewConversationFromUser`). Ici : conversation supprimée, ouverture d'une
+    /// autre conversation (après `moveGenerationToBackground`), et réponse qui n'a aucune conversation d'historique
+    /// pour la recevoir.
+    func startNewConversation() {
         sendTask?.cancel()
         generationTask?.cancel()
         suggestionsTask?.cancel()
@@ -639,9 +658,10 @@ final class ChatViewModel {
         persistenceErrorDescription = nil
         currentConversationID = nil
         // Par le contrôleur, jamais `store.removeAll()` seul : un fichier en
-        // cours de lecture s'attacherait sinon à la nouvelle conversation.
-        // `keepingAttachedFiles` : l'appelant trie lui-même les fichiers (`startNewConversationFromSystem`).
-        if !keepingAttachedFiles { attachmentController.removeAll() }
+        // cours de lecture s'attacherait sinon à la nouvelle conversation. Les fichiers PAS ENCORE ENVOYÉS partent
+        // aussi, avec leur copie (décision de Ben du 25/11, quel que soit le chemin) ; la réponse restée en
+        // arrière-plan n'en dépend plus : le pipeline a reçu un instantané en mémoire (`attachmentSnapshot()`).
+        attachmentController.removeAll()
     }
 
     /// Une ouverture demandée de l'extérieur (widget, Spotlight, raccourci) vise une conversation supprimée : même
@@ -656,10 +676,9 @@ final class ChatViewModel {
     /// automatiques n'ouvrent le clavier.
     private(set) var userNewConversationCount = 0
 
-    /// « Nouvelle conversation » demandée par l'utilisateur : comme `startNewConversation()`, puis avertit la vue.
+    /// « Nouvelle conversation » (bouton de la barre d'outils, menu ⇧⌘O) : voir `startNewConversationLettingAnswerFinish()`.
     func startNewConversationFromUser() {
-        startNewConversation()
-        userNewConversationCount += 1
+        startNewConversationLettingAnswerFinish()
     }
 
     /// Dernière valeur de `userNewConversationCount` dont la vue a déjà tenu compte (clavier ouvert). Ici et non
@@ -679,20 +698,22 @@ final class ChatViewModel {
         return true
     }
 
-    /// « Nouvelle question » demandée par le système (widget, Siri, bouton Action, `triva://new`). Contrairement au
-    /// bouton et au menu (décision 1 de Ben : ils arrêtent la réponse), une réponse en cours n'est PAS arrêtée : elle
-    /// finit en arrière-plan et reste dans l'historique, comme quand on ouvre une autre conversation
-    /// (`moveGenerationToBackground`). Sans conversation d'historique pour la recevoir, elle est arrêtée (réponse
-    /// partielle gardée), comme avant.
-    /// Fichiers joints : seuls ceux DÉJÀ ENVOYÉS avec une question de l'ancienne conversation en sont retirés (ils lui
-    /// appartiennent, comme quand on ouvre une autre conversation). Ceux joints mais pas encore envoyés (ou encore en
-    /// lecture) attendent la première question de la nouvelle ; un fil vide garde donc tout.
+    /// « Nouvelle question » demandée par le système (widget, Siri, bouton Action, `triva://new`) : même chemin que le
+    /// bouton, voir `startNewConversationLettingAnswerFinish()`.
     func startNewConversationFromSystem() {
-        let sentFileIDs = Set(messages.flatMap(\.attachedFiles).map(\.id))
+        startNewConversationLettingAnswerFinish()
+    }
+
+    /// LE chemin de toute nouvelle conversation (décision de Ben du 25/11, qui remplace sa décision 1) : une réponse en
+    /// cours n'est PAS arrêtée, elle finit en arrière-plan dans SA conversation, reste dans l'historique, son activité
+    /// en direct la suit et « Arrêter » redevient possible en y revenant (`moveGenerationToBackground`). Plusieurs
+    /// réponses peuvent ainsi finir en même temps ; un modèle MLX les sert l'une après l'autre (file d'attente de
+    /// l'app). Sans conversation d'historique pour la recevoir (historique absent ou illisible), la réponse est arrêtée,
+    /// début gardé. Les fichiers joints, envoyés ou non, sont retirés avec leur copie ; un partage ou un texte qui arrive
+    /// ENSUITE est traité normalement. Puis la vue est avertie (clavier).
+    private func startNewConversationLettingAnswerFinish() {
         moveGenerationToBackground()
-        startNewConversation(keepingAttachedFiles: true)
-        for id in sentFileIDs { attachmentController.removeAttachment(id: id) }
-        attachmentController.dismissAllNotices()
+        startNewConversation()
         userNewConversationCount += 1
     }
 
@@ -713,7 +734,11 @@ final class ChatViewModel {
                 persistenceErrorDescription = Self.missingConversationMessage
                 return false
             }
-            restored = conversation.orderedMessages.map { Self.restoredMessage($0, conversationID: id) }
+            restored = Self.markingUnansweredQuestions(
+                conversation.orderedMessages.map { Self.restoredMessage($0, conversationID: id) },
+                isAnswerComing: ActiveExchangeRegistry.shared.isAnswering(id),
+                at: now()
+            )
         } catch {
             reportPersistenceFailure(error)
             return false
@@ -729,7 +754,7 @@ final class ChatViewModel {
     /// supprimée -> le chat repart à neuf. Après « tout effacer » :
     /// `startNewConversation()`.
     func conversationWasDeleted(id: UUID) {
-        if backgroundExchange?.conversationID == id { cancelBackgroundGeneration() }
+        cancelBackgroundGeneration(conversationID: id)
         guard id == currentConversationID else { return }
         startNewConversation()
     }
@@ -817,7 +842,9 @@ final class ChatViewModel {
     /// de réponse sont uniques, un message absent du fil est simplement ignoré.
     func updateMessage(id: UUID, _ update: (inout Message) -> Void) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else {
-            backgroundExchange?.update(id: id, update)
+            for conversationID in backgroundExchanges.keys {
+                if backgroundExchanges[conversationID]?.update(id: id, update) == true { return }
+            }
             return
         }
         update(&messages[index])

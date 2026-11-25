@@ -30,7 +30,7 @@ struct SearchProgressEmitter {
             openAnswers.insert(answerID)
         case .completed, .interrupted, .failed:
             guard openAnswers.remove(answerID) != nil else { return }
-        case .searching, .sources, .writing:
+        case .searching, .reasoning, .sources, .writing:
             guard openAnswers.contains(answerID) else { return }
         }
         observer?.searchProgress(event, answerID: answerID)
@@ -39,6 +39,28 @@ struct SearchProgressEmitter {
     /// Filet de sécurité à la fin de l'échange : si aucun chemin ne l'a terminé, il finit « interrompu ».
     mutating func closeIfOpen(answerID: UUID) {
         emit(.interrupted, answerID: answerID)
+    }
+}
+
+nonisolated extension SearchProgressEvent {
+    /// Ce que dit un instantané du flux de texte de la réponse (mission I, 25/11) :
+    /// - `.writing` dès qu'il y a un premier MOT de réponse (corps ou TL;DR, hors raisonnement) ;
+    /// - `.reasoning` tant que le modèle n'a écrit que son raisonnement (bloc `<think>` ouvert ou refermé, sans réponse) ;
+    /// - `nil` pour un instantané vide, ou qui n'est que le début d'une balise (`<thi`) : rien à annoncer encore.
+    ///
+    /// Seul le NOM de l'étape part : le contenu du raisonnement ne quitte jamais cette fonction.
+    static func forStreamSnapshot(_ snapshot: String) -> SearchProgressEvent? {
+        let trimmed = snapshot.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !Self.isPartialThinkTag(trimmed) else { return nil }
+        let segments = ReasoningSegmenter.segment(snapshot, isStreaming: true)
+        if !segments.body.isEmpty || segments.tldr != nil { return .writing }
+        return segments.hasReasoning ? .reasoning : nil
+    }
+
+    /// `<`, `<t`, `<thi`… : le début d'une balise `<think>` qui n'est pas finie d'arriver.
+    private static func isPartialThinkTag(_ text: String) -> Bool {
+        let tag = "<think>"
+        return text.count < tag.count && tag.hasPrefix(text.lowercased())
     }
 }
 

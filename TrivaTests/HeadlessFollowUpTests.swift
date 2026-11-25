@@ -35,6 +35,25 @@ struct SearchHistoryDialogTests {
     }
 }
 
+@Suite("Premier plan d'office (modèle local, mission M)")
+struct HeadlessForegroundFirstTests {
+    @Test("iPhone, iPad, app pas active : le modèle local passe au premier plan sans rien essayer en arrière-plan",
+          arguments: [LocalGPUPhase.background, .inactive])
+    func localModelNeedsForeground(phase: LocalGPUPhase) {
+        #expect(HeadlessForegroundFallback.mustStartInForeground(execution: .backgroundWithGPU, gpuPhase: phase))
+    }
+
+    @Test("App active : rien ne change")
+    func activeAppIsUnchanged() {
+        #expect(!HeadlessForegroundFallback.mustStartInForeground(execution: .backgroundWithGPU, gpuPhase: .active))
+    }
+
+    @Test("Apple Intelligence, cloud : jamais concernés", arguments: [LocalGPUPhase.active, .inactive, .background])
+    func otherExecutionsAreUntouched(phase: LocalGPUPhase) {
+        #expect(!HeadlessForegroundFallback.mustStartInForeground(execution: .standard, gpuPhase: phase))
+    }
+}
+
 @Suite("Repli au premier plan (modèle local)")
 struct HeadlessForegroundFallbackTests {
     private func decide(

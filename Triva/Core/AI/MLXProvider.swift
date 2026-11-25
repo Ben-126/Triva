@@ -26,6 +26,9 @@ enum MLXProviderError: Error, Sendable, Equatable {
     /// testable que sur un appareil réel (voir CLAUDE.md : "Devices de test
     /// disponibles").
     case simulatorUnsupported
+    /// iPhone, iPad : travail demandé alors que l'app reste en arrière-plan, où le système refuse le GPU
+    /// (`LocalGPUGate`). Siri et Raccourcis passent normalement par le premier plan avant d'en arriver là.
+    case unavailableInBackground
 }
 
 /// Progression de téléchargement d'un modèle MLX (0.5), exposée à l'UI.
@@ -87,9 +90,13 @@ actor MLXProvider: AIGenerating {
     /// cette suspension et effacer `loaded`/`evictCurrent` — sans ce drapeau,
     /// `prepare()` ressusciterait un état que `cancel()` vient de nettoyer.
     private var isCancelled = false
+    /// Plus aucun travail envoyé au GPU hors du premier plan (mission M). Toujours ouverte sur Mac.
+    nonisolated private let gate: LocalGPUGate
 
-    init(entry: MLXModelCatalogEntry) {
+    /// `gate` : couture de test.
+    init(entry: MLXModelCatalogEntry, gate: LocalGPUGate = .shared) {
         self.entry = entry
+        self.gate = gate
     }
 
     /// Télécharge (si besoin, sinon réutilise le cache local) et charge le
@@ -99,7 +106,7 @@ actor MLXProvider: AIGenerating {
         throw MLXProviderError.simulatorUnsupported
         #else
         isCancelled = false
-        let model = Self.makeLanguageModel(for: entry, onProgress: onProgress)
+        let model = Self.makeLanguageModel(for: entry, gate: gate, onProgress: onProgress)
         // Posé avant `preload()`, pas après : `cancel()` doit pouvoir
         // évincer ce modèle pendant que le téléchargement est en cours,
         // c'est le seul moment où ça a un effet (voir `cancel()`).
@@ -126,12 +133,26 @@ actor MLXProvider: AIGenerating {
             throw MLXProviderError.modelNotLoaded
         }
 
-        do {
-            let response = try await loaded.makeSession().respond(to: prompt)
-            return response.content
-        } catch {
-            throw Self.mapGenerationError(error)
+        guard gate.isEnforced else {
+            do {
+                let response = try await loaded.makeSession().respond(to: prompt)
+                return response.content
+            } catch {
+                throw Self.mapGenerationError(error)
+            }
         }
+
+        // iPhone, iPad : par un flux, pour que l'appelant annulé reprenne la main tout de suite alors que
+        // l'annulation de MLX, elle, attend le premier plan (`LocalGPUGate.whenActive`).
+        var answer: String?
+        for try await text in gatedStream({ loaded, yield in
+            yield(try await loaded.makeSession().respond(to: prompt).content)
+        }) {
+            answer = text
+        }
+        try Task.checkCancellation()
+        guard let answer else { throw CancellationError() }
+        return answer
     }
 
     /// Vrai streaming token-par-token, même principe qu'
@@ -142,23 +163,54 @@ actor MLXProvider: AIGenerating {
     /// `await self.loaded` explicite à l'intérieur de la tâche, avant tout
     /// streaming réel, exactement comme le `guard let loaded` de `generate()`.
     nonisolated func streamGenerate(prompt: String) -> AsyncThrowingStream<String, Error> {
+        gatedStream { loaded, yield in
+            for try await snapshot in loaded.makeSession().streamResponse(to: prompt) {
+                yield(snapshot.content)
+            }
+        }
+    }
+
+    /// Exécute une génération dans sa propre tâche, comptée par `LocalGPUGate` (travail en cours tant que MLX peut
+    /// encore parler au GPU). Le flux abandonné l'annule : tout de suite si le GPU est permis (toujours sur Mac), au
+    /// retour au premier plan sinon, car l'annulation de MLX envoie elle aussi un tampon.
+    nonisolated private func gatedStream(
+        _ body: @escaping @Sendable (LoadedModel, @Sendable (String) -> Void) async throws -> Void
+    ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 guard let loaded = await self.loaded else {
                     continuation.finish(throwing: MLXProviderError.modelNotLoaded)
                     return
                 }
-
+                let work: LocalGPUWork
                 do {
-                    for try await snapshot in loaded.makeSession().streamResponse(to: prompt) {
-                        continuation.yield(snapshot.content)
-                    }
+                    work = try await self.beginWork()
+                } catch {
+                    continuation.finish(throwing: error)
+                    return
+                }
+                do {
+                    try await body(loaded) { continuation.yield($0) }
+                    // Boucle finie par une annulation (le flux s'arrête sans erreur) : MLX peut encore finir son étape.
+                    work.finishAfterGrace(Task.isCancelled ? LocalGPUWork.cancellationGrace : LocalGPUWork.completionGrace)
                     continuation.finish()
                 } catch {
+                    work.finishAfterGrace()
                     continuation.finish(throwing: Self.mapGenerationError(error))
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { [gate] _ in
+                gate.whenActive { task.cancel() }
+            }
+        }
+    }
+
+    /// Attend que le système permette le GPU (toujours vrai sur Mac), puis compte la génération : voir `LocalGPUGate`.
+    nonisolated private func beginWork() async throws -> LocalGPUWork {
+        do {
+            return try await gate.begin()
+        } catch is LocalGPUGateError {
+            throw MLXProviderError.unavailableInBackground
         }
     }
 
@@ -224,6 +276,7 @@ actor MLXProvider: AIGenerating {
     /// `#if targetEnvironment(simulator)`, MLX n'y fonctionnant pas).
     nonisolated private static func makeLanguageModel(
         for entry: MLXModelCatalogEntry,
+        gate: LocalGPUGate,
         onProgress: @Sendable @escaping (MLXDownloadProgress) -> Void
     ) -> MLXLanguageModel {
         let storageDirectory = modelStorageDirectory(for: entry.id)
@@ -246,14 +299,23 @@ actor MLXProvider: AIGenerating {
                     session: wifiOnlySession(),
                     cache: HubCache(location: .fixed(directory: storageDirectory))
                 )
-                return try await LLMModelFactory.shared.loadContainer(
-                    from: #hubDownloader(hubClient),
+                let hub: any Downloader = #hubDownloader(hubClient)
+                let load = GatedLoad()
+                defer { load.finish() }
+                let downloader: any Downloader = gate.isEnforced ? GatedDownloader(base: hub, gate: gate, load: load) : hub
+                let container = try await LLMModelFactory.shared.loadContainer(
+                    from: downloader,
                     using: #huggingFaceTokenizerLoader(),
                     configuration: configuration
                 ) { progress in
                     onProgress(MLXDownloadProgress(fractionCompleted: progress.fractionCompleted))
                     progressHandler(progress)
                 }
+                // Chaque étape du modèle passe par la barrière (mission M). Le Mac garde le modèle tel quel.
+                if gate.isEnforced {
+                    await container.update { $0.model = GatedLanguageModel($0.model, gate: gate) }
+                }
+                return container
             }
         )
     }

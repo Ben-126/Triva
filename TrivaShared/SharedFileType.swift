@@ -2,8 +2,8 @@
 //  SharedFileType.swift
 //  TrivaShared
 //
-//  Chantier 2.1 (mission E) : les fichiers que l'extension de partage accepte (PDF et images), reconnus par leurs
-//  PREMIERS OCTETS. Un fichier venu d'une autre app est une entrée externe : ni son nom, ni son extension, ni le type
+//  Chantier 2.1 (mission E) : les fichiers que l'extension de partage accepte (PDF, Word .docx et images), reconnus par
+//  leurs PREMIERS OCTETS (le .docx : par son répertoire central, voir `detect(fileAt:)`). Un fichier venu d'une autre app est une entrée externe : ni son nom, ni son extension, ni le type
 //  annoncé par l'app source ne font foi. Liste fermée, alignée sur `AttachmentKind` (un test le garantit).
 //
 //  Compilé dans l'app ET dans l'extension : Foundation seulement, aucune lecture complète d'un fichier (la mémoire
@@ -11,16 +11,35 @@
 //
 
 import Foundation
+import UniformTypeIdentifiers
 
 nonisolated enum SharedFileType: String, Codable, Sendable, CaseIterable {
-    case pdf, png, jpeg, gif, bmp, tiff, webp, heic, heif
+    case pdf, docx, png, jpeg, gif, bmp, tiff, webp, heic, heif
+
+    /// Identifiant système du .docx, déclaré par macOS et iOS ; à défaut, celui de l'extension `docx`.
+    static let docxContentType: UTType? = UTType("org.openxmlformats.wordprocessingml.document") ?? UTType(filenameExtension: "docx")
 
     /// Combien d'octets de tête on lit : la spécification PDF tolère jusqu'à 1 024 octets avant `%PDF-`.
     static let headerLength = 1_024
 
     private static let megabyte = 1_024 * 1_024
 
-    var isImage: Bool { self != .pdf }
+    /// Explicite : un nouveau document (comme le .docx) ne doit jamais être pris pour une image (plafond de 50 Mo, nom « Image »).
+    var isImage: Bool {
+        switch self {
+        case .pdf, .docx: false
+        case .png, .jpeg, .gif, .bmp, .tiff, .webp, .heic, .heif: true
+        }
+    }
+
+    /// Nature affichée dans la feuille de partage (« PDF · 2 Mo »).
+    var kindLabel: String {
+        switch self {
+        case .pdf: "PDF"
+        case .docx: "Word"
+        default: "Image"
+        }
+    }
 
     /// Extension du nom de fichier d'un fichier de ce type.
     var fileExtension: String {
@@ -30,12 +49,15 @@ nonisolated enum SharedFileType: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    /// Taille au-delà de laquelle le fichier est refusé : 200 Mo pour un PDF (lu 5 pages à la fois), 50 Mo pour une image.
+    /// Taille au-delà de laquelle le fichier est refusé : 200 Mo pour un PDF ou un .docx (lus par morceaux, jamais en
+    /// entier), 50 Mo pour une image.
     var maxByteCount: Int { isImage ? 50 * Self.megabyte : 200 * Self.megabyte }
 
     // MARK: Reconnaissance
 
     /// Le type d'après les octets de tête, ou `nil` (exécutable, texte, archive, AVIF, vide…).
+    /// Un .docx n'est PAS reconnu ici : c'est une archive ZIP (`PK`), et seul son répertoire central, à la FIN du fichier,
+    /// dit si c'est un document Word (`detect(fileAt:)`).
     static func detect(header: Data) -> SharedFileType? {
         let bytes = [UInt8](header.prefix(headerLength))
         if let pdf = detectPDF(bytes) { return pdf }
@@ -49,15 +71,26 @@ nonisolated enum SharedFileType: String, Codable, Sendable, CaseIterable {
         return nil
     }
 
-    /// Le type d'un fichier sur disque : seule sa tête est lue. `nil` si le fichier est absent ou illisible.
+    /// Le type d'un fichier sur disque : seule sa tête est lue, plus, pour une archive ZIP, son répertoire central (borné à
+    /// quelques Mo, jamais une décompression). `nil` si le fichier est absent, illisible ou d'un autre type.
     static func detect(fileAt url: URL) -> SharedFileType? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let header = try? handle.read(upToCount: headerLength) else { return nil }
-        return detect(header: header)
+        if let known = detect(header: header) { return known }
+        return starts([UInt8](header), with: zipSignature) && isWordDocument(at: url) ? .docx : nil
     }
 
     // MARK: Interne
+
+    private static let zipSignature: [UInt8] = [0x50, 0x4B, 0x03, 0x04]
+
+    /// Un ZIP qui contient `[Content_Types].xml` ET `word/document.xml`. Un classeur, une présentation, un ODT ou un ZIP
+    /// quelconque, même nommé « .docx », n'en est pas un.
+    private static func isWordDocument(at url: URL) -> Bool {
+        guard let source = try? ZipFileSource(url: url), let index = try? ZipArchiveIndex(source: source) else { return false }
+        return index.isWordDocument
+    }
 
     private static func starts(_ bytes: [UInt8], with prefix: [UInt8]) -> Bool {
         bytes.count >= prefix.count && Array(bytes[0..<prefix.count]) == prefix

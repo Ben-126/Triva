@@ -141,19 +141,21 @@ struct SystemX1HandoffTests {
     func failedCopyKeepsTheEntry() async throws {
         let rig = try InboxRig(brokenVault: true); defer { rig.cleanUp() }
         try rig.addPDF(text: nil)
-        let handoff = try #require(await SharedInboxHandoff.takeLatest(from: rig.inbox, depositRoot: rig.depositRoot))
+        let handoff = try #require(await SharedInboxHandoff.takeAll(from: rig.inbox, depositRoot: rig.depositRoot).first)
         #expect(handoff.fileCopyFailed)
         #expect(handoff.depositURL == nil)
         #expect(rig.inbox.validEntries().count == 1)
     }
 
-    @Test("Copie ratée : les partages plus anciens ne sont pas effacés non plus")
-    func failedCopyKeepsOlderEntries() async throws {
+    @Test("Copie ratée : tous les partages sont rendus, aucun n'est effacé avant la prise de route")
+    func failedCopyKeepsEveryEntry() async throws {
         let rig = try InboxRig(brokenVault: true); defer { rig.cleanUp() }
         try rig.addPDF(text: "ancien", name: "a.pdf")
         rig.clock.advance(5)
         try rig.addPDF(text: "récent", name: "b.pdf")
-        _ = await SharedInboxHandoff.takeLatest(from: rig.inbox, depositRoot: rig.depositRoot)
+        let handoffs = await SharedInboxHandoff.takeAll(from: rig.inbox, depositRoot: rig.depositRoot)
+        #expect(handoffs.map(\.text) == ["ancien", "récent"])
+        #expect(handoffs.allSatisfy { $0.fileCopyFailed })
         #expect(rig.inbox.validEntries().count == 2)
     }
 
@@ -161,15 +163,15 @@ struct SystemX1HandoffTests {
     func skippingEntry() async throws {
         let rig = try InboxRig(); defer { rig.cleanUp() }
         let entry = try rig.inbox.add(text: "une fois", fileAt: nil, displayName: nil)
-        #expect(await SharedInboxHandoff.takeLatest(from: rig.inbox, depositRoot: rig.depositRoot, skipping: [entry.id]) == nil)
-        #expect(await SharedInboxHandoff.takeLatest(from: rig.inbox, depositRoot: rig.depositRoot) != nil)
+        #expect(await SharedInboxHandoff.takeAll(from: rig.inbox, depositRoot: rig.depositRoot, skipping: [entry.id]).isEmpty)
+        #expect(await SharedInboxHandoff.takeAll(from: rig.inbox, depositRoot: rig.depositRoot).count == 1)
     }
 
     @Test("Texte coupé : la reprise le signale")
     func truncationIsReported() async throws {
         let rig = try InboxRig(); defer { rig.cleanUp() }
         try rig.inbox.add(text: String(repeating: "b", count: 2_500), fileAt: nil, displayName: nil)
-        let handoff = try #require(await SharedInboxHandoff.takeLatest(from: rig.inbox, depositRoot: rig.depositRoot))
+        let handoff = try #require(await SharedInboxHandoff.takeAll(from: rig.inbox, depositRoot: rig.depositRoot).first)
         #expect(handoff.textWasTruncated)
     }
 }
@@ -224,6 +226,91 @@ struct SystemX1ConsumerTests {
         let routes = center.drain()
         #expect(routes.count == 2)
         #expect(routes.last == .notice(.truncatedText))
+    }
+
+    private func attachmentNames(_ routes: [SystemRoute]) -> [String] {
+        routes.compactMap { if case .attachment(let url) = $0 { url.lastPathComponent } else { nil } }
+    }
+
+    @Test("Plusieurs partages avant l'ouverture : tous repris, fichiers d'abord puis textes, dans l'ordre d'arrivée")
+    func severalSharesAllTaken() async throws {
+        let rig = try InboxRig(); defer { rig.cleanUp() }
+        try rig.addPDF(text: "A", name: "a.pdf")
+        rig.clock.advance(1)
+        try rig.inbox.add(text: "B", fileAt: nil, displayName: nil)
+        rig.clock.advance(1)
+        try rig.addPDF(text: "C", name: "c.pdf")
+        let (consumer, center) = makeConsumer(rig)
+        await consumer.takeOver()
+        #expect(rig.inbox.validEntries().count == 3, "app tuée ici : aucun partage n'est perdu")
+        let routes = center.drain()
+        #expect(attachmentNames(routes) == ["a.pdf", "c.pdf"])
+        #expect(routes.suffix(3) == [.draft("A"), .draft("B"), .draft("C")])
+        #expect(routes.count == 5)
+        #expect(rig.leftovers().isEmpty, "les copies de l'App Group sont effacées dès que les routes sont prises")
+    }
+
+    @Test("Huit partages avec fichier, texte et un texte coupé : aucune route n'est évincée de la file")
+    func eightSharesFitTheQueue() async throws {
+        let rig = try InboxRig(); defer { rig.cleanUp() }
+        for index in 1...8 {
+            let text = index == 3 ? String(repeating: "x", count: 2_600) : "texte \(index)"
+            try rig.addPDF(text: text, name: "f\(index).pdf")
+            rig.clock.advance(1)
+        }
+        let (consumer, center) = makeConsumer(rig)
+        await consumer.takeOver()
+        let routes = center.drain()
+        #expect(attachmentNames(routes) == (1...8).map { "f\($0).pdf" })
+        #expect(routes.filter { if case .draft = $0 { true } else { false } }.count == 8)
+        #expect(routes.last == .notice(.truncatedText))
+        #expect(routes.count == 17)
+        #expect(rig.leftovers().isEmpty)
+        let deposits = rig.depositRoot.appendingPathComponent("_deposits")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: deposits.path).count == 8, "aucun fichier évincé n'a été effacé")
+    }
+
+    @Test("Plusieurs textes coupés ou fichiers non copiés : chaque information n'est donnée qu'une fois")
+    func noticesAreDeduplicated() async throws {
+        let rig = try InboxRig(brokenVault: true); defer { rig.cleanUp() }
+        for _ in 1...2 {
+            try rig.addPDF(text: String(repeating: "y", count: 2_600))
+            rig.clock.advance(1)
+        }
+        let (consumer, center) = makeConsumer(rig)
+        await consumer.takeOver()
+        let routes = center.drain()
+        #expect(routes.filter { $0 == .notice(.truncatedText) }.count == 1)
+        #expect(routes.filter { $0 == .notice(.fileNotCopied) }.count == 1)
+        #expect(routes.count == 4, "deux brouillons et deux informations")
+        #expect(rig.leftovers().isEmpty)
+    }
+
+    @Test("Un partage dont la copie rate n'empêche pas les autres ; celui sans texte reste pour un nouvel essai")
+    func oneFailedCopyDoesNotBlockTheOthers() async throws {
+        let rig = try InboxRig(brokenVault: true); defer { rig.cleanUp() }
+        try rig.addPDF(text: nil, name: "seul.pdf")
+        rig.clock.advance(1)
+        try rig.inbox.add(text: "autre", fileAt: nil, displayName: nil)
+        let (consumer, center) = makeConsumer(rig)
+        await consumer.takeOver()
+        await consumer.takeOver()
+        #expect(center.drain() == [.draft("autre"), .notice(.fileNotCopied)])
+        #expect(rig.inbox.validEntries().count == 1, "le fichier seul, non copié, reste (24 h)")
+    }
+
+    @Test("Un nouveau partage arrivé entre deux reprises est repris seul, les précédents ne reviennent pas")
+    func laterShareIsTakenAlone() async throws {
+        let rig = try InboxRig(); defer { rig.cleanUp() }
+        try rig.inbox.add(text: "un", fileAt: nil, displayName: nil)
+        let (consumer, center) = makeConsumer(rig)
+        await consumer.takeOver()
+        rig.clock.advance(1)
+        try rig.inbox.add(text: "deux", fileAt: nil, displayName: nil)
+        await consumer.takeOver()
+        #expect(center.drain() == [.draft("un"), .draft("deux")])
+        await consumer.takeOver()
+        #expect(center.drain().isEmpty)
     }
 
     @Test("« Tout effacer » : ce qui attendait une fenêtre est jeté avec son fichier, et rien ne revient")

@@ -46,7 +46,7 @@ private func makeWindow(_ stores: TrivaSharedStores, _ registry: WindowConversat
 @MainActor
 private func simulateBackgroundGeneration(in window: TrivaRootCoordinator, conversation: UUID) {
     window.session.ensureChatViewModel()
-    window.session.chatViewModel?.backgroundExchange = BackgroundExchange(
+    window.session.chatViewModel?.backgroundExchanges[conversation] = BackgroundExchange(
         conversationID: conversation, exchangeID: UUID(), messages: [], sendTask: nil, generationTask: nil
     )
 }
@@ -54,6 +54,18 @@ private func simulateBackgroundGeneration(in window: TrivaRootCoordinator, conve
 @MainActor
 @Suite("Registre — conversations tenues")
 struct WindowRegistryHeldTests {
+    @Test("Plusieurs réponses en arrière-plan d'une même fenêtre tiennent chacune leur conversation")
+    func severalBackgroundConversationsAreHeld() {
+        let registry = WindowConversationRegistry()
+        let windowA = UUID(), windowB = UUID(), first = UUID(), second = UUID()
+        registry.setBackgroundConversations({ [first, second] }, in: windowA)
+
+        #expect(registry.isHeld(first, excluding: windowB))
+        #expect(registry.isHeld(second, excluding: windowB))
+        #expect(!registry.isHeld(first, excluding: windowA))
+        #expect(!registry.isHeld(UUID(), excluding: windowB))
+    }
+
     @Test("Une réponse en arrière-plan tient sa conversation, pour les AUTRES fenêtres seulement")
     func backgroundConversationIsHeld() {
         let registry = WindowConversationRegistry()
@@ -148,7 +160,7 @@ struct WindowConversationExclusivityTests {
         #expect(windowC.windowTarget.conversationID == nil)
 
         // La réponse se termine : la conversation est libre.
-        windowA.session.chatViewModel?.backgroundExchange = nil
+        windowA.session.chatViewModel?.backgroundExchanges = [:]
         windowB.restoreWindowTarget(.conversation(id))
         #expect(windowB.windowTarget == .conversation(id))
     }

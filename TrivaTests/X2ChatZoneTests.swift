@@ -344,62 +344,47 @@ struct X2MissingConversationTests {
     }
 }
 
-// MARK: - R2-01 : MLX ne travaille pas pour le GPU en arrière-plan
+// MARK: - R2-01 puis mission M : MLX ne travaille pas pour le GPU en arrière-plan
 
+/// La décision est désormais celle de l'APP entière (`LocalGPUAccessMonitor`) et plus celle d'une scène : arrêter une
+/// réponse à `.background` sans la garer d'abord faisait justement envoyer un tampon refusé.
 @MainActor
 @Suite("R2-01 — arrêt de la génération locale avant l'arrière-plan")
 struct X2BackgroundGPUTests {
-    @Test("Arrière-plan, MLX, GPU restreint : on arrête")
-    func stopsMLXInBackground() {
-        #expect(BackgroundGPUPolicy.shouldStopGeneration(phase: .background, engine: .mlxLocal, restrictsGPU: true))
+    @Test("Une session sait s'arrêter, avec ou sans fil de discussion ouvert")
+    func sessionStops() async throws {
+        let window = try x2Window(consent: true, engine: .mlxLocal)
+        await window.session.stopLocalGenerationInBackground()
+        window.session.ensureChatViewModel()
+        await window.session.stopLocalGenerationInBackground()
+        #expect(window.session.chatViewModel?.isGenerating == false)
     }
 
-    @Test("Passage à inactif (Centre de contrôle, notification) : on n'arrête pas")
-    func inactiveKeepsGenerating() {
-        #expect(!BackgroundGPUPolicy.shouldStopGeneration(phase: .inactive, engine: .mlxLocal, restrictsGPU: true))
-        #expect(!BackgroundGPUPolicy.shouldStopGeneration(phase: .active, engine: .mlxLocal, restrictsGPU: true))
-    }
+    @Test("Relancement : la fenêtre restaurée sur une question restée sans réponse la dit interrompue, sans rien envoyer")
+    func restoredWindowMarksTheUnansweredQuestion() throws {
+        let stores = try x2Stores()
+        let conversation = try stores.chatHistory.createConversation(firstQuestion: "Question coupée")
+        try stores.chatHistory.appendUserMessage(to: conversation, text: "Question coupée")
+        let window = try x2Window(stores: stores, consent: true, engine: .mlxLocal)
 
-    @Test("Apple Intelligence et cloud ne touchent pas au GPU de l'app : jamais arrêtés")
-    func otherEnginesAreUntouched() {
-        #expect(!BackgroundGPUPolicy.shouldStopGeneration(phase: .background, engine: .appleIntelligence, restrictsGPU: true))
-        #expect(!BackgroundGPUPolicy.shouldStopGeneration(phase: .background, engine: .cloudBYOK, restrictsGPU: true))
-    }
+        window.restoreWindowTarget(.conversation(conversation.id))
 
-    @Test("Mac : le GPU n'est pas coupé en arrière-plan, rien à arrêter")
-    func macKeepsGenerating() {
-        #expect(!BackgroundGPUPolicy.shouldStopGeneration(phase: .background, engine: .mlxLocal, restrictsGPU: false))
+        let chat = try #require(window.session.chatViewModel)
+        #expect(chat.messages.map(\.role) == [.user, .assistant])
+        let last = try #require(chat.messages.last)
+        #expect(last.status == .interrupted)
+        #expect(chat.canRetryInterrupted(last))
+        #expect(!chat.isGenerating)
+        #expect(chat.pendingConsent == nil)
+        #expect(try #require(try stores.chatHistory.conversation(with: conversation.id)).orderedMessages.count == 1)
     }
 
     @Test("La plateforme dit la vérité : iOS restreint le GPU, macOS non")
     func platformFlag() {
         #if os(iOS)
-        #expect(BackgroundGPUPolicy.platformRestrictsGPU)
+        #expect(LocalGPUGate.platformRestrictsGPU)
         #else
-        #expect(!BackgroundGPUPolicy.platformRestrictsGPU)
+        #expect(!LocalGPUGate.platformRestrictsGPU)
         #endif
-    }
-
-    @Test("Le coordinateur arrête l'échange quand l'app part en arrière-plan (MLX, GPU restreint), jamais pour inactif")
-    func coordinatorStopsTheAnswer() throws {
-        let window = try x2Window(consent: true, engine: .mlxLocal)
-        window.session.ensureChatViewModel()
-
-        #expect(window.scenePhaseDidChange(.inactive, restrictsGPU: true) == false)
-        #expect(window.scenePhaseDidChange(.background, restrictsGPU: true) == true)
-        #expect(window.scenePhaseDidChange(.background, restrictsGPU: false) == false)
-    }
-
-    @Test("Un autre moteur n'est jamais arrêté par le coordinateur")
-    func coordinatorLeavesOtherEngines() throws {
-        let window = try x2Window(consent: true, engine: .cloudBYOK)
-        window.session.ensureChatViewModel()
-        #expect(window.scenePhaseDidChange(.background, restrictsGPU: true) == false)
-    }
-
-    @Test("Sans fil de discussion ouvert, rien à arrêter")
-    func noChatNothingToStop() throws {
-        let window = try x2Window(consent: true, engine: .mlxLocal)
-        #expect(window.scenePhaseDidChange(.background, restrictsGPU: true) == false)
     }
 }

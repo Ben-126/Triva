@@ -23,7 +23,6 @@ nonisolated struct TrivaShortcuts: AppShortcutsProvider {
             intent: OpenComposerIntent(target: .keyboard),
             phrases: [
                 "Nouvelle recherche dans \(.applicationName)",
-                "Ouvre \(.applicationName)",
             ],
             shortTitle: "Nouvelle recherche",
             systemImageName: "square.and.pencil"

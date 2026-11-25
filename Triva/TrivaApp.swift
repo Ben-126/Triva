@@ -387,6 +387,8 @@ struct TrivaApp: App {
         let stores = TrivaSharedStores.live()
         _stores = State(initialValue: stores)
         _searXNGMaintenance = State(initialValue: stores.makeSearXNGMaintenance())
+        // Avant la première scène : le modèle local ne touche au GPU que quand le système le permet (mission M).
+        LocalGPUAccessMonitor.shared.start()
         Self.purgeLegacyURLCacheOnce()
         Self.purgeAttachmentCopies()
         Self.registerSystemIntegrations(stores: stores)
@@ -462,6 +464,8 @@ struct TrivaApp: App {
             guard phase == .active, !TrivaTestHost.isHostingUnitTests() else { return }
             searXNGMaintenance.sceneDidBecomeActive()
             SystemIntegrations.shared.sceneDidBecomeActive()
+            // W4-V : prépare la lecture d'image en fond (une fois par version, après un délai, appareil calme seulement).
+            ImageRecognitionReadiness.shared.startIfNeeded()
         }
         // Historique modifié dans n'importe quelle fenêtre : les intégrations système (widget, Spotlight) suivent.
         .onChange(of: stores.chatHistory.revision) {

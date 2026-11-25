@@ -13,7 +13,7 @@ import Testing
 @MainActor
 private final class FakeLiveActivityClient: LiveActivityClient {
     enum Call: Equatable {
-        case start(question: String, conversationID: UUID?, state: SearchActivityState, staleDate: Date, id: String)
+        case start(conversationID: UUID?, state: SearchActivityState, staleDate: Date, id: String)
         case update(id: String, state: SearchActivityState, staleDate: Date)
         case end(id: String, state: SearchActivityState, policy: LiveActivityEndPolicy)
         case endAll
@@ -25,14 +25,16 @@ private final class FakeLiveActivityClient: LiveActivityClient {
     /// Retarde les mises à jour de la 1re étape : l'ordre doit rester celui des événements.
     var slowFirstUpdate = false
     private(set) var calls: [Call] = []
+    private(set) var startedAttributes: [SearchActivityAttributes] = []
     private var counter = 0
     private var updateCount = 0
 
     func start(attributes: SearchActivityAttributes, state: SearchActivityState, staleDate: Date) throws -> String {
         if let startError { throw startError }
         counter += 1
+        startedAttributes.append(attributes)
         let id = "activity-\(counter)"
-        calls.append(.start(question: attributes.question, conversationID: attributes.conversationID, state: state, staleDate: staleDate, id: id))
+        calls.append(.start(conversationID: attributes.conversationID, state: state, staleDate: staleDate, id: id))
         return id
     }
 
@@ -111,6 +113,11 @@ struct SearchLiveActivityControllerTests {
         )
     }
 
+    /// L'état tel que l'écran le reçoit : l'étape, le nombre de sources et (réglage allumé) la question.
+    private func shown(_ stage: SearchActivityStage, _ count: Int, question: String? = "Capitale de la France ?") -> SearchActivityState {
+        SearchActivityState(stage: stage, sourceCount: count, question: question)
+    }
+
     private func started(_ question: String = "Capitale de la France ?") -> SearchProgressEvent {
         .started(question: question, conversationID: conversation)
     }
@@ -128,10 +135,10 @@ struct SearchLiveActivityControllerTests {
 
         let stale = env.now.addingTimeInterval(SearchLiveActivityController.staleInterval)
         #expect(client.calls == [
-            .start(question: "Capitale de la France ?", conversationID: conversation, state: .initial, staleDate: stale, id: "activity-1"),
-            .update(id: "activity-1", state: SearchActivityState(stage: .reading, sourceCount: 3), staleDate: stale),
-            .update(id: "activity-1", state: SearchActivityState(stage: .writing, sourceCount: 3), staleDate: stale),
-            .end(id: "activity-1", state: SearchActivityState(stage: .ready, sourceCount: 3), policy: .immediate),
+            .start(conversationID: conversation, state: shown(.thinking, 0), staleDate: stale, id: "activity-1"),
+            .update(id: "activity-1", state: shown(.reading, 3), staleDate: stale),
+            .update(id: "activity-1", state: shown(.writing, 3), staleDate: stale),
+            .end(id: "activity-1", state: shown(.ready, 3), policy: .immediate),
         ])
     }
 
@@ -145,7 +152,7 @@ struct SearchLiveActivityControllerTests {
 
         let expected = env.now.addingTimeInterval(SearchLiveActivityController.readyLinger)
         #expect(SearchLiveActivityController.readyLinger == 1_800)
-        #expect(client.ends == [.end(id: "activity-1", state: SearchActivityState(stage: .ready, sourceCount: 0), policy: .after(expected))])
+        #expect(client.ends == [.end(id: "activity-1", state: shown(.ready, 0), policy: .after(expected))])
     }
 
     @Test("Recherche interrompue ou échouée : l'activité reste 5 minutes", arguments: [
@@ -160,7 +167,7 @@ struct SearchLiveActivityControllerTests {
         let expected = env.now.addingTimeInterval(SearchLiveActivityController.failureLinger)
         #expect(SearchLiveActivityController.failureLinger == 300)
         let stage: SearchActivityStage = event == .interrupted ? .interrupted : .failed
-        #expect(client.ends == [.end(id: "activity-1", state: SearchActivityState(stage: stage, sourceCount: 0), policy: .after(expected))])
+        #expect(client.ends == [.end(id: "activity-1", state: shown(stage, 0), policy: .after(expected))])
     }
 
     @Test("Chaque mise à jour repousse la date de péremption de 2 minutes")
@@ -172,7 +179,7 @@ struct SearchLiveActivityControllerTests {
         await controller.settle()
 
         let stale = env.now.addingTimeInterval(120)
-        #expect(client.updates == [.update(id: "activity-1", state: SearchActivityState(stage: .reading, sourceCount: 2), staleDate: stale)])
+        #expect(client.updates == [.update(id: "activity-1", state: shown(.reading, 2), staleDate: stale)])
     }
 
     @Test("Les mises à jour partent dans l'ordre des événements, même si la première est lente")
@@ -204,7 +211,173 @@ struct SearchLiveActivityControllerTests {
         controller.searchProgress(.sources(count: 2), answerID: answer)
         await controller.settle()
 
+        // « Recherche des sources » puis « Lecture de 2 sources » : les répétitions et le « zéro source » n'en ajoutent pas.
+        #expect(client.updates.count == 2)
+    }
+
+    // MARK: Les étapes, dites précisément
+
+    @Test("Toutes les étapes, dans l'ordre : réflexion, recherche, lecture, réflexion du modèle, rédaction, prête")
+    func everyStageIsSaid() async {
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        controller.searchProgress(.searching, answerID: answer)
+        controller.searchProgress(.sources(count: 3), answerID: answer)
+        controller.searchProgress(.reasoning, answerID: answer)
+        controller.searchProgress(.writing, answerID: answer)
+        controller.searchProgress(.completed, answerID: answer)
+        await controller.settle()
+
+        let texts: [String] = client.calls.compactMap {
+            switch $0 {
+            case .start(_, let state, _, _), .update(_, let state, _), .end(_, let state, _): state.statusText
+            default: nil
+            }
+        }
+        #expect(texts == [
+            "Réflexion…", "Recherche des sources…", "Lecture de 3 sources", "Réflexion…", "Rédaction…", "Réponse prête",
+        ])
+    }
+
+    @Test("Une étape absente n'est pas affichée : sans recherche, la réflexion passe directement à la rédaction")
+    func absentStageIsNotShown() async {
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        controller.searchProgress(.writing, answerID: answer)
+        controller.searchProgress(.completed, answerID: answer)
+        await controller.settle()
+
+        let stages: [SearchActivityStage] = client.calls.compactMap {
+            switch $0 {
+            case .start(_, let state, _, _), .update(_, let state, _), .end(_, let state, _): state.stage
+            default: nil
+            }
+        }
+        #expect(stages == [.thinking, .writing, .ready])
+    }
+
+    // MARK: La question (réglage « Afficher la question »)
+
+    @Test("Par défaut (réglage jamais touché), la question est montrée")
+    func questionShownByDefault() async {
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        await controller.settle()
+
+        #expect(SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity)
+        #expect(startedStates.first?.question == "Capitale de la France ?")
+    }
+
+    @Test("Question éteinte au départ : aucune trace de la question, de l'étape de départ à la fin")
+    func questionOffFromTheStart() async {
+        SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity = false
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        controller.searchProgress(.searching, answerID: answer)
+        controller.searchProgress(.sources(count: 2), answerID: answer)
+        controller.searchProgress(.writing, answerID: answer)
+        controller.searchProgress(.completed, answerID: answer)
+        await controller.settle()
+
+        let states = allStates
+        #expect(states.count == 5)
+        #expect(states.allSatisfy { $0.question == nil })
+        #expect(states.map(\.stage) == [.thinking, .searching, .reading, .writing, .ready])
+    }
+
+    @Test("Question éteinte en cours de recherche : l'activité en cours la perd tout de suite, et ses mises à jour aussi")
+    func questionTurnedOffMidRun() async {
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        controller.searchProgress(.sources(count: 2), answerID: answer)
+        await controller.settle()
+        SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity = false
+        await controller.questionVisibilityDidChange()
+        controller.searchProgress(.writing, answerID: answer)
+        controller.searchProgress(.completed, answerID: answer)
+        await controller.settle()
+
+        let stale = env.now.addingTimeInterval(120)
+        #expect(client.calls.dropFirst(2) == [
+            .update(id: "activity-1", state: shown(.reading, 2, question: nil), staleDate: stale),
+            .update(id: "activity-1", state: shown(.writing, 2, question: nil), staleDate: stale),
+            .end(id: "activity-1", state: shown(.ready, 2, question: nil), policy: .immediate),
+        ])
+    }
+
+    @Test("Question éteinte : les activités terminées qui attendent de disparaître sont retirées tout de suite")
+    func questionTurnedOffDismissesLingeringActivities() async {
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        env.isActive = false
+        controller.searchProgress(.completed, answerID: answer)
+        await controller.settle()
+        client.open = [OpenLiveActivity(id: "activity-1", conversationID: conversation)]
+        SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity = false
+        await controller.questionVisibilityDidChange()
+
+        #expect(client.calls.last == .dismiss(id: "activity-1"))
+    }
+
+    @Test("Question éteinte : l'échange en cours n'est pas retiré de l'écran, il est mis à jour")
+    func questionTurnedOffKeepsTheRunningActivity() async {
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        await controller.settle()
+        client.open = [OpenLiveActivity(id: "activity-1", conversationID: conversation)]
+        SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity = false
+        await controller.questionVisibilityDidChange()
+
+        #expect(!client.calls.contains(.dismiss(id: "activity-1")))
         #expect(client.updates.count == 1)
+    }
+
+    @Test("Question rallumée en cours de recherche : elle revient dans la mise à jour qui suit")
+    func questionTurnedBackOn() async {
+        SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity = false
+        let controller = makeController()
+        controller.searchProgress(started(), answerID: answer)
+        await controller.settle()
+        SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity = true
+        await controller.questionVisibilityDidChange()
+        await controller.settle()
+
+        #expect(client.updates.last == .update(
+            id: "activity-1", state: shown(.thinking, 0), staleDate: env.now.addingTimeInterval(120)
+        ))
+    }
+
+    @Test("Les attributs de l'activité ne portent jamais la question (réglage allumé ou non)", arguments: [true, false])
+    func attributesNeverCarryTheQuestion(shows: Bool) async {
+        SystemIntegrationPreferences(defaults: defaults).showsQuestionInLiveActivity = shows
+        let controller = makeController()
+        controller.searchProgress(started("Une question privée ?"), answerID: answer)
+        await controller.settle()
+
+        #expect(client.startedAttributes.count == 1)
+        #expect(client.startedAttributes.first == SearchActivityAttributes(conversationID: conversation))
+    }
+
+    @Test("Une question longue ou sur plusieurs lignes est ramenée à une ligne avant d'être envoyée")
+    func questionIsOneLine() async {
+        let controller = makeController()
+        controller.searchProgress(started("Ligne un\n  ligne deux"), answerID: answer)
+        await controller.settle()
+
+        #expect(startedStates.first?.question == "Ligne un ligne deux")
+    }
+
+    private var allStates: [SearchActivityState] {
+        client.calls.compactMap {
+            switch $0 {
+            case .start(_, let state, _, _), .update(_, let state, _), .end(_, let state, _): state
+            default: nil
+            }
+        }
+    }
+
+    private var startedStates: [SearchActivityState] {
+        client.calls.compactMap { if case .start(_, let state, _, _) = $0 { state } else { nil } }
     }
 
     // MARK: Quand il n'y a pas d'activité
@@ -286,7 +459,7 @@ struct SearchLiveActivityControllerTests {
         await controller.settle()
 
         #expect(client.starts.count == 2)
-        #expect(client.ends == [.end(id: "activity-1", state: .initial, policy: .immediate)])
+        #expect(client.ends == [.end(id: "activity-1", state: shown(.thinking, 0, question: "Première"), policy: .immediate)])
         #expect(keeper.ended.count == 1)
     }
 
@@ -302,7 +475,7 @@ struct SearchLiveActivityControllerTests {
 
         #expect(client.starts.count == 2)
         #expect(client.ends.count == 1)
-        #expect(client.updates == [.update(id: "activity-1", state: SearchActivityState(stage: .reading, sourceCount: 1), staleDate: env.now.addingTimeInterval(120))])
+        #expect(client.updates == [.update(id: "activity-1", state: shown(.reading, 1, question: "A"), staleDate: env.now.addingTimeInterval(120))])
     }
 
     // MARK: Arrière-plan
@@ -344,7 +517,7 @@ struct SearchLiveActivityControllerTests {
         await controller.settle()
 
         let expected = env.now.addingTimeInterval(SearchLiveActivityController.failureLinger)
-        #expect(client.ends == [.end(id: "activity-1", state: SearchActivityState(stage: .interrupted, sourceCount: 2), policy: .after(expected))])
+        #expect(client.ends == [.end(id: "activity-1", state: shown(.interrupted, 2), policy: .after(expected))])
         #expect(client.updates.count == 1)
         #expect(keeper.ended.count == 1)
     }
@@ -408,7 +581,7 @@ struct SearchLiveActivityControllerTests {
         let unavailable = UnavailableLiveActivityClient()
         #expect(unavailable.areActivitiesEnabled == false)
         #expect(throws: LiveActivityUnavailableError.self) {
-            try unavailable.start(attributes: SearchActivityAttributes(question: "q", conversationID: nil), state: .initial, staleDate: .now)
+            try unavailable.start(attributes: SearchActivityAttributes(conversationID: nil), state: .initial, staleDate: .now)
         }
     }
 }

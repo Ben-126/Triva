@@ -91,6 +91,13 @@ final class LocalModelTurnQueue {
         return holder.requester != requester
     }
 
+    /// `requester` attend-il derrière SON PROPRE travail ? Vrai quand sa réponse précédente, laissée en arrière-plan
+    /// (« Nouvelle conversation »), tient encore le modèle : la question suivante part juste après et doit le dire.
+    func isWaitingBehindOwnWork(_ requester: UUID) -> Bool {
+        guard waitingRequesters.contains(requester), let holder else { return false }
+        return holder.requester == requester
+    }
+
     private func cancelWaiting(_ turn: LocalModelTurn) {
         guard let index = waiters.firstIndex(where: { $0.turn == turn }) else { return }
         let waiter = waiters.remove(at: index)

@@ -117,9 +117,9 @@ struct DroppedItemReceptionTests {
     @Test("Chaque extension donne le bon usage : pièce jointe, image, ou refus",
           arguments: [
               ("a.pdf", Expected.attachment), ("a.txt", .attachment), ("a.md", .attachment), ("a.csv", .attachment),
-              ("a.json", .attachment),
+              ("a.json", .attachment), ("a.docx", .attachment),
               ("a.png", .image), ("a.jpg", .image), ("a.heic", .image), ("a.gif", .image), ("a.webp", .image),
-              ("a.svg", .refused), ("a.dng", .refused), ("a.zip", .refused), ("a.docx", .refused),
+              ("a.svg", .refused), ("a.dng", .refused), ("a.zip", .refused), ("a.doc", .refused), ("a.odt", .refused), ("a.pages", .refused),
               ("a.html", .refused), ("a.mp3", .refused), ("a.rtf", .refused), ("sans-extension", .refused),
           ])
     private func extensionDecidesTheUse(name: String, expected: Expected) async throws {

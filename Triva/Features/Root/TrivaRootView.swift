@@ -431,8 +431,6 @@ private struct TrivaRootShell: View {
         // Les routes arrivées pendant la feuille d'accord « IA cloud » sont prises à sa fermeture (C1).
         .onChange(of: coordinator.session.chatViewModel?.pendingConsent?.id) { consumeSystemRoutes() }
         .onChange(of: scenePhase) {
-            // Avant tout : un modèle MLX ne doit plus toucher au GPU une fois l'app en arrière-plan (R2-01).
-            coordinator.scenePhaseDidChange(scenePhase)
             consumeSystemRoutes()
         }
         .environment(\.presentationDismissal, coordinator.presentationDismissal)

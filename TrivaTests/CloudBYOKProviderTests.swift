@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import Security
 import FoundationModels
 import ClaudeForFoundationModels
 @testable import Triva
@@ -46,6 +47,19 @@ struct CloudBYOKProviderTests {
 
         await #expect(throws: CloudBYOKError.missingAPIKey) {
             _ = try await provider.generate(prompt: "Bonjour")
+        }
+    }
+
+    @Test("Trousseau verrouillé (-25308, appareil verrouillé) : ni « clé absente » ni « clé refusée », une erreur « verrouillé » dédiée")
+    func lockedKeychainIsALockedDeviceError() async throws {
+        let locked = KeychainAPIKeyStoreError.unexpectedStatus(errSecInteractionNotAllowed)
+        let provider = CloudBYOKProvider(keyStore: MockAPIKeyStore(readError: locked))
+
+        await #expect(throws: LockedDeviceError.deviceLocked) {
+            _ = try await provider.generate(prompt: "Bonjour")
+        }
+        await #expect(throws: LockedDeviceError.deviceLocked) {
+            for try await _ in provider.streamGenerate(prompt: "Bonjour") {}
         }
     }
 

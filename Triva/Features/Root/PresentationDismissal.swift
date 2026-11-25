@@ -44,25 +44,3 @@ private struct DismissesOnSystemRoute: ViewModifier {
         content.onChange(of: signal?.epoch) { dismiss() }
     }
 }
-
-/// Quand arrêter une génération locale pour ne pas toucher au GPU en arrière-plan (mission X2, R2-01).
-///
-/// iOS et iPadOS interdisent au GPU de travailler pour une app en arrière-plan : un modèle MLX qui continue de lui soumettre du
-/// travail fait lever une erreur dans un rappel de MLX, hors de la pile Swift, donc sans aucun `catch` possible, et l'app
-/// plante. Apple le dit : à la désactivation, l'app doit cesser d'envoyer du travail à Metal. Le Mac n'a pas cette restriction.
-/// Seul le passage en arrière-plan arrête la réponse : « inactif » (Centre de contrôle, notification, autre fenêtre en
-/// Split View) laisse le GPU disponible.
-nonisolated enum BackgroundGPUPolicy {
-    /// Vrai là où le système coupe le GPU des apps en arrière-plan.
-    static var platformRestrictsGPU: Bool {
-        #if os(iOS)
-        true
-        #else
-        false
-        #endif
-    }
-
-    static func shouldStopGeneration(phase: ScenePhase, engine: AIEngineOption, restrictsGPU: Bool) -> Bool {
-        restrictsGPU && phase == .background && engine == .mlxLocal
-    }
-}

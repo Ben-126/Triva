@@ -71,9 +71,9 @@ struct PasteboardClassifierTests {
         #expect(PasteboardClassifier.decision(for: .init(text: "  \n ")) == .nothing)
     }
 
-    @Test("Un .docx copié du Finder est classé « fichier » : c'est le dépôt qui le refuse, avec son message")
-    func docxIsRefusedByTheDropPath() {
-        let docx = URL(fileURLWithPath: "/Users/ben/Documents/lettre.docx")
+    @Test("Un ancien .doc copié du Finder est classé « fichier » : c'est le dépôt qui le refuse, avec son message")
+    func legacyWordIsRefusedByTheDropPath() {
+        let docx = URL(fileURLWithPath: "/Users/ben/Documents/lettre.doc")
         #expect(PasteboardClassifier.decision(for: .init(fileURLs: [docx])) == .files)
         let item = DroppedItem.fromURL(docx)
         #expect(item == .refused(.unsupportedType))

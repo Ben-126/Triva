@@ -3,7 +3,7 @@
 //  Triva
 //
 //  Chantier 2.1 (mission F) : section « Intégrations » des Réglages : ce que Triva montre en dehors de l'app
-//  (recherche de l'appareil, widget, activité en direct) et le lien vers Raccourcis.
+//  (Spotlight, widget, activité en direct) et le lien vers Raccourcis.
 //
 //  Composants système (`Form`, `Toggle`) comme le reste de l'écran (DESIGN.md : pas de verre dans un `Form`).
 //  Les trois réglages sont des `UserDefaults` de l'app ; `SystemIntegrations` les observe et agit tout de suite
@@ -19,9 +19,9 @@ import SwiftUI
 nonisolated enum SystemIntegrationsText {
     static let header = "Intégrations"
 
-    static let spotlightTitle = "Historique dans la recherche de l'appareil"
+    static let spotlightTitle = "Historique dans Spotlight"
     static let spotlightDetail =
-        "Le titre et la date de tes conversations se retrouvent dans la recherche de l'appareil. Jamais le texte des réponses."
+        "Le titre et la date de tes conversations se retrouvent dans Spotlight. Jamais le texte des réponses."
 
     static let widgetTitle = "Dernière question dans le widget"
     static let widgetDetail =
@@ -29,16 +29,21 @@ nonisolated enum SystemIntegrationsText {
 
     static let liveActivityTitle = "Activité en direct pendant une recherche"
     static let liveActivityDetail =
-        "Montre ta question et l'avancement de la recherche sur l'écran verrouillé, dans la Dynamic Island et, selon tes appareils, sur une montre, un Mac ou un écran CarPlay associés. Elle peut donc se lire sans déverrouiller l'appareil."
+        "Montre l'avancement de la recherche (réflexion, sources, rédaction) sur l'écran verrouillé, dans la Dynamic Island et, selon tes appareils, sur une montre, un Mac ou un écran CarPlay associés."
+
+    static let questionTitle = "Afficher la question"
+    static let questionDetail =
+        "Allumé, ta question se lit dans l'activité sans déverrouiller l'appareil. Éteint, seule l'étape de la recherche s'affiche : aucune trace de ta question."
 
     static let footer =
-        "Éteindre la recherche de l'appareil ou la dernière question du widget retire tout de suite ce que Triva avait publié. « Tout effacer » vide aussi le widget et la recherche de l'appareil."
+        "Éteindre Spotlight ou la dernière question du widget retire tout de suite ce que Triva avait publié. « Tout effacer » vide aussi le widget et Spotlight."
 }
 
 struct SystemIntegrationsSection: View {
     @AppStorage private var spotlight: Bool
     @AppStorage private var widgetLastQuestion: Bool
     @AppStorage private var liveActivity: Bool
+    @AppStorage private var liveActivityQuestion: Bool
 
     /// - Parameter defaults: les réglages de l'app (`.standard`) ; une suite jetable dans les aperçus.
     init(defaults: UserDefaults = .standard) {
@@ -55,6 +60,11 @@ struct SystemIntegrationsSection: View {
         _liveActivity = AppStorage(
             wrappedValue: SystemIntegrationPreferences.liveActivityDefault,
             SystemIntegrationPreferences.liveActivityKey,
+            store: defaults
+        )
+        _liveActivityQuestion = AppStorage(
+            wrappedValue: SystemIntegrationPreferences.liveActivityQuestionDefault,
+            SystemIntegrationPreferences.liveActivityQuestionKey,
             store: defaults
         )
     }
@@ -81,6 +91,13 @@ struct SystemIntegrationsSection: View {
                 isOn: $liveActivity,
                 id: "settings.integrations.liveActivity"
             )
+            toggleRow(
+                SystemIntegrationsText.questionTitle,
+                detail: SystemIntegrationsText.questionDetail,
+                isOn: $liveActivityQuestion,
+                id: "settings.integrations.liveActivityQuestion"
+            )
+            .disabled(!liveActivity)
             #endif
             #if os(iOS)
             // `ShortcutsLink` n'existe pas sur Mac (SDK 27.2, vérifié dans `_AppIntents_SwiftUI`).

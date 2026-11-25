@@ -51,6 +51,8 @@ nonisolated enum FileAttachmentRules {
     static func contentTypes(for kind: AttachmentKind) -> [UTType] {
         switch kind {
         case .pdf: return [.pdf]
+        // Seul le type exact du .docx : `.docm` et `.dotx` ne sont pas lus.
+        case .docx: return [AttachmentKind.docxType].compactMap { $0 }
         case .plainText: return [.plainText]
         case .markdown:
             return [UTType("net.daringfireball.markdown"), UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown")].compactMap { $0 }

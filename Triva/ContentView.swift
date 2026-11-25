@@ -28,7 +28,7 @@ enum SearchSessionError: Error, Sendable, Equatable {
     /// était encore en vol.
     ///
     /// Le cas courant est déjà couvert sans passer par ici : `SearchSession.deinit`
-    /// arrête la génération (`ChatViewModel.stop()`), que `ChatViewModel` traite
+    /// arrête la génération (`ChatViewModel.stopEverything()`), que `ChatViewModel` traite
     /// comme un arrêt volontaire. Reste la course de la fermeture de fenêtre
     /// pendant une génération, où la session peut être libérée avant que
     /// l'annulation ne soit constatée :
@@ -254,6 +254,8 @@ final class SearchSession {
         // Fenêtre MLX : elle compte dès sa création pour garder le modèle partagé en mémoire (M3).
         if engine == .mlxLocal {
             stores.mlxProviderPool.register(mlxRequesterID)
+            // iPhone, iPad : la réponse du modèle local s'arrête quand l'app passe en arrière-plan (mission M).
+            LocalGPUAccessMonitor.shared.register(self)
         }
     }
 
@@ -262,14 +264,20 @@ final class SearchSession {
     /// donc l'arrêter ici, sinon elle tournerait pour personne. La `Task` du modèle retient le modèle,
     /// jamais la session (closures `[weak self]`), donc ce `deinit` s'exécute bien.
     isolated deinit {
-        chatViewModel?.stop()
+        // Aussi les réponses laissées en arrière-plan : plus personne ne les attend.
+        chatViewModel?.stopEverything()
         // Dernière fenêtre MLX fermée (ou moteur changé) : le pool libère le modèle (mission M3).
         stores.mlxProviderPool.unregister(mlxRequesterID)
     }
 
     /// Cette fenêtre attend qu'une autre ait fini avec le modèle local (mission M3).
     var isWaitingForLocalModel: Bool {
-        engine == .mlxLocal && stores.mlxProviderPool.isWaitingForAnotherWindow(mlxRequesterID)
+        guard engine == .mlxLocal else { return false }
+        if stores.mlxProviderPool.isWaitingForAnotherWindow(mlxRequesterID) { return true }
+        // Une réponse laissée en arrière-plan (« Nouvelle conversation ») écrit encore : le modèle ne sert qu'une
+        // réponse à la fois, la question suivante attend la fin de la précédente (même ligne d'attente).
+        let hasBackgroundAnswer = chatViewModel?.backgroundExchanges.isEmpty == false
+        return hasBackgroundAnswer && stores.mlxProviderPool.isWaitingBehindOwnWork(mlxRequesterID)
     }
 
     /// Modèle MLX validé (0.5) pour la sélection courante, `nil` tant qu'aucun

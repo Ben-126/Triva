@@ -177,6 +177,9 @@ struct ChatView: View {
     /// TÊTE de liste, hors du chemin du scroll qui, lui, ancre en bas).
     private static let bottomAnchorID = "chat-bottom-anchor"
 
+    /// Tête de l'écran vide (mission I) : le retour en haut d'une nouvelle conversation vise cette ancre.
+    private static let topAnchorID = "chat-top-anchor"
+
     /// Nom du repère du contenu défilant, voir `TranscriptScrollState.rowTops`.
     private static let contentSpace = "chat-transcript-content"
 
@@ -206,6 +209,7 @@ struct ChatView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if viewModel.messages.isEmpty, !viewModel.isGenerating {
                         ChatEmptyStateView(onSelect: { example in sendSuggestion(example) })
+                            .id(Self.topAnchorID)
                     }
 
                     // UN seul conteneur pour tout le verre du fil : bulles,
@@ -218,6 +222,7 @@ struct ChatView: View {
                                     message: message,
                                     viewModel: viewModel,
                                     onRetry: { messageID in retryInQuickMode(messageID: messageID) },
+                                    onRetryInterrupted: { messageID in retryInterrupted(messageID: messageID) },
                                     onTopChange: { [scroll] top in scroll.rowTops[message.id] = top },
                                     topCoordinateSpace: Self.contentSpace
                                 )
@@ -275,7 +280,9 @@ struct ChatView: View {
             // réponse (`showLastAnswerStart`, mission C1) : sur sa fin, on tombait sur les
             // sources et pas sur la réponse (QA Q1, pt 14). L'ancrage par défaut en bas reste
             // pour le premier rendu, avant que la réponse ne soit posée.
-            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            // Écran vide (aucun message) : il s'ouvre par le haut, sinon une petite fenêtre montre seulement le
+            // dernier exemple (mission I).
+            .defaultScrollAnchor(ChatScrollFollowing.initialScrollAnchor(hasMessages: !viewModel.messages.isEmpty), for: .initialOffset)
             // Seulement quand la conversation affichée a changé depuis le dernier positionnement : `onAppear`
             // se rejoue à chaque retour sur l'onglet, et ramenait au début de la réponse un lecteur
             // descendu jusqu'aux sources (revue R3-5).
@@ -342,7 +349,7 @@ struct ChatView: View {
                 if !scroll.isPinnedToBottom {
                     scroll.recordPosition(orderedIDs: viewModel.messages.map(\.id), offsetY: newMetrics.offsetY)
                 }
-                if ChatScrollFollowing.shouldFollowContent(from: oldMetrics, to: newMetrics, phase: scrollPhase, isPinned: pinned) {
+                if ChatScrollFollowing.shouldFollowContent(from: oldMetrics, to: newMetrics, phase: scrollPhase, isPinned: pinned, hasMessages: !viewModel.messages.isEmpty) {
                     scrollToBottom(proxy: proxy, animated: false)
                 }
             }
@@ -350,11 +357,17 @@ struct ChatView: View {
                 // Un nouvel échange (nouvelle question envoyée) reprend toujours le suivi, même
                 // si l'utilisateur avait remonté pour relire. Une conversation rouverte (aucune
                 // génération en cours) s'ouvre au début de sa dernière réponse.
-                if viewModel.isGenerating || viewModel.messages.isEmpty {
+                switch ChatScrollFollowing.action(afterMessageCountChange: viewModel.isGenerating, hasMessages: !viewModel.messages.isEmpty) {
+                case .showTop:
+                    // Nouvelle conversation : l'écran vide se lit depuis le haut.
+                    scroll.lastPositionedConversationID = viewModel.currentConversationID
+                    setPinned(true)
+                    scrollToTop(proxy: proxy)
+                case .followBottom:
                     scroll.lastPositionedConversationID = viewModel.currentConversationID
                     setPinned(true)
                     scrollToBottom(proxy: proxy)
-                } else {
+                case .showLastAnswerStart:
                     showLastAnswerStart(proxy: proxy)
                 }
             }
@@ -416,6 +429,13 @@ struct ChatView: View {
     private func restorePosition(of messageID: UUID, proxy: ScrollViewProxy) {
         guard let message = viewModel.messages.first(where: { $0.id == messageID }) else { return }
         proxy.scrollTo(ChatTranscriptRow.scrollID(for: message), anchor: .top)
+    }
+
+    /// Écran vide : retour tout en haut (le titre de l'accueil).
+    private func scrollToTop(proxy: ScrollViewProxy) {
+        withAnimation {
+            proxy.scrollTo(Self.topAnchorID, anchor: .top)
+        }
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
@@ -513,6 +533,13 @@ struct ChatView: View {
         guard !viewModel.isGenerating else { return }
         setPinned(true)
         request(.retryInQuickMode(messageID: messageID))
+    }
+
+    /// « Réessayer » sous une réponse interrompue (accord IA cloud d'abord, comme toute génération).
+    private func retryInterrupted(messageID: UUID) {
+        guard !viewModel.isGenerating else { return }
+        setPinned(true)
+        request(.retryInterrupted(messageID: messageID))
     }
 
     /// « Lire cette page » (mission C5) : la page lue, la réponse est refaite avec elle, comme pour toute

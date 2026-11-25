@@ -35,9 +35,9 @@ final class WindowConversationRegistry {
     static let shared = WindowConversationRegistry()
 
     private var displayed: [UUID: UUID] = [:]
-    /// Par fenêtre : la conversation dans laquelle une réponse continue d'écrire alors qu'elle est
-    /// affichée ailleurs. Lue à la demande (pas de copie à tenir à jour).
-    private var backgroundConversations: [UUID: @MainActor () -> UUID?] = [:]
+    /// Par fenêtre : les conversations dans lesquelles une réponse continue d'écrire alors qu'elles sont
+    /// affichées ailleurs (plusieurs réponses peuvent finir en même temps). Lues à la demande (pas de copie à tenir à jour).
+    private var backgroundConversations: [UUID: @MainActor () -> Set<UUID>] = [:]
     /// Par fenêtre : comment la ramener au premier plan.
     private var focusActions: [UUID: @MainActor () -> Bool] = [:]
     /// Par fenêtre : comment lui faire AFFICHER une conversation qu'elle tient (Recherche, fil rouvert).
@@ -54,10 +54,15 @@ final class WindowConversationRegistry {
         }
     }
 
-    /// Dit au registre comment lire la conversation qu'une génération en arrière-plan de `window`
-    /// continue d'écrire (`nil` : aucune).
+    /// Dit au registre comment lire les conversations que les générations en arrière-plan de `window`
+    /// continuent d'écrire (vide : aucune).
+    func setBackgroundConversations(_ conversations: @escaping @MainActor () -> Set<UUID>, in window: UUID) {
+        backgroundConversations[window] = conversations
+    }
+
+    /// Une seule conversation (`nil` : aucune) : même chose que `setBackgroundConversations`.
     func setBackgroundConversation(_ conversation: @escaping @MainActor () -> UUID?, in window: UUID) {
-        backgroundConversations[window] = conversation
+        setBackgroundConversations({ conversation().map { [$0] } ?? [] }, in: window)
     }
 
     /// Dit au registre comment ramener `window` au premier plan (fenêtre AppKit sur Mac, scène sur iPad). Posée
@@ -81,7 +86,7 @@ final class WindowConversationRegistry {
     @discardableResult
     func focusHolder(of conversation: UUID, excluding window: UUID?) -> Bool {
         let showing = displayed.filter { $0.key != window && $0.value == conversation }.keys
-        let writing = backgroundConversations.filter { $0.key != window && $0.value() == conversation }.keys
+        let writing = backgroundConversations.filter { $0.key != window && $0.value().contains(conversation) }.keys
         for candidate in Array(showing) + Array(writing) {
             if let action = focusActions[candidate], action() {
                 revealActions[candidate]?(conversation)
@@ -109,7 +114,7 @@ final class WindowConversationRegistry {
     /// fenêtre prend une conversation.
     func isHeld(_ conversation: UUID, excluding window: UUID) -> Bool {
         isDisplayed(conversation, excluding: window)
-            || backgroundConversations.contains { $0.key != window && $0.value() == conversation }
+            || backgroundConversations.contains { $0.key != window && $0.value().contains(conversation) }
     }
 }
 

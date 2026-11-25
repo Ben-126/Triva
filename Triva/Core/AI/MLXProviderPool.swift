@@ -139,6 +139,11 @@ final class MLXProviderPool {
         turns.isWaitingBehindAnother(requester)
     }
 
+    /// `requester` attend-il derrière son propre travail (voir `LocalModelTurnQueue.isWaitingBehindOwnWork`) ?
+    func isWaitingBehindOwnWork(_ requester: UUID) -> Bool {
+        turns.isWaitingBehindOwnWork(requester)
+    }
+
     /// Le modèle `modelID`, chargé, partagé. `make` n'est appelé que s'il faut une instance neuve.
     /// Plusieurs demandes simultanées du même modèle attendent le MÊME chargement.
     ///

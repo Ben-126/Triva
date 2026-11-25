@@ -24,8 +24,8 @@ nonisolated struct FileAttachmentTruncationNote: Sendable, Equatable {
 /// (décision de Ben, 2026-11-17) ; les autres PDF à copie interdite sont lus sans message.
 nonisolated enum FileAttachmentPresentation {
     static let pickerAccessibilityLabel = "Joindre un fichier"
-    static let pickerAccessibilityHint = "PDF, image, texte, Markdown, CSV ou JSON."
-    static let pickerHelpText = "Joindre un fichier : PDF, image, texte, Markdown, CSV ou JSON"
+    static let pickerAccessibilityHint = "PDF, Word, image, texte, Markdown, CSV ou JSON."
+    static let pickerHelpText = "Joindre un fichier : PDF, Word, image, texte, Markdown, CSV ou JSON"
     static let dialogConfirmationLabel = "Joindre"
     static let trayAccessibilityLabel = "Pièces jointes"
     static let dismissNoticeLabel = "Masquer ce message"
@@ -60,7 +60,7 @@ nonisolated enum FileAttachmentPresentation {
     static func dialogMessage(remainingSlots: Int) -> String {
         let slots = max(1, remainingSlots)
         let count = slots == 1 ? "un document" : "jusqu'à \(slots) documents"
-        return "Choisis \(count) : PDF, image, texte, Markdown, CSV ou JSON."
+        return "Choisis \(count) : PDF, Word, image, texte, Markdown, CSV ou JSON."
     }
 
     /// Sans accord en nombre : la ligne au-dessus nomme le ou les fichiers.
@@ -130,6 +130,7 @@ nonisolated enum FileAttachmentPresentation {
     static func symbolName(for kind: AttachmentKind) -> String {
         switch kind {
         case .pdf: return "doc.richtext"
+        case .docx: return "text.document"
         case .plainText: return "doc.plaintext"
         case .markdown: return "doc.text"
         case .csv: return "tablecells"

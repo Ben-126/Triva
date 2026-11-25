@@ -83,7 +83,7 @@ struct ShareComposerView: View {
                 Button("Annuler", action: onCancel)
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Envoyer à Triva") { Task { await model.send() } }
+                Button(ShareMessages.addButtonTitle) { Task { await model.send() } }
                     .disabled(!model.canSend)
             }
         }
@@ -132,6 +132,6 @@ private struct ShareFileRow: View {
 
     private var detail: String {
         let size = file.byteCount.formatted(.byteCount(style: .file))
-        return "\(file.type.isImage ? "Image" : "PDF") · \(size)"
+        return "\(file.type.kindLabel) · \(size)"
     }
 }

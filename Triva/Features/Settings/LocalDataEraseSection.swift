@@ -61,12 +61,16 @@ struct LocalDataEraseSection: View {
     /// Exposé pour les tests : la promesse faite avant l'effacement.
     static let confirmationMessage =
         "Tes conversations, tes favoris et les caches de recherche seront supprimés de cet appareil, "
-        + "sans retour possible. Le widget et la recherche de l'appareil sont vidés aussi. Tes clés API, tes modèles locaux téléchargés et le choix de ton moteur IA ne changent pas."
+        + "sans retour possible. Le widget et Spotlight sont vidés aussi. Tes clés API, tes modèles locaux téléchargés et le choix de ton moteur IA ne changent pas."
+
+    /// Exposé pour les tests : le pied de section avant l'effacement.
+    static let idleFooterMessage =
+        "Supprime les conversations, les favoris et les caches, ainsi que ce que Triva montre dans le widget et dans Spotlight. Les clés API, les modèles locaux téléchargés et le moteur choisi sont conservés."
 
     private var footerText: String {
         switch phase {
         case .idle:
-            "Supprime les conversations, les favoris et les caches, ainsi que ce que Triva montre dans le widget et dans la recherche de l'appareil. Les clés API, les modèles locaux téléchargés et le moteur choisi sont conservés."
+            Self.idleFooterMessage
         case .erasing:
             "Effacement en cours…"
         case .done:
@@ -89,7 +93,7 @@ struct LocalDataEraseSection: View {
             outside.append("Les données du navigateur intégré n'ont pas pu être effacées : Safari n'a pas répondu.")
         }
         if failedSteps.contains(.systemIntegrations) {
-            outside.append("Ce que Triva avait partagé avec le widget ou la recherche de l'appareil n'a pas pu être entièrement retiré.")
+            outside.append("Ce que Triva avait partagé avec le widget ou Spotlight n'a pas pu être entièrement retiré.")
         }
         if failedSteps.contains(.attachmentCopies) {
             outside.append("Les copies temporaires de tes fichiers joints n'ont pas pu être toutes effacées.")

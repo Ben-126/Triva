@@ -67,21 +67,25 @@ struct SharedFileTypeTests {
         #expect(SharedFileType.detect(fileAt: folder.appendingPathComponent("absent.pdf")) == nil)
     }
 
-    @Test("Plafonds : 200 Mo pour un PDF, 50 Mo pour une image")
+    @Test("Plafonds : 200 Mo pour un PDF ou un .docx, 50 Mo pour une image ; un .docx n'est jamais pris pour une image")
     func limits() {
         #expect(SharedFileType.pdf.maxByteCount == 200 * 1_024 * 1_024)
-        for type in SharedFileType.allCases where type != .pdf {
+        #expect(SharedFileType.docx.maxByteCount == 200 * 1_024 * 1_024)
+        for type in SharedFileType.allCases where type != .pdf && type != .docx {
             #expect(type.isImage)
             #expect(type.maxByteCount == 50 * 1_024 * 1_024)
         }
         #expect(!SharedFileType.pdf.isImage)
+        #expect(!SharedFileType.docx.isImage)
+        #expect(SharedFileType.docx.kindLabel == "Word" && SharedFileType.pdf.kindLabel == "PDF" && SharedFileType.png.kindLabel == "Image")
     }
 
-    @Test("La liste fermée du partage est exactement celle de l'app : PDF + formats d'image que Vision lit")
+    @Test("La liste fermée du partage est exactement celle de l'app : PDF, Word + formats d'image que Vision lit")
     func matchesTheAppAttachmentKinds() {
         for type in SharedFileType.allCases {
             let kind = AttachmentKind(fileName: "x.\(type.fileExtension)")
-            #expect(kind == (type.isImage ? .image : .pdf), "extension \(type.fileExtension)")
+            let expected: AttachmentKind = type.isImage ? .image : (type == .docx ? .docx : .pdf)
+            #expect(kind == expected, "extension \(type.fileExtension)")
         }
         let imageTypesCovered = SharedFileType.allCases.filter(\.isImage).compactMap { UTType(filenameExtension: $0.fileExtension) }
         for appType in AttachmentKind.imageTypes {
@@ -91,12 +95,65 @@ struct SharedFileTypeTests {
     }
 }
 
+@Suite("Partage — reconnaissance d'un .docx sur disque")
+struct SharedDocxDetectionTests {
+    private func detect(_ data: Data, named name: String = "fichier.bin") throws -> SharedFileType? {
+        let folder = try TestFiles.makeFolder("docx-type")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        return SharedFileType.detect(fileAt: try TestFiles.write(data, named: name, in: folder))
+    }
+
+    @Test("Un vrai .docx est reconnu à son répertoire central, quel que soit le nom du fichier")
+    func recognizesDocx() throws {
+        #expect(try detect(DocxFixture.make(paragraphs: ["Bonjour"])) == .docx)
+        #expect(try detect(DocxFixture.make(paragraphs: ["Bonjour"]), named: "document.pdf") == .docx)
+    }
+
+    @Test("Classeur, présentation, ODT, ZIP quelconque, ZIP à l'en-tête seul, ZIP vide : pas un .docx")
+    func refusesOtherZips() throws {
+        let xlsx = ZipFixture.build([
+            .init(name: "[Content_Types].xml", data: Data(DocxFixture.contentTypes.utf8)),
+            .init(name: "xl/workbook.xml", data: Data("<a/>".utf8)),
+        ])
+        let odt = ZipFixture.build([.init(name: "mimetype", data: Data("application/vnd.oasis.opendocument.text".utf8), method: 0)])
+        #expect(try detect(xlsx, named: "x.docx") == nil)
+        #expect(try detect(odt, named: "x.docx") == nil)
+        #expect(try detect(ZipFixture.build([.init(name: "a.txt", data: Data("x".utf8))])) == nil)
+        #expect(try detect(Data([0x50, 0x4B, 0x03, 0x04]) + Data(repeating: 0, count: 200)) == nil)
+        #expect(try detect(ZipFixture.build([])) == nil)
+    }
+
+    @Test("Un ZIP aux noms piégés ou tronqué n'est pas un .docx")
+    func refusesTrappedAndTruncated() throws {
+        let trapped = ZipFixture.build([
+            .init(name: "[Content_Types].xml", data: Data(DocxFixture.contentTypes.utf8)),
+            .init(name: "word/document.xml", data: Data("<a/>".utf8)),
+            .init(name: "../evil", data: Data("x".utf8)),
+        ])
+        #expect(try detect(trapped) == nil)
+        let full = DocxFixture.make(paragraphs: [String(repeating: "texte ", count: 2_000)])
+        #expect(try detect(full.prefix(full.count - 30)) == nil)
+    }
+
+    @Test("Les octets de tête seuls ne suffisent pas : un en-tête ZIP n'est jamais un .docx")
+    func headerAloneIsNotEnough() {
+        #expect(SharedFileType.detect(header: DocxFixture.make(paragraphs: ["x"])) == nil)
+    }
+}
+
 @Suite("Partage — nom de fichier assaini")
 struct SharedFileNameTests {
     @Test("Nom normal : gardé, extension du type vérifié")
     func normalName() {
         #expect(SharedFileName.sanitized("Rapport 2026.pdf", type: .pdf) == "Rapport 2026.pdf")
         #expect(SharedFileName.sanitized("IMG_0042.HEIC", type: .heic) == "IMG_0042.heic")
+    }
+
+    @Test("Un .docx garde son extension et son nom de repli est « Document »")
+    func docxName() {
+        #expect(SharedFileName.sanitized("Cours d'histoire.docx", type: .docx) == "Cours d'histoire.docx")
+        #expect(SharedFileName.sanitized(nil, type: .docx) == "Document.docx")
+        #expect(SharedFileName.sanitized("cours.pdf", type: .docx) == "cours.docx")
     }
 
     @Test("L'extension vient du type RÉEL, jamais du nom : un PNG nommé .pdf devient .png")

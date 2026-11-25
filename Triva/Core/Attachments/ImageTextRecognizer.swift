@@ -30,21 +30,13 @@ nonisolated struct VisionImageTextRecognizer: ImageTextRecognizing {
     @concurrent
     func recognizeText(inImageData data: Data) async throws -> String {
         try Task.checkCancellation()
-        var request = RecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        // Triva est en français mais on lit aussi bien des captures anglaises : la langue est devinée.
-        request.automaticallyDetectsLanguage = true
-        request.usesLanguageCorrection = true
+        let request = Self.makeRequest()
 
         let observations: [RecognizedTextObservation]
         do {
             observations = try await request.perform(on: data)
-        } catch is CancellationError {
-            throw CancellationError()
         } catch {
-            // Octets qui ne sont pas une image décodable (fichier tronqué, renommé…). Aucun détail du système
-            // n'est repris : il pourrait citer le chemin du fichier.
-            throw AttachmentExtractionError.invalidImage
+            throw Self.failure(for: error, isTaskCancelled: Task.isCancelled)
         }
         try Task.checkCancellation()
 
@@ -53,6 +45,28 @@ nonisolated struct VisionImageTextRecognizer: ImageTextRecognizing {
             return best.string
         }
         return Self.assemble(lines: lines)
+    }
+
+    /// Réglages de la reconnaissance, communs aux vraies lectures et à la préparation (`prepareRecognition()`) : le
+    /// système prépare le modèle pour ces réglages-là, une préparation avec d'autres ne servirait à rien.
+    static func makeRequest() -> RecognizeTextRequest {
+        var request = RecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        // Triva est en français mais on lit aussi bien des captures anglaises : la langue est devinée.
+        request.automaticallyDetectsLanguage = true
+        request.usesLanguageCorrection = true
+        return request
+    }
+
+    /// Erreur à remonter pour un échec de `perform`. Mesuré le 2026-11-25 : annulée, la requête de Vision lève
+    /// `VisionError.requestCancelled` (PAS `CancellationError`) en moins d'une milliseconde, même en pleine préparation du
+    /// modèle. Sans cette conversion, une pièce jointe retirée en cours de lecture serait prise pour une image illisible.
+    static func failure(for error: any Error, isTaskCancelled: Bool) -> any Error {
+        if error is CancellationError || isTaskCancelled { return CancellationError() }
+        if case .requestCancelled = error as? VisionError { return CancellationError() }
+        // Octets qui ne sont pas une image décodable (fichier tronqué, renommé…). Aucun détail du système
+        // n'est repris : il pourrait citer le chemin du fichier.
+        return AttachmentExtractionError.invalidImage
     }
 
     /// Lignes rognées, lignes vides retirées, jointes par un saut de ligne. Pure, testée.

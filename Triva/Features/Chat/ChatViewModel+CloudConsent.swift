@@ -63,6 +63,7 @@ extension ChatViewModel {
         case .send(let query): startSend(query: query)
         case .suggestion(let suggestion): startSuggestion(suggestion)
         case .retryInQuickMode(let messageID): startRetryInQuickMode(messageID: messageID)
+        case .retryInterrupted(let messageID): startRetryInterrupted(messageID: messageID)
         case .regenerateWithReadPages: startRegenerationWithReadPages()
         case .retryAfterOffline(let quickMode): startRetryAfterOffline(quickMode: quickMode)
         }

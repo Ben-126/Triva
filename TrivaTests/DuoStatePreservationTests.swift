@@ -121,8 +121,9 @@ struct DuoPendingConsentTests {
         #expect(viewModel.allowPendingConsent() == nil)
     }
 
-    @Test("Les cinq envois sont gardés tels quels", arguments: [
+    @Test("Tous les envois sont gardés tels quels", arguments: [
         PendingSendAction.send(query: "q"),
+        .retryInterrupted(messageID: UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!),
         .suggestion("s"),
         .retryInQuickMode(messageID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!),
         .regenerateWithReadPages,

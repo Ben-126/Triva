@@ -97,8 +97,8 @@ private struct PickerFakePreparer: AttachmentPreparing {
 @Suite("Pièces jointes — règles du sélecteur")
 struct FileAttachmentRulesTests {
     @Test("Chaque format lu par l'extracteur est proposé par le sélecteur", arguments: zip(
-        ["pdf", "txt", "log", "swift", "md", "markdown", "csv", "tsv", "json"],
-        [AttachmentKind.pdf, .plainText, .plainText, .plainText, .markdown, .markdown, .csv, .csv, .json]
+        ["pdf", "txt", "log", "swift", "md", "markdown", "csv", "tsv", "json", "docx"],
+        [AttachmentKind.pdf, .plainText, .plainText, .plainText, .markdown, .markdown, .csv, .csv, .json, .docx]
     ))
     func everyExtractableTypeIsSelectable(fileExtension: String, kind: AttachmentKind) throws {
         let type = try #require(UTType(filenameExtension: fileExtension))
@@ -108,7 +108,7 @@ struct FileAttachmentRulesTests {
     }
 
     @Test("Balisage, documents Office, dessins vectoriels et archives ne sont pas proposés", arguments: [
-        "html", "rtf", "xml", "docx", "svg", "zip",
+        "html", "rtf", "xml", "doc", "svg", "zip",
     ])
     func unreadableTypesAreNotSelectable(fileExtension: String) throws {
         let type = try #require(UTType(filenameExtension: fileExtension))

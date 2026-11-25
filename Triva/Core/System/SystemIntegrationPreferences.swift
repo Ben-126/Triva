@@ -14,10 +14,12 @@ nonisolated struct SystemIntegrationPreferences {
     static let spotlightKey = "system.spotlight.enabled"
     static let widgetLastQuestionKey = "system.widget.showsLastQuestion"
     static let liveActivityKey = "system.liveActivity.enabled"
+    static let liveActivityQuestionKey = "system.liveActivity.showsQuestion"
 
     static let spotlightDefault = true
     static let widgetLastQuestionDefault = false
     static let liveActivityDefault = true
+    static let liveActivityQuestionDefault = true
 
     private let defaults: UserDefaults
 
@@ -25,7 +27,7 @@ nonisolated struct SystemIntegrationPreferences {
         self.defaults = defaults
     }
 
-    /// Historique (titres et dates) dans la recherche de l'appareil.
+    /// Historique (titres et dates) dans Spotlight.
     var isSpotlightEnabled: Bool {
         get { value(for: Self.spotlightKey, default: Self.spotlightDefault) }
         nonmutating set { defaults.set(newValue, forKey: Self.spotlightKey) }
@@ -41,6 +43,14 @@ nonisolated struct SystemIntegrationPreferences {
     var isLiveActivityEnabled: Bool {
         get { value(for: Self.liveActivityKey, default: Self.liveActivityDefault) }
         nonmutating set { defaults.set(newValue, forKey: Self.liveActivityKey) }
+    }
+
+    /// Mission I (Ben, 2026-11-25) : la QUESTION est montrée dans l'activité en direct (écran verrouillé, Dynamic
+    /// Island, montre associée). Éteint, l'activité ne dit que l'étape : aucune trace de la question, activité en cours
+    /// comprise. Allumé par défaut.
+    var showsQuestionInLiveActivity: Bool {
+        get { value(for: Self.liveActivityQuestionKey, default: Self.liveActivityQuestionDefault) }
+        nonmutating set { defaults.set(newValue, forKey: Self.liveActivityQuestionKey) }
     }
 
     /// Une clé absente (ou d'un autre type) donne la valeur par défaut : jamais un « faux » par accident.

@@ -50,14 +50,14 @@ extension ChatViewModelTests {
         continuation.yield("Début A et la fin de A.")
         continuation.finish()
         await waitUntil("réponse de A enregistrée") { (try? self.storedAnswerTexts(stores, idA))?.count == 1 }
-        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchange == nil }
+        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchanges.isEmpty }
 
         #expect(try storedAnswerTexts(stores, idA) == ["Début A et la fin de A."])
         #expect(viewModel.messages.map(\.text) == ["Question B", "Réponse B."])
         #expect(viewModel.messages.allSatisfy { $0.status != .streaming && !$0.isStreaming })
         #expect(viewModel.errorDescription == nil)
         #expect(!viewModel.isGenerating)
-        #expect(viewModel.backgroundExchange == nil)
+        #expect(viewModel.backgroundExchanges.isEmpty)
         #expect(try storedAnswerTexts(stores, conversationB.id) == ["Réponse B."])
     }
 
@@ -74,11 +74,11 @@ extension ChatViewModelTests {
 
         #expect(viewModel.loadConversation(id: conversationB.id))
         #expect(viewModel.loadConversation(id: conversationC.id))
-        #expect(viewModel.backgroundExchange?.conversationID == idA)
+        #expect(viewModel.backgroundConversationIDs == [idA])
         continuation.yield("Début A et la fin de A.")
         continuation.finish()
         await waitUntil("réponse de A enregistrée") { (try? self.storedAnswerTexts(stores, idA))?.count == 1 }
-        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchange == nil }
+        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchanges.isEmpty }
 
         #expect(try storedAnswerTexts(stores, idA) == ["Début A et la fin de A."])
         #expect(viewModel.messages.map(\.text) == ["Question C", "Réponse C."])
@@ -94,7 +94,7 @@ extension ChatViewModelTests {
         guard let (idA, continuation) = await startGeneratingA(viewModel, aiProvider) else { return }
         viewModel.loadConversation(id: conversationB.id)
         continuation.yield("Début A, suite.")
-        await waitUntil("suite reçue en arrière-plan") { viewModel.backgroundExchange?.messages.last?.text == "Début A, suite." }
+        await waitUntil("suite reçue en arrière-plan") { viewModel.backgroundExchanges[idA]?.messages.last?.text == "Début A, suite." }
         #expect(viewModel.messages.map(\.text) == ["Question B", "Réponse B."])
 
         #expect(viewModel.loadConversation(id: idA))
@@ -122,7 +122,7 @@ extension ChatViewModelTests {
         continuation.yield("Réponse finale de A.")
         continuation.finish()
         await waitUntil("A enregistrée") { (try? self.storedAnswerTexts(stores, idA))?.count == 1 }
-        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchange == nil }
+        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchanges.isEmpty }
 
         #expect(viewModel.loadConversation(id: idA))
 
@@ -131,8 +131,8 @@ extension ChatViewModelTests {
         #expect(viewModel.messages.last?.status == .completed)
     }
 
-    @Test("Stop arrête la génération laissée en arrière-plan : texte partiel gardé dans A, B intact")
-    func stopCancelsTheBackgroundGeneration() async throws {
+    @Test("Tout arrêter (fenêtre fermée, session finie) arrête aussi la génération laissée en arrière-plan : partiel gardé dans A, B intact")
+    func stopEverythingCancelsTheBackgroundGeneration() async throws {
         let stores = try PersistenceStores()
         let conversationB = try makeStoredConversationB(in: stores)
         let aiProvider = ControllableStreamingAIGenerating()
@@ -140,10 +140,10 @@ extension ChatViewModelTests {
         guard let (idA, _) = await startGeneratingA(viewModel, aiProvider) else { return }
         viewModel.loadConversation(id: conversationB.id)
 
-        viewModel.stop()
+        viewModel.stopEverything()
         await waitUntil("partiel de A enregistré") { (try? self.storedAnswerTexts(stores, idA)) == ["Début A"] }
 
-        #expect(viewModel.backgroundExchange == nil)
+        #expect(viewModel.backgroundExchanges.isEmpty)
         #expect(viewModel.messages.map(\.text) == ["Question B", "Réponse B."])
         #expect(!viewModel.isGenerating)
     }
@@ -162,7 +162,7 @@ extension ChatViewModelTests {
         viewModel.conversationWasDeleted(id: idA)
         continuation.yield("Début A et fin.")
         continuation.finish()
-        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchange == nil }
+        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchanges.isEmpty }
         try await Task.sleep(for: .milliseconds(50))
 
         #expect(try stores.history.conversation(with: idA) == nil)
@@ -171,13 +171,13 @@ extension ChatViewModelTests {
         #expect(viewModel.persistenceErrorDescription == nil)
     }
 
-    @Test("Question envoyée dans B pendant que A génère : A est arrêtée (partiel gardé), B répond, rien ne se mélange")
-    func sendingElsewhereStopsTheBackgroundGeneration() async throws {
+    @Test("Question envoyée dans B pendant que A génère : A n'est PAS arrêtée, les deux réponses finissent chacune dans leur conversation")
+    func sendingElsewhereLetsTheBackgroundGenerationFinish() async throws {
         let stores = try PersistenceStores()
         let conversationB = try makeStoredConversationB(in: stores)
         let aiProvider = ControllableStreamingAIGenerating()
         let viewModel = makeViewModel(resolveProvider: { aiProvider }, stores: stores)
-        guard let (idA, _) = await startGeneratingA(viewModel, aiProvider) else { return }
+        guard let (idA, continuationA) = await startGeneratingA(viewModel, aiProvider) else { return }
         viewModel.loadConversation(id: conversationB.id)
 
         viewModel.startSend(query: "Nouvelle question B")
@@ -186,10 +186,14 @@ extension ChatViewModelTests {
         continuationB.yield("Réponse à B.")
         continuationB.finish()
         await waitUntil("B terminée") { !viewModel.isGenerating }
+        #expect(viewModel.backgroundExchanges.keys.contains(idA))
 
-        #expect(viewModel.backgroundExchange == nil)
+        continuationA.yield("Début A et la fin de A.")
+        continuationA.finish()
+        await waitUntil("A enregistrée") { (try? self.storedAnswerTexts(stores, idA)) == ["Début A et la fin de A."] }
+        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchanges.isEmpty }
+
         #expect(viewModel.messages.map(\.text) == ["Question B", "Réponse B.", "Nouvelle question B", "Réponse à B."])
-        #expect(try storedAnswerTexts(stores, idA) == ["Début A"])
         #expect(try storedAnswerTexts(stores, conversationB.id) == ["Réponse B.", "Réponse à B."])
     }
 }

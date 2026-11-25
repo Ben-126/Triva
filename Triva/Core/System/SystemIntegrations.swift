@@ -32,6 +32,9 @@ final class SystemIntegrations {
     private let endLiveActivities: @MainActor () async -> Void
     /// Termine les activités terminées dont la conversation a disparu ; reçoit « cette conversation existe-t-elle ? ».
     private let endOrphanedLiveActivities: @MainActor (@escaping @MainActor (UUID) -> Bool) async -> Void
+    /// Le réglage « Afficher la question » a changé : l'activité en cours (et celles qui attendent de disparaître)
+    /// s'alignent tout de suite.
+    private let refreshLiveActivityQuestion: @MainActor () async -> Void
     private let routes: SystemRouteCenter
     private let accessPolicy: AppGroupAccessPolicy
     /// L'historique de l'app, relié au lancement par `bind(chatHistory:)`. Sans lui (tests, lancement précoce),
@@ -45,6 +48,7 @@ final class SystemIntegrations {
     private var lastShowsLastQuestion: Bool
     private var lastSpotlightEnabled: Bool
     private var lastLiveActivityEnabled: Bool
+    private var lastShowsLiveActivityQuestion: Bool
     private var defaultsObserver: (any NSObjectProtocol)?
     private var shareSignal: ShareInboxSignal.Observation?
 
@@ -54,6 +58,7 @@ final class SystemIntegrations {
     ///   - spotlightClient: `nil` = l'index Spotlight réel de l'app. Les tests passent un faux client.
     ///   - endLiveActivities: `nil` = termine les activités en direct réelles.
     ///   - endOrphanedLiveActivities: `nil` = retire les activités en direct réelles dont la conversation a disparu.
+    ///   - refreshLiveActivityQuestion: `nil` = aligne les activités en direct réelles sur le réglage « Afficher la question ».
     ///   - routes: le routeur de l'app (Mac : on lui apprend à reconnaître les conversations existantes).
     ///   - isMac: décide de l'accès au conteneur de l'App Group (voir `AppGroupAccessPolicy`).
     init(
@@ -63,6 +68,7 @@ final class SystemIntegrations {
         spotlightDelay: Duration = .seconds(2),
         endLiveActivities: (@MainActor () async -> Void)? = nil,
         endOrphanedLiveActivities: (@MainActor (@escaping @MainActor (UUID) -> Bool) async -> Void)? = nil,
+        refreshLiveActivityQuestion: (@MainActor () async -> Void)? = nil,
         routes: SystemRouteCenter = .shared,
         defaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default,
@@ -76,6 +82,9 @@ final class SystemIntegrations {
         self.endOrphanedLiveActivities = endOrphanedLiveActivities ?? { exists in
             await SearchLiveActivityController.shared.endActivities(whereConversationIsMissing: exists)
         }
+        self.refreshLiveActivityQuestion = refreshLiveActivityQuestion ?? {
+            await SearchLiveActivityController.shared.questionVisibilityDidChange()
+        }
         self.routes = routes
         self.accessPolicy = AppGroupAccessPolicy(isMac: isMac, defaults: defaults)
         self.defaults = defaults
@@ -85,6 +94,7 @@ final class SystemIntegrations {
         self.lastShowsLastQuestion = preferences.showsLastQuestionInWidget
         self.lastSpotlightEnabled = preferences.isSpotlightEnabled
         self.lastLiveActivityEnabled = preferences.isLiveActivityEnabled
+        self.lastShowsLiveActivityQuestion = preferences.showsQuestionInLiveActivity
     }
 
     static var runsOnMac: Bool {
@@ -199,6 +209,8 @@ final class SystemIntegrations {
         refreshWidget()
         Task { await spotlight.settingChanged() }
         if !lastLiveActivityEnabled { Task { [endLiveActivities] in await endLiveActivities() } }
+        lastShowsLiveActivityQuestion = preferences.showsQuestionInLiveActivity
+        Task { [refreshLiveActivityQuestion] in await refreshLiveActivityQuestion() }
     }
 
     /// Le système demande de reconstruire l'index Spotlight (`IndexedEntityQuery.reindexAllEntities`).
@@ -267,6 +279,12 @@ final class SystemIntegrations {
             // Éteint : l'activité en cours (et celles qui attendent de disparaître) s'arrêtent tout de suite, la
             // question ne reste pas sur l'écran verrouillé.
             if !liveActivityEnabled { Task { [endLiveActivities] in await endLiveActivities() } }
+        }
+        let showsQuestion = preferences.showsQuestionInLiveActivity
+        if showsQuestion != lastShowsLiveActivityQuestion {
+            lastShowsLiveActivityQuestion = showsQuestion
+            // Éteint : la question quitte tout de suite l'activité en cours et celles qui attendent de disparaître.
+            Task { [refreshLiveActivityQuestion] in await refreshLiveActivityQuestion() }
         }
     }
 

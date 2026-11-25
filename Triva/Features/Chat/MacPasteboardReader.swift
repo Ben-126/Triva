@@ -16,9 +16,11 @@ nonisolated struct MacPastePayload: Sendable {
     var imageData: Data?
     var imageFormat: PastedImageFormat?
     var text: String?
+    /// Des octets d'un fichier que Triva ne lit pas (ancien .doc d'un mail…), sans adresse de fichier (mission W).
+    var hasUnsupportedFileItem = false
 
     var snapshot: PasteboardSnapshot {
-        PasteboardSnapshot(fileURLs: fileURLs, hasImage: imageData != nil, text: text)
+        PasteboardSnapshot(fileURLs: fileURLs, hasImage: imageData != nil, text: text, hasUnsupportedFileItem: hasUnsupportedFileItem)
     }
 
     /// Lit le presse-papiers. L'image n'est lue que s'il n'y a pas de fichier (le Finder y met l'icône du fichier).
@@ -30,6 +32,7 @@ nonisolated struct MacPastePayload: Sendable {
         payload.text = pasteboard.string(forType: .string)
         if payload.fileURLs.isEmpty {
             let identifiers = pasteboard.types?.map(\.rawValue) ?? []
+            payload.hasUnsupportedFileItem = PasteboardClassifier.kind(ofTypeIdentifiers: identifiers) == .unsupportedFile
             if let format = PastedImageFormat.best(among: identifiers),
                let data = pasteboard.data(forType: NSPasteboard.PasteboardType(format.typeIdentifier)) {
                 payload.imageData = data

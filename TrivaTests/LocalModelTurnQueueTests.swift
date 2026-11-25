@@ -68,6 +68,36 @@ struct LocalModelTurnQueueTests {
         queue.release(try await next.value)
     }
 
+    @Test("Deux réponses d'une même fenêtre (la première laissée en arrière-plan) : la seconde attend derrière son propre travail, et ça se voit")
+    func secondAnswerWaitsBehindOwnBackgroundAnswer() async throws {
+        let queue = LocalModelTurnQueue()
+        let window = UUID()
+        let background = try await queue.acquire(for: window)
+        let next = Task { try await queue.acquire(for: window) }
+        #expect(await waitForPool { queue.waitingRequesters.count == 1 })
+
+        #expect(queue.isWaitingBehindOwnWork(window))
+        #expect(!queue.isWaitingBehindOwnWork(UUID()))
+        queue.release(background)
+        let turn = try await next.value
+        #expect(!queue.isWaitingBehindOwnWork(window))
+        queue.release(turn)
+    }
+
+    @Test("Derrière UNE AUTRE fenêtre : ce n'est pas « son propre travail »")
+    func waitingBehindAnotherWindowIsNotOwnWork() async throws {
+        let queue = LocalModelTurnQueue()
+        let window = UUID()
+        let other = try await queue.acquire(for: UUID())
+        let next = Task { try await queue.acquire(for: window) }
+        #expect(await waitForPool { queue.waitingRequesters.count == 1 })
+
+        #expect(!queue.isWaitingBehindOwnWork(window))
+        #expect(queue.isWaitingBehindAnother(window))
+        queue.release(other)
+        queue.release(try await next.value)
+    }
+
     @Test("Tâche déjà annulée -> CancellationError sans prendre de place")
     func alreadyCancelledTaskThrows() async {
         let queue = LocalModelTurnQueue()

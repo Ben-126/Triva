@@ -22,6 +22,8 @@ struct ChatTranscriptRow: View {
     let message: ChatViewModel.Message
     let viewModel: ChatViewModel
     let onRetry: @MainActor (UUID) -> Void
+    /// « Réessayer » sous une réponse interrompue (mission M).
+    let onRetryInterrupted: @MainActor (UUID) -> Void
     /// Reçoit le haut de la rangée dans le repère nommé `topCoordinateSpace` (mission I1) : sert à garder
     /// la position de lecture quand la vue est remplacée (`TranscriptScrollState`). `nil` : rien n'est mesuré.
     var onTopChange: (@MainActor (CGFloat) -> Void)?
@@ -52,6 +54,24 @@ struct ChatTranscriptRow: View {
     private static func isIdle(_ phase: VideoResultsPhase) -> Bool {
         if case .idle = phase { return true }
         return false
+    }
+
+    /// « Réponse interrompue » : sous le début de réponse gardé, ou seule quand rien n'était encore écrit (elle porte
+    /// alors l'ancre de défilement que la bulle absente ne peut pas porter). Hors verre, même style que le bandeau
+    /// d'erreur du fil, encre des légendes.
+    @ViewBuilder
+    private func interruptedNote(hasBubble: Bool) -> some View {
+        let note = Text(ChatViewModel.interruptedAnswerMessage)
+            .font(.footnote)
+            .foregroundStyle(MessageBubbleView.legendStyle)
+            .accessibilityIdentifier("chat.answerInterrupted")
+        if hasBubble || !message.widgets.isEmpty {
+            note
+        } else {
+            note
+                .id(Self.answerStartID(message.id))
+                .reportingTop(onTopChange, in: topCoordinateSpace)
+        }
     }
 
     var body: some View {
@@ -111,6 +131,19 @@ struct ChatTranscriptRow: View {
                     images
                     videos
                 }
+            }
+
+            if isAnswer, message.status == .interrupted {
+                interruptedNote(hasBubble: MessageBubblePresentation.showsBubble(answer))
+            }
+
+            if viewModel.canRetryInterrupted(message) {
+                Button(ChatViewModel.retryInterruptedTitle, systemImage: "arrow.clockwise") {
+                    onRetryInterrupted(messageID)
+                }
+                .font(.subheadline)
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("chat.retryInterrupted")
             }
 
             if viewModel.canRetryInQuickMode(message) {

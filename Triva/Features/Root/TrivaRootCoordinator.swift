@@ -144,8 +144,8 @@ final class TrivaRootCoordinator {
         self.session = session
         // Une réponse qui continue en arrière-plan écrit encore dans SA conversation : le registre la
         // compte comme tenue par cette fenêtre (voir `WindowConversationRegistry`).
-        windowRegistry.setBackgroundConversation({ [weak session] in
-            session?.chatViewModel?.backgroundExchange?.conversationID
+        windowRegistry.setBackgroundConversations({ [weak session] in
+            session?.chatViewModel?.backgroundConversationIDs ?? []
         }, in: windowID)
         // Découvrir lit des flux RSS/Atom publics (plus de SearXNG : le budget des
         // instances publiques ne suffisait pas, mesure T1). Il ne dépend plus de la

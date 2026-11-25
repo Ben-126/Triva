@@ -132,6 +132,8 @@ struct OpenAICompatibleProvider: AIGenerating {
         do {
             storedKey = try keyStore.apiKey(account: account)
         } catch {
+            // Appareil verrouillé : la clé existe peut-être, elle n'est simplement pas lisible (ni « absente », ni « refusée »).
+            if LockedDeviceError.isLockedKeychain(error) { throw LockedDeviceError.deviceLocked }
             throw OpenAICompatibleProviderError.generationFailed(description: String(describing: error))
         }
 

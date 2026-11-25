@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import UniformTypeIdentifiers
 
 /// Ce que porte un presse-papiers, réduit à ce qui décide du collage.
 nonisolated struct PasteboardSnapshot: Sendable, Equatable {
@@ -19,6 +20,9 @@ nonisolated struct PasteboardSnapshot: Sendable, Equatable {
     var hasImage = false
     /// Le texte brut, s'il y en a un.
     var text: String?
+    /// Un fichier que Triva ne lit pas (ancien .doc, archive…), sans adresse de fichier : présent seul, il doit recevoir
+    /// un refus clair plutôt que « presse-papiers vide » (mission W).
+    var hasUnsupportedFileItem = false
 }
 
 nonisolated enum PasteboardDecision: Sendable, Equatable {
@@ -28,6 +32,8 @@ nonisolated enum PasteboardDecision: Sendable, Equatable {
     case image
     /// Collage de texte NORMAL : Triva ne s'en mêle pas.
     case text
+    /// Seulement un fichier que Triva ne lit pas : refus expliqué (« Triva ne lit pas ce type de fichier. »).
+    case unsupportedFile
     case nothing
 }
 
@@ -40,7 +46,28 @@ nonisolated enum PasteboardClassifier {
         if !snapshot.fileURLs.isEmpty || snapshot.hasFileItem { return .files }
         let text = snapshot.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if snapshot.hasImage, text.isEmpty || isSingleWebAddress(text) { return .image }
-        return text.isEmpty ? .nothing : .text
+        if !text.isEmpty { return .text }
+        return snapshot.hasUnsupportedFileItem ? .unsupportedFile : .nothing
+    }
+
+    /// Nature d'un élément du presse-papiers d'après les types qu'il propose (les types, jamais son contenu).
+    enum ProviderKind: Sendable, Equatable {
+        /// Un fichier que Triva lit ou dont l'adresse suffira à le classer : adresse de fichier, PDF, .docx.
+        case file
+        /// Des octets qui ne sont ni du texte, ni une adresse, ni une image, ni une liste de propriétés : un fichier
+        /// d'un autre genre (ancien .doc, archive, .pages…).
+        case unsupportedFile
+        case other
+    }
+
+    static func kind(ofTypeIdentifiers identifiers: [String]) -> ProviderKind {
+        let types = identifiers.compactMap { UTType($0) }
+        if types.contains(where: { $0.conforms(to: .fileURL) || $0.conforms(to: .pdf) || $0 == AttachmentKind.docxType }) { return .file }
+        let isForeign = types.contains { type in
+            type.conforms(to: .data) && !type.conforms(to: .text) && !type.conforms(to: .url)
+                && !type.conforms(to: .image) && !type.conforms(to: .propertyList)
+        }
+        return isForeign ? .unsupportedFile : .other
     }
 
     /// Une seule adresse http(s), sans espace ni saut de ligne.

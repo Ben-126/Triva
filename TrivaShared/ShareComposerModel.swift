@@ -4,7 +4,7 @@
 //
 //  Chantier 2.1 (mission E) : le modèle de la feuille « Rechercher avec Triva ». Placé dans `TrivaShared` pour être
 //  TESTÉ (la vue de l'extension reste mince). Il lit le partage, propose la question, puis écrit dans la boîte de
-//  l'App Group au bouton « Envoyer à Triva ». Rien ne part ailleurs : l'extension ne fait pas de réseau, ne lance
+//  l'App Group au bouton « Ajouter à Triva ». Rien ne part ailleurs : l'extension ne fait pas de réseau, ne lance
 //  aucune recherche, et ne peut pas ouvrir l'app (limite Apple) : c'est l'app qui vient chercher (mission E, consommateur).
 //
 
@@ -13,6 +13,9 @@ import Observation
 
 /// Les textes de la feuille (à valider par Ben). Le premier et le dernier de la confirmation viennent de la spec 2.1 §4.6.
 nonisolated enum ShareMessages {
+    /// Le bouton de la feuille. « Ajouter » et non « Envoyer » : rien ne part, la question et le fichier attendent dans
+    /// Triva (décision de Ben, 25/11).
+    static let addButtonTitle = "Ajouter à Triva"
     static let unreadable = "Triva n'a pas pu lire ce contenu."
     static let unsupportedFile = "Triva ne lit pas ce type de fichier."
     static let tooLarge = "Ce fichier est trop volumineux pour être joint."
@@ -87,7 +90,7 @@ final class ShareComposerModel {
         }
     }
 
-    /// « Envoyer à Triva » : écrit dans la boîte. Sans effet si une écriture est déjà en cours ou terminée.
+    /// « Ajouter à Triva » : écrit dans la boîte. Sans effet si une écriture est déjà en cours ou terminée.
     ///
     /// La copie d'un gros PDF se fait HORS du thread principal : la feuille affiche son état « en cours » au lieu de se figer.
     func send() async {

@@ -14,15 +14,15 @@ import UniformTypeIdentifiers
 /// refusé explicitement (`AttachmentExtractionError.unsupportedFileType`),
 /// jamais « tenté pour voir ».
 ///
-/// DIVERGENCE assumée avec la version web d'origine, qui accepte
-/// PDF, DOCX et texte brut : ici DOCX est refusé. Côté serveur, elle s'appuie
-/// sur `officeparser` (npm) ; côté Apple, aucun framework natif ne lit un
-/// `.docx` sur iOS (`NSAttributedString` ne sait l'ouvrir que sur macOS), et
-/// la règle "zéro dépendance" interdit d'embarquer un parseur tiers. En
-/// échange, Markdown, CSV et JSON sont acceptés : ce sont du texte, lu par le
-/// même chemin que le `.txt`.
+/// Le DOCX (Word) est lu, depuis la mission W (décision de Ben, 25/11/2026) : la version web d'origine s'appuie sur
+/// `officeparser` (npm) ; côté Apple, `NSAttributedString` ne lit le .docx que sur macOS (vérifié dans le SDK iOS 27),
+/// donc `DocxTextReader` le lit nativement (ZIP + `XMLParser`, aucune dépendance), identique sur toutes les
+/// plateformes. Restent refusés : l'ancien `.doc`, `.docm`, `.dotx`, `.pages`, `.odt`, RTF, HTML, XML, archives.
+/// Markdown, CSV et JSON sont acceptés : ce sont du texte, lu par le même chemin que le `.txt`.
 nonisolated enum AttachmentKind: String, Sendable, Equatable, CaseIterable {
     case pdf
+    /// Document Word `.docx` (mission W) : texte des paragraphes, tableaux et notes, lu par `DocxTextReader`.
+    case docx
     case plainText
     case markdown
     case csv
@@ -38,6 +38,10 @@ nonisolated enum AttachmentKind: String, Sendable, Equatable, CaseIterable {
     /// dans le SDK : on passe par l'identifiant, déclaré par le système
     /// (vérifié sur macOS 27 : `md` et `markdown` y sont rattachés).
     private static let markdownType = UTType("net.daringfireball.markdown")
+
+    /// Identifiant système du .docx (`org.openxmlformats.wordprocessingml.document`), déclaré par macOS et iOS.
+    /// L'extension `docx` fait foi aussi si le système ne le déclarait pas (même filet que le Markdown).
+    static let docxType: UTType? = SharedFileType.docxContentType
 
     /// Filet de sécurité si l'identifiant Markdown n'était pas déclaré sur un
     /// OS : l'extension suffit alors à le reconnaître, au lieu de refuser un
@@ -69,6 +73,9 @@ nonisolated enum AttachmentKind: String, Sendable, Equatable, CaseIterable {
 
         if type.conforms(to: .pdf) {
             self = .pdf
+        } else if fileExtension == "docx" || Self.docxType == type {
+            // Égalité, pas conformité : `.docm` (macros) et `.dotx` (modèle) sont des cousins, pas des .docx.
+            self = .docx
         } else if Self.imageTypes.contains(where: { type.conforms(to: $0) }) {
             self = .image
         } else if type.conforms(to: .json) {
@@ -130,6 +137,16 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
     case imageDimensionsTooLarge
     /// Image lue, mais aucun texte reconnu (photo de paysage, image vide).
     case noTextInImage
+    /// Faux .docx ou .docx abîmé : pas une archive ZIP, tronquée, XML invalide, sans corps, déclaration de type de
+    /// document (entités), entrée plus longue que annoncée, nom d'entrée piégé ou en double.
+    case invalidDocx
+    /// Document Word protégé par un mot de passe (conteneur OLE2 chiffré) OU ancien format `.doc` : même en-tête
+    /// binaire, donc un seul message qui couvre les deux cas.
+    case protectedOrLegacyWord
+    /// Taille décompressée, nombre d'entrées ou durée de lecture au-delà des plafonds (bombe de décompression).
+    case docxTooLarge
+    /// Document Word lisible, sans aucun texte (pages d'images seulement).
+    case noTextInDocument
 
     /// Message court en français, tutoiement, sans jargon, prêt pour l'UI.
     /// Aucune interpolation de donnée issue du fichier (seule la limite de
@@ -137,7 +154,8 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
     var userFacingMessage: String {
         switch self {
         case .unsupportedFileType:
-            return "Ce type de fichier n'est pas pris en charge. Joins un PDF, une image ou un fichier texte (TXT, Markdown, CSV, JSON)."
+            // Un seul message pour tous les chemins (sélecteur, dépôt, collage, partage) : celui du dépôt.
+            return DropRefusal.unsupportedTypeMessage
         case .fileUnreadable:
             return "Impossible d'ouvrir ce fichier. Vérifie qu'il est disponible sur l'appareil, puis réessaie."
         case let .fileTooLarge(_, maximumByteCount):
@@ -168,6 +186,15 @@ nonisolated enum AttachmentExtractionError: Error, Sendable, Equatable {
             return "Cette image est trop grande (en pixels). Réduis-la, puis joins-la à nouveau."
         case .noTextInImage:
             return "Triva ne trouve aucun texte dans cette image."
+        // Textes de la mission W : à valider par Ben.
+        case .invalidDocx:
+            return "Ce document Word est illisible ou endommagé."
+        case .protectedOrLegacyWord:
+            return "Ce document Word est protégé par un mot de passe ou dans un ancien format. Retire la protection ou enregistre-le au format .docx, puis joins-le à nouveau."
+        case .docxTooLarge:
+            return "Ce document Word est trop volumineux ou trop complexe pour être lu."
+        case .noTextInDocument:
+            return "Ce document Word ne contient aucun texte."
         }
     }
 }
@@ -336,6 +363,8 @@ nonisolated struct AttachmentTextExtractor: Sendable {
     let maxImagePixelCount: Int
     /// Lecture du texte des images (Vision par défaut ; un faux dans les tests).
     let imageRecognizer: any ImageTextRecognizing
+    /// Lecture des documents Word (plafonds réglables dans les tests).
+    let docxReader: DocxTextReader
 
     /// Bornes ramenées à au moins 1 : une borne nulle ou négative est une
     /// erreur de configuration, pas une entrée utilisateur — on la neutralise
@@ -346,7 +375,8 @@ nonisolated struct AttachmentTextExtractor: Sendable {
         maxTextFileByteCount: Int = AttachmentTextExtractor.defaultMaxTextFileByteCount,
         maxImageByteCount: Int = AttachmentTextExtractor.defaultMaxImageByteCount,
         maxImagePixelCount: Int = AttachmentTextExtractor.defaultMaxImagePixelCount,
-        imageRecognizer: any ImageTextRecognizing = VisionImageTextRecognizer()
+        imageRecognizer: any ImageTextRecognizing = VisionImageTextRecognizer(),
+        docxReader: DocxTextReader = DocxTextReader()
     ) {
         self.maxCharacterCount = max(1, maxCharacterCount)
         self.maxPDFPageCount = max(1, maxPDFPageCount)
@@ -354,6 +384,7 @@ nonisolated struct AttachmentTextExtractor: Sendable {
         self.maxImageByteCount = max(1, maxImageByteCount)
         self.maxImagePixelCount = max(1, maxImagePixelCount)
         self.imageRecognizer = imageRecognizer
+        self.docxReader = docxReader
     }
 
     // MARK: - Points d'entrée
@@ -461,6 +492,8 @@ nonisolated struct AttachmentTextExtractor: Sendable {
         case .pdf:
             guard let document = PDFDocument(data: data) else { throw AttachmentExtractionError.invalidPDF }
             return try extractPDF(document, fileName: fileName, characterLimit: limit)
+        case .docx:
+            return try extractDocx(data: data, fileName: fileName, characterLimit: limit)
         case .plainText, .markdown, .csv, .json:
             return try extractText(data, fileName: fileName, kind: kind, characterLimit: limit)
         case .image:
@@ -510,6 +543,9 @@ nonisolated struct AttachmentTextExtractor: Sendable {
             // jamais monté en mémoire en entier.
             guard let document = PDFDocument(url: url) else { throw AttachmentExtractionError.invalidPDF }
             return try extractPDF(document, fileName: fileName, characterLimit: characterLimit)
+        case .docx:
+            // Lu par morceaux, jamais chargé en mémoire ; le plafond de taille est celui de `docxReader`.
+            return try extractDocx(fileAt: url, fileName: fileName, characterLimit: characterLimit)
         case .plainText, .markdown, .csv, .json:
             guard byteCount <= maxTextFileByteCount else {
                 throw AttachmentExtractionError.fileTooLarge(byteCount: byteCount, maximumByteCount: maxTextFileByteCount)

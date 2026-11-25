@@ -83,7 +83,7 @@ struct ExternalQuerySanitizerInvisibleTests {
     @Test("Question de l'activité en direct : bornée en scalaires")
     func liveActivityQuestionBounded() {
         let flood = "e" + String(repeating: "\u{0301}", count: 90_000)
-        let attributes = SearchActivityAttributes(question: flood, conversationID: nil)
-        #expect(attributes.question.unicodeScalars.count <= SearchActivityAttributes.maxQuestionLength * 4 + 1)
+        let question = SearchActivityState.oneLineQuestion(flood)
+        #expect(question.unicodeScalars.count <= SearchActivityState.maxQuestionLength * 4 + 1)
     }
 }

@@ -578,8 +578,8 @@ struct AttachmentStoreTests {
     func unsupportedFileLeavesStoreUntouched() async {
         let store = AttachmentStore(scorer: TableScorer([:]))
 
-        await #expect(throws: AttachmentExtractionError.unsupportedFileType(fileExtension: "docx")) {
-            try await store.attach(fileAt: fakeURL("lettre.docx"))
+        await #expect(throws: AttachmentExtractionError.unsupportedFileType(fileExtension: "doc")) {
+            try await store.attach(fileAt: fakeURL("lettre.doc"))
         }
         #expect(store.attachments.isEmpty)
         #expect(store.remainingCharacterBudget == store.totalCharacterBudget)

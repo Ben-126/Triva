@@ -2,7 +2,8 @@
 //  ChatViewModelSystemNewQuestionTests.swift
 //  TrivaTests
 //
-//  Chantier 2.1 (mission B2) : « nouvelle question » demandée par le système (widget, Siri, bouton Action) et
+//  Chantier 2.1 (missions B2 puis NC) : « nouvelle conversation » (bouton, ⇧⌘O, widget, Siri, bouton Action,
+//  `triva://new`) : UN seul chemin, la réponse en cours finit en arrière-plan, les fichiers joints partent ; et
 //  demande de clavier honorée même quand la vue n'était pas montée.
 //
 
@@ -89,30 +90,38 @@ extension ChatViewModelTests {
         #expect(viewModel.messages.isEmpty)
         #expect(viewModel.currentConversationID == nil)
         #expect(!viewModel.isGenerating)
-        #expect(viewModel.backgroundExchange?.conversationID == idA)
+        #expect(viewModel.backgroundConversationIDs == [idA])
         #expect(viewModel.consumePendingFocusRequest() == true)
 
         continuation.yield("Début A et la fin de A.")
         continuation.finish()
         await waitUntil("réponse de A enregistrée") { (try? self.answerTexts(stores, idA)) == ["Début A et la fin de A."] }
-        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchange == nil }
+        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchanges.isEmpty }
 
         #expect(viewModel.messages.isEmpty)
         #expect(viewModel.errorDescription == nil)
     }
 
-    @Test("Le menu et le bouton gardent leur choix : « Nouvelle conversation » arrête la réponse (partiel gardé)")
-    func userNewConversationStillStopsTheAnswer() async throws {
+    @Test("Le bouton et ⇧⌘O suivent le même chemin : « Nouvelle conversation » laisse la réponse finir en arrière-plan")
+    func userNewConversationLetsTheAnswerFinish() async throws {
         let stores = try PersistenceStores()
         let aiProvider = ControllableStreamingAIGenerating()
         let viewModel = makeViewModel(resolveProvider: { aiProvider }, stores: stores)
-        guard let (idA, _) = await startGeneratingQuestionA(viewModel, aiProvider) else { return }
+        guard let (idA, continuation) = await startGeneratingQuestionA(viewModel, aiProvider) else { return }
 
         viewModel.startNewConversationFromUser()
-        await waitUntil("partiel de A enregistré") { (try? self.answerTexts(stores, idA)) == ["Début A"] }
 
-        #expect(viewModel.backgroundExchange == nil)
         #expect(viewModel.messages.isEmpty)
+        #expect(!viewModel.isGenerating)
+        #expect(viewModel.backgroundConversationIDs == [idA])
+        #expect(viewModel.consumePendingFocusRequest() == true)
+
+        continuation.yield("Début A et la fin de A.")
+        continuation.finish()
+        await waitUntil("réponse de A enregistrée") { (try? self.answerTexts(stores, idA)) == ["Début A et la fin de A."] }
+        await waitUntil("arrière-plan soldé") { viewModel.backgroundExchanges.isEmpty }
+        #expect(viewModel.messages.isEmpty)
+        #expect(viewModel.errorDescription == nil)
     }
 
     @Test("Sans historique pour la recevoir, la réponse en cours ne peut pas continuer : elle est arrêtée proprement")
@@ -128,13 +137,13 @@ extension ChatViewModelTests {
 
         #expect(viewModel.messages.isEmpty)
         #expect(!viewModel.isGenerating)
-        #expect(viewModel.backgroundExchange == nil)
+        #expect(viewModel.backgroundExchanges.isEmpty)
     }
 
     // MARK: - Fichiers joints
 
-    @Test("Fil vide : une nouvelle question du système ne retire PAS les fichiers déjà joints")
-    func systemNewQuestionOnEmptyThreadKeepsAttachedFiles() async throws {
+    @Test("Fil vide : une nouvelle conversation retire aussi les fichiers joints pas encore envoyés")
+    func newConversationOnEmptyThreadRemovesUnsentFiles() async throws {
         let store = AttachmentStore(scorer: ConstantSimilarityScorer(), preparer: StubAttachmentPreparer())
         try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/rapport.txt"))
         let viewModel = makeViewModel(
@@ -145,44 +154,65 @@ extension ChatViewModelTests {
 
         viewModel.startNewConversationFromSystem()
 
-        #expect(viewModel.attachmentController.attachments.map(\.fileName) == ["rapport.txt"])
+        #expect(viewModel.attachmentController.attachments.isEmpty)
         #expect(viewModel.consumePendingFocusRequest() == true)
     }
 
-    @Test("Fil commencé : le fichier déjà envoyé reste à l'ancienne conversation, celui joint APRÈS (pas encore envoyé) passe à la nouvelle")
-    func systemNewQuestionOnStartedThreadKeepsOnlyUnsentFiles() async throws {
-        let store = AttachmentStore(scorer: ConstantSimilarityScorer(), preparer: StubAttachmentPreparer())
-        try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/envoye.txt"))
-        let aiProvider = MockStreamingAIGenerating(chunks: ["Réponse."])
-        let viewModel = makeViewModel(
-            resolveProvider: { aiProvider },
-            attachmentController: FileAttachmentController(store: store)
-        )
-        await viewModel.send(query: "Que dit le rapport ?")
-        try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/pas-encore-envoye.txt"))
-        #expect(viewModel.attachmentController.attachments.count == 2)
+    @Test("Fil commencé : le fichier envoyé ET celui joint après (pas encore envoyé) sont retirés, quel que soit le chemin")
+    func newConversationOnStartedThreadRemovesSentAndUnsentFiles() async throws {
+        for useSystemPath in [false, true] {
+            let store = AttachmentStore(scorer: ConstantSimilarityScorer(), preparer: StubAttachmentPreparer())
+            try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/envoye.txt"))
+            let aiProvider = MockStreamingAIGenerating(chunks: ["Réponse."])
+            let viewModel = makeViewModel(
+                resolveProvider: { aiProvider },
+                attachmentController: FileAttachmentController(store: store)
+            )
+            await viewModel.send(query: "Que dit le rapport ?")
+            try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/pas-encore-envoye.txt"))
+            #expect(viewModel.attachmentController.attachments.count == 2)
 
-        viewModel.startNewConversationFromSystem()
+            if useSystemPath { viewModel.startNewConversationFromSystem() } else { viewModel.startNewConversationFromUser() }
 
-        #expect(viewModel.messages.isEmpty)
-        #expect(viewModel.attachmentController.attachments.map(\.fileName) == ["pas-encore-envoye.txt"])
+            #expect(viewModel.messages.isEmpty)
+            #expect(viewModel.attachmentController.attachments.isEmpty)
+        }
     }
 
-    @Test("Fil commencé : les fichiers appartiennent à l'ancienne conversation, ils ne passent pas à la nouvelle")
-    func systemNewQuestionOnStartedThreadClearsAttachedFiles() async throws {
+    @Test("Un fichier qui arrive APRÈS la remise à zéro (partage, glisser-déposer) est traité normalement")
+    func fileArrivingAfterTheResetIsAttachedNormally() async throws {
         let store = AttachmentStore(scorer: ConstantSimilarityScorer(), preparer: StubAttachmentPreparer())
-        try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/rapport.txt"))
-        let aiProvider = MockStreamingAIGenerating(chunks: ["Réponse."])
+        try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/ancien.txt"))
         let viewModel = makeViewModel(
-            resolveProvider: { aiProvider },
+            resolveProvider: { MockStreamingAIGenerating(chunks: []) },
             attachmentController: FileAttachmentController(store: store)
         )
-        await viewModel.send(query: "Que dit le rapport ?")
-        #expect(!viewModel.messages.isEmpty)
 
         viewModel.startNewConversationFromSystem()
+        try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/nouveau.txt"))
 
-        #expect(viewModel.messages.isEmpty)
+        #expect(viewModel.attachmentController.attachments.map(\.fileName) == ["nouveau.txt"])
+    }
+
+    @Test("Réponse en cours avec un fichier joint : la remise à zéro retire le fichier, la réponse en arrière-plan finit quand même")
+    func answerInFlightFinishesAfterItsFilesAreRemoved() async throws {
+        let stores = try PersistenceStores()
+        let store = AttachmentStore(scorer: ConstantSimilarityScorer(), preparer: StubAttachmentPreparer())
+        try await store.attach(fileAt: URL(fileURLWithPath: "/Tests/rapport.txt"))
+        let aiProvider = ControllableStreamingAIGenerating()
+        let viewModel = makeViewModel(
+            resolveProvider: { aiProvider },
+            stores: stores,
+            attachmentController: FileAttachmentController(store: store)
+        )
+        guard let (idA, continuation) = await startGeneratingQuestionA(viewModel, aiProvider) else { return }
+
+        viewModel.startNewConversationFromUser()
+
         #expect(viewModel.attachmentController.attachments.isEmpty)
+        continuation.yield("Début A et la fin de A.")
+        continuation.finish()
+        await waitUntil("réponse de A enregistrée") { (try? self.answerTexts(stores, idA)) == ["Début A et la fin de A."] }
+        #expect(viewModel.errorDescription == nil)
     }
 }

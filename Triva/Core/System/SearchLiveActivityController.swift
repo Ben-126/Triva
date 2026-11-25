@@ -16,7 +16,10 @@
 //    finit « interrompue » ;
 //  - fin : réponse prête et app active, l'activité disparaît tout de suite ; réponse prête alors que l'app est en
 //    arrière-plan, elle reste 30 minutes ; interrompue ou échouée, 5 minutes ;
-//  - une séance sans fenêtre (Siri, Raccourcis) n'a pas d'observateur : le système affiche déjà sa progression.
+//  - une séance sans fenêtre (Siri, Raccourcis) n'a pas d'observateur : le système affiche déjà sa progression ;
+//  - mission I (Ben, 25/11) : la QUESTION voyage dans l'état de l'activité (jamais dans ses attributs fixes) et n'est
+//    envoyée que si « Afficher la question » est allumé ; éteint (même en cours de recherche), la mise à jour suivante
+//    la retire et les activités terminées qui attendent de disparaître sont retirées tout de suite.
 //
 //  Les appels au client partent dans l'ordre des événements (une seule file), même si l'un d'eux est lent.
 //
@@ -51,7 +54,8 @@ final class SearchLiveActivityController: SearchProgressObserving {
 
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "SearchLiveActivity")
 
-    /// Une activité ouverte. Le battement est annulé à la fin.
+    /// Une activité ouverte. Le battement est annulé à la fin. `state` garde la question (sur une ligne) : c'est
+    /// `shown(_:)` qui décide, à CHAQUE envoi, si elle part ou non.
     private struct Entry {
         let activityID: String
         var state: SearchActivityState
@@ -141,6 +145,24 @@ final class SearchLiveActivityController: SearchProgressObserving {
         await settle()
     }
 
+    /// Le réglage « Afficher la question » a changé : les échanges en cours reçoivent tout de suite un état qui suit le
+    /// réglage (question retirée, ou remise). Éteint, les activités déjà terminées qui attendent de disparaître sont
+    /// retirées : une activité finie ne peut plus être mise à jour, sa question resterait jusqu'à 30 minutes.
+    func questionVisibilityDidChange() async {
+        for entry in entries.values {
+            enqueueUpdate(of: entry)
+        }
+        if !preferences.showsQuestionInLiveActivity {
+            let inFlight = Set(entries.values.map(\.activityID))
+            let client = client
+            for activity in client.openActivities() where !inFlight.contains(activity.id) {
+                let id = activity.id
+                enqueue { await client.dismiss(id: id) }
+            }
+        }
+        await settle()
+    }
+
     /// « Tout effacer » : plus aucune activité, plus aucun échange suivi, plus aucune tâche d'arrière-plan.
     func endAll() async {
         for entry in entries.values {
@@ -160,10 +182,11 @@ final class SearchLiveActivityController: SearchProgressObserving {
         }
         guard preferences.isLiveActivityEnabled, client.areActivitiesEnabled, isAppActive() else { return }
 
-        let attributes = SearchActivityAttributes(question: question, conversationID: conversationID)
+        let attributes = SearchActivityAttributes(conversationID: conversationID)
+        let initial = SearchActivityState.initial.showing(question: SearchActivityState.oneLineQuestion(question))
         let activityID: String
         do {
-            activityID = try client.start(attributes: attributes, state: .initial, staleDate: staleDate())
+            activityID = try client.start(attributes: attributes, state: shown(initial), staleDate: staleDate())
         } catch {
             // Refus du système (limite d'activités, réglage coupé entre-temps) : la recherche continue sans activité.
             Self.logger.info("Activité en direct non démarrée : \(String(describing: error), privacy: .public)")
@@ -174,7 +197,7 @@ final class SearchLiveActivityController: SearchProgressObserving {
         }
         entries[answerID] = Entry(
             activityID: activityID,
-            state: .initial,
+            state: initial,
             token: token,
             heartbeat: startHeartbeat(answerID: answerID)
         )
@@ -184,7 +207,7 @@ final class SearchLiveActivityController: SearchProgressObserving {
 
     private func enqueueUpdate(of entry: Entry) {
         let client = client
-        let (id, state, stale) = (entry.activityID, entry.state, staleDate())
+        let (id, state, stale) = (entry.activityID, shown(entry.state), staleDate())
         enqueue { await client.update(id: id, state: state, staleDate: stale) }
     }
 
@@ -193,7 +216,7 @@ final class SearchLiveActivityController: SearchProgressObserving {
         entry.heartbeat?.cancel()
         let client = client
         let keeper = keeper
-        let (id, state, token) = (entry.activityID, entry.state, entry.token)
+        let (id, state, token) = (entry.activityID, shown(entry.state), entry.token)
         enqueue {
             await client.end(id: id, state: state, policy: policy)
             if let token { keeper.end(token) }
@@ -212,6 +235,11 @@ final class SearchLiveActivityController: SearchProgressObserving {
     /// Le système va suspendre l'app : la recherche n'avance plus, l'activité le dit au lieu de mentir.
     private func backgroundTimeExpired(answerID: UUID) {
         searchProgress(.interrupted, answerID: answerID)
+    }
+
+    /// L'état tel qu'il part à l'écran : sans la question quand le réglage est éteint (lu à chaque envoi).
+    private func shown(_ state: SearchActivityState) -> SearchActivityState {
+        preferences.showsQuestionInLiveActivity ? state : state.removingQuestion()
     }
 
     private func staleDate() -> Date {

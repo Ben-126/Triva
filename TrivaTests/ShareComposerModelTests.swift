@@ -3,7 +3,7 @@
 //  TrivaTests
 //
 //  Chantier 2.1 (mission E) : le modèle de la feuille « Rechercher avec Triva » (la vue elle-même est mince). Il lit
-//  le partage, propose la question, écrit dans la boîte de l'App Group au bouton « Envoyer à Triva » ; rien ne part
+//  le partage, propose la question, écrit dans la boîte de l'App Group au bouton « Ajouter à Triva » ; rien ne part
 //  ailleurs, et le dossier de travail de l'extension est effacé à la fin, quelle qu'elle soit.
 //
 
@@ -61,10 +61,19 @@ private struct ModelFixture {
     }
 }
 
+@Suite("Partage — texte du bouton")
+struct ShareButtonTitleTests {
+    @Test("Le bouton de la feuille s'appelle « Ajouter à Triva » : rien ne part, on ajoute")
+    func addButtonTitle() {
+        #expect(ShareMessages.addButtonTitle == "Ajouter à Triva")
+        #expect(!ShareMessages.addButtonTitle.contains("Envoyer"))
+    }
+}
+
 @MainActor
 @Suite("Partage — feuille « Rechercher avec Triva »")
 struct ShareComposerModelTests {
-    @Test("Texte partagé : la question est préremplie, modifiable, et part dans la boîte au bouton Envoyer")
+    @Test("Texte partagé : la question est préremplie, modifiable, et part dans la boîte au bouton Ajouter")
     func textFlow() async throws {
         let fixture = try ModelFixture(); defer { fixture.cleanUp() }
         let model = fixture.model([fixture.textItem("Qui a peint la Joconde ?")])
@@ -82,7 +91,7 @@ struct ShareComposerModelTests {
         #expect(entry.file == nil)
     }
 
-    @Test("Question vidée sans fichier : Envoyer est désactivé, rien n'est écrit")
+    @Test("Question vidée sans fichier : Ajouter est désactivé, rien n'est écrit")
     func blankQuestionCannotBeSent() async throws {
         let fixture = try ModelFixture(); defer { fixture.cleanUp() }
         let model = fixture.model([fixture.textItem("une question")])
@@ -155,7 +164,7 @@ struct ShareComposerModelTests {
         #expect(fixture.stagingIsEmpty())
     }
 
-    @Test("Un double toucher sur Envoyer n'écrit qu'une entrée")
+    @Test("Un double toucher sur Ajouter n'écrit qu'une entrée")
     func doubleSend() async throws {
         let fixture = try ModelFixture(); defer { fixture.cleanUp() }
         let model = fixture.model([fixture.textItem("une seule fois")])

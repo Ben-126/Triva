@@ -170,7 +170,13 @@ struct FileAttachmentTray: View {
             }
         }
         ForEach(controller.pendingAttachments) { pending in
-            FileCapsule(fileName: pending.fileName, kind: nil, note: nil, canPreview: false, onPreview: {}) {
+            FileCapsule(
+                fileName: pending.fileName, kind: nil,
+                note: ImageRecognitionPreparationPresentation.note(
+                    forFileName: pending.fileName, isPreparing: controller.imageReadiness?.isPreparing ?? false
+                ),
+                canPreview: false, onPreview: {}
+            ) {
                 controller.removePendingAttachment(id: pending.id)
             }
         }
@@ -198,7 +204,7 @@ private struct FileCapsule: View {
     private var accessibilityLabel: String {
         isAttached
             ? FileAttachmentPresentation.attachedAccessibilityLabel(fileName: fileName, note: note)
-            : FileAttachmentPresentation.pendingAccessibilityLabel(fileName: fileName)
+            : FileAttachmentPresentation.pendingAccessibilityLabel(fileName: fileName) + (note.map { ". \($0.detail)" } ?? "")
     }
 
     private var removeAccessibilityLabel: String {

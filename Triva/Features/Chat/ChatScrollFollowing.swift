@@ -123,9 +123,30 @@ nonisolated enum ChatScrollFollowing {
     }
 
     /// LE déclencheur du suivi, unique et après mise en page.
-    static func shouldFollowContent(from old: Metrics, to new: Metrics, phase: ScrollPhase, isPinned: Bool) -> Bool {
-        guard isPinned, allowsProgrammaticScroll(during: phase) else { return false }
+    ///
+    /// Un écran VIDE (aucun message) ne suit jamais le bas : il se lit depuis le haut. Sans cette règle, dans une petite
+    /// fenêtre, une image collée dans la saisie rétrécit la liste, le « suivi » descendait jusqu'au dernier exemple, et
+    /// « Que veux-tu savoir ? » et « ESSAIE » sortaient du cadre (mission I, capture de Ben du 25/11).
+    static func shouldFollowContent(from old: Metrics, to new: Metrics, phase: ScrollPhase, isPinned: Bool, hasMessages: Bool = true) -> Bool {
+        guard hasMessages, isPinned, allowsProgrammaticScroll(during: phase) else { return false }
         return new.scrollableHeight > old.scrollableHeight
+    }
+
+    /// Où la liste s'ouvre : en haut tant qu'elle n'a aucun message (l'écran vide).
+    static func initialScrollAnchor(hasMessages: Bool) -> UnitPoint { hasMessages ? .bottom : .top }
+
+    /// Ce que fait la liste quand le NOMBRE de messages change.
+    enum MessageCountChange: Equatable {
+        case showTop
+        case followBottom
+        case showLastAnswerStart
+    }
+
+    /// Plus aucun message (nouvelle conversation) : le haut de l'écran vide. Un échange en cours : le bas. Sinon (une
+    /// conversation rouverte) : le début de sa dernière réponse.
+    static func action(afterMessageCountChange isGenerating: Bool, hasMessages: Bool) -> MessageCountChange {
+        if !hasMessages { return .showTop }
+        return isGenerating ? .followBottom : .showLastAnswerStart
     }
 
     /// `onAppear` ne recentre sur le début de la dernière réponse que pour une conversation que la vue

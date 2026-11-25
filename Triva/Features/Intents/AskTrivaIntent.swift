@@ -69,7 +69,8 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
         var isSet = false
     }
 
-    /// Temps d'exécution prolongé ; le GPU est demandé seulement pour un modèle local sur iPhone ou iPad. Si le
+    /// Temps d'exécution prolongé ; le GPU est demandé seulement pour un modèle local sur iPhone ou iPad, et seulement
+    /// si l'app est active : sinon la question passe d'office au premier plan (`mustStartInForeground`). Si le
     /// système refuse de lancer le travail en arrière-plan (GPU non accordé), on continue au premier plan quand il
     /// l'autorise (`HeadlessForegroundFallback`).
     @MainActor
@@ -78,6 +79,12 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
         execution: HeadlessExecution,
         progress: Progress
     ) async throws -> HeadlessQuestionOutcome {
+        if HeadlessForegroundFallback.mustStartInForeground(execution: execution, gpuPhase: LocalGPUGate.shared.phase) {
+            guard systemContext.currentMode.canContinueInForeground else {
+                throw AskTrivaError.message(HeadlessForegroundFallback.currentRefusalMessage)
+            }
+            return try await runInForeground(runner, progress: progress)
+        }
         let options: LongRunningTaskOptions = execution == .backgroundWithGPU ? [.requiresGPU] : []
         let question = question
         let started = StartFlag()
@@ -98,7 +105,7 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
             ) else {
                 // Le GPU était demandé et le travail n'a jamais commencé : le système a refusé, on le dit clairement.
                 if execution == .backgroundWithGPU, !started.isSet, !wasCancelled {
-                    throw AskTrivaError.message(HeadlessForegroundFallback.refusedMessage)
+                    throw AskTrivaError.message(HeadlessForegroundFallback.currentRefusalMessage)
                 }
                 throw error
             }
@@ -115,7 +122,7 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
                 alwaysConfirm: false
             )
         } catch {
-            throw AskTrivaError.message(HeadlessForegroundFallback.refusedMessage)
+            throw AskTrivaError.message(HeadlessForegroundFallback.currentRefusalMessage)
         }
         progress.totalUnitCount = HeadlessProgressMeter.totalUnits
         let question = question

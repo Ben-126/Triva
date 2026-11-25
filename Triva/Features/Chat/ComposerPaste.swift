@@ -99,6 +99,10 @@ private final class MonitorView: NSView {
                 controller.receivePasted(items)
             }
             return true
+        case .unsupportedFile:
+            // Seulement un fichier d'un type non pris en charge : refus expliqué, pas un collage qui ne fait rien en silence.
+            controller.reportRefusal(DropRefusal.unsupportedTypeMessage)
+            return true
         case .text, .nothing:
             return false
         }

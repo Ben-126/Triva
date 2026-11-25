@@ -20,11 +20,40 @@ extension ChatViewModel {
     /// `Authorization: Bearer <clé>` dans son JSON d'erreur. Messages fixes ;
     /// seuls y entrent le nom du fournisseur (celui des Réglages) et un statut
     /// HTTP, jamais un texte venu du réseau.
-    static func userFacingMessage(for error: Error) -> String {
-        pipelineMessage(for: error)
+    ///
+    /// Appareil verrouillé (Siri, Raccourcis sur un écran verrouillé) : une clé illisible (`LockedDeviceError`) et les
+    /// pannes de moteur qui ne s'expliquent que par le verrou (Apple Intelligence indisponible, modèle local qui ne
+    /// démarre pas) disent « Déverrouille ton appareil » au lieu de « pas de clé » ou d'un message technique.
+    /// `isDeviceLocked` n'est lu que pour ces pannes ambiguës.
+    static func userFacingMessage(for error: Error, isDeviceLocked: @autoclosure () -> Bool = DeviceLock.isLocked) -> String {
+        if error is LockedDeviceError { return DeviceLock.invitation }
+        if isAmbiguousEngineFailure(error), isDeviceLocked() { return DeviceLock.invitation }
+        return pipelineMessage(for: error)
             ?? engineMessage(for: error)
             ?? cloudMessage(for: error)
             ?? String(describing: error)
+    }
+
+    /// Pannes d'un moteur local qu'un appareil verrouillé suffit à expliquer : on ne sait pas dire laquelle, l'appareil
+    /// verrouillé est la seule cause que l'utilisateur peut lever.
+    private static func isAmbiguousEngineFailure(_ error: Error) -> Bool {
+        if let resolverError = error as? ActiveAIProviderResolverError {
+            if case .appleIntelligenceUnavailable = resolverError { return true }
+            return false
+        }
+        if let appleError = error as? AppleIntelligenceError {
+            switch appleError {
+            case .generationFailed, .deviceNotEligible, .appleIntelligenceNotEnabled, .unavailableForOtherReason: return true
+            case .modelNotReady: return false
+            }
+        }
+        if let mlxError = error as? MLXProviderError {
+            switch mlxError {
+            case .generationFailed, .modelNotLoaded, .unavailableInBackground: return true
+            case .simulatorUnsupported, .downloadFailed: return false
+            }
+        }
+        return false
     }
 
     private static func pipelineMessage(for error: Error) -> String? {
@@ -113,6 +142,8 @@ extension ChatViewModel {
                 return "Les modèles locaux (MLX) ne fonctionnent pas sur le Simulateur — teste sur un appareil réel."
             case .generationFailed, .modelNotLoaded:
                 return "Le modèle local n'a pas pu répondre. Si la conversation est longue, commence-en une nouvelle."
+            case .unavailableInBackground:
+                return HeadlessForegroundFallback.refusedMessage
             case .downloadFailed:
                 return "Le téléchargement du modèle local a échoué. Vérifie ta connexion et réessaie."
             }
