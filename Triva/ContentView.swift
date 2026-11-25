@@ -216,6 +216,9 @@ final class SearchSession {
     /// `false` pour une session sans fenêtre (Siri, Raccourcis) : les pistes « À creuser » ne seraient lues par
     /// personne et coûteraient un second appel au modèle. À poser AVANT `ensureChatViewModel()`.
     @ObservationIgnored var generatesSuggestions = true
+    /// Qui suit l'avancement des échanges de cette session (activité en direct). Une session sans fenêtre le met à
+    /// `nil` : le système affiche déjà sa propre progression pour Siri et Raccourcis, jamais d'activité en doublon.
+    @ObservationIgnored var progressObserver: (any SearchProgressObserving)? = SearchLiveActivityController.shared
     /// `FailoverManager` de la session, avec la liste d'instances qui l'a
     /// construit. En recréer un à chaque recherche jetterait son cache de
     /// dernière instance fonctionnelle ; le garder quand la liste a changé
@@ -393,6 +396,7 @@ final class SearchSession {
             resolveConsentRequest: { [weak self] in self?.cloudConsentRequestForSending() },
             grantConsent: { [weak self] request in self?.stores.cloudConsent.grant(providerID: request.providerID) }
         )
+        chatViewModel?.progressObserver = progressObserver
     }
 
     /// Budget de recherche et de contexte du moteur qui a produit le provider

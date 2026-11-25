@@ -3,7 +3,8 @@
 //  Triva
 //
 //  Chantier 2.1 (mission B) : le texte d'une réponse tel que Siri ou Raccourcis le lit. Marques [n] retirées,
-//  mise en forme retirée, 400 caractères au plus coupés à une fin de phrase, puis une phrase fixe. Logique pure.
+//  mise en forme retirée, 400 caractères au plus coupés à une fin de phrase, puis une phrase fixe SEULEMENT si l'extrait est coupé.
+//  Logique pure.
 //
 
 import Foundation
@@ -133,9 +134,13 @@ nonisolated enum AnswerPlainText {
 
     // MARK: - Lecture
 
-    /// Ce que Siri lit : l'extrait, puis la phrase fixe.
+    /// Ce que Siri lit : l'extrait ; la phrase fixe s'y ajoute SEULEMENT quand l'extrait est coupé (une réponse qui
+    /// tient en entier n'a pas de « suite » dans Triva). Texte vide (ne devrait pas arriver) : la phrase fixe seule.
     static func spoken(from text: String) -> String {
-        let excerpt = excerpt(of: plain(from: text))
-        return excerpt.isEmpty ? completionSuffix : excerpt + " " + completionSuffix
+        let plainText = plain(from: text)
+        let excerpt = excerpt(of: plainText)
+        guard !excerpt.isEmpty else { return completionSuffix }
+        let wasCut = plainText.count > maxSpokenLength
+        return wasCut ? excerpt + " " + completionSuffix : excerpt
     }
 }

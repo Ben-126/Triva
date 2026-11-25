@@ -59,8 +59,8 @@ final class ExternalSearchLauncher {
     /// - Returns: `true` si une fenêtre va s'ouvrir.
     @discardableResult
     func requestSearch(question: String?, origin: ExternalQueryOrigin = .draft) -> Bool {
-        guard let clean = ExternalQuerySanitizer.sanitize(question) else { return false }
-        let id = inbox.deposit(clean, origin: origin)
+        guard let clean = ExternalQuerySanitizer.sanitizeReportingTruncation(question) else { return false }
+        let id = inbox.deposit(clean.text, origin: origin, wasTruncated: clean.wasTruncated)
         enqueue(.newSearch(id))
         return true
     }

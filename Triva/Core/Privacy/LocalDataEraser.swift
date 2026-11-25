@@ -14,6 +14,9 @@ nonisolated enum LocalDataEraseStep: String, Sendable, Equatable, CaseIterable {
     case history
     /// Le navigateur intégré (iPhone, iPad) n'a pas pu être vidé : Safari n'a pas répondu dans le délai.
     case browser
+    /// Ce que l'app avait publié hors d'elle (widget, boîte de partage, recherche de l'appareil, activités en direct)
+    /// n'a pas pu être entièrement retiré (chantier 2.1).
+    case systemIntegrations
 }
 
 /// Échec d'au moins une étape de suppression en base. Les autres étapes ont
@@ -38,6 +41,13 @@ protocol AllDeleting {
     func deleteAll() throws
 }
 
+/// Ce que « Tout effacer » demande aux intégrations système (widget, partage, Spotlight, activités en direct) :
+/// `true` si TOUT a été retiré. `SystemIntegrations` s'y conforme ; les tests passent un faux (jamais le vrai App Group).
+@MainActor
+protocol SystemIntegrationsErasing {
+    func eraseAll() async -> Bool
+}
+
 extension ChatHistoryStore: AllDeleting {}
 extension FavoritesStore: AllDeleting {}
 
@@ -50,6 +60,9 @@ extension FavoritesStore: AllDeleting {}
 ///   demande, refus des sites et règles robots.txt gardés en mémoire, et — sur iPhone et iPad —
 ///   cookies, stockage local et cache du navigateur intégré (`SFSafariViewController.DataStore`).
 ///   Sur Mac, la fenêtre du navigateur intégré utilise un stockage non persistant : rien à effacer.
+///   Ce que l'app a publié hors d'elle (chantier 2.1) : instantané du widget, boîte de partage de l'extension
+///   (fichiers compris), titres et dates dans la recherche de l'appareil (Spotlight), activités en direct —
+///   quand l'app lui donne `systemIntegrations` (les tests passent un faux, jamais le vrai App Group du Mac).
 ///   Copies temporaires de pièces jointes (dossier `tmp/TrivaAttachments`, Coup d'œil et glisser-déposer),
 ///   quand l'app lui donne leur dossier (`attachmentVaultRoot`) : y compris celles des fenêtres ouvertes, dont
 ///   l'aperçu est fermé avant (`AttachmentVaultPurgeSignal`) ; leur Coup d'œil n'est plus proposé ensuite.
@@ -101,6 +114,7 @@ struct LocalDataEraser {
     private let attachmentVaultRoot: URL?
     private let previewDismissDelay: Duration
     private let vaultPurgeCenter: NotificationCenter
+    private let systemIntegrations: (any SystemIntegrationsErasing)?
 
     /// - Parameters:
     ///   - storage: stockage à effacer d'un coup (`deleteAllData()` puis
@@ -120,7 +134,8 @@ struct LocalDataEraser {
         clearBrowserData: @escaping @MainActor () async -> EmbeddedBrowserClearOutcome = LocalDataEraser.clearEmbeddedBrowserData,
         attachmentVaultRoot: URL? = nil,
         previewDismissDelay: Duration = .milliseconds(250),
-        vaultPurgeCenter: NotificationCenter = .default
+        vaultPurgeCenter: NotificationCenter = .default,
+        systemIntegrations: (any SystemIntegrationsErasing)? = nil
     ) {
         self.chatHistory = chatHistory
         self.favorites = favorites
@@ -132,6 +147,7 @@ struct LocalDataEraser {
         self.attachmentVaultRoot = attachmentVaultRoot
         self.previewDismissDelay = previewDismissDelay
         self.vaultPurgeCenter = vaultPurgeCenter
+        self.systemIntegrations = systemIntegrations
     }
 
     /// Joue toutes les étapes puis lève `LocalDataEraseError.incomplete` si une
@@ -141,6 +157,11 @@ struct LocalDataEraser {
         await announceVaultPurge()
         var failed = eraseDatabase()
         await Self.clearCaches(urlCache: urlCache, discoverCache: discoverCache)
+        // Ce que l'app avait publié hors d'elle à partir de l'historique (chantier 2.1) : instantané du widget, boîte
+        // de partage, index Spotlight, activités en direct. Après la base : tout en vient.
+        if let systemIntegrations, await systemIntegrations.eraseAll() == false {
+            failed.append(.systemIntegrations)
+        }
         // Pages lues à la demande (« Lire cette page »), refus des sites et
         // règles robots.txt en mémoire : elles révèlent les sites consultés.
         UserReadPages.removeAll()

@@ -39,9 +39,9 @@ final class ExternalQueryInbox {
     /// - Parameter origin: `.draft` par défaut (jamais envoyé) ; seul le panneau de la barre des menus demande
     ///   `.typedInMenuBar`.
     @discardableResult
-    func deposit(_ query: String, origin: ExternalQueryOrigin = .draft) -> UUID {
+    func deposit(_ query: String, origin: ExternalQueryOrigin = .draft, wasTruncated: Bool = false) -> UUID {
         let id = UUID()
-        entries.append((id, ExternalQuery(text: query, origin: origin)))
+        entries.append((id, ExternalQuery(text: query, origin: origin, wasTruncated: wasTruncated)))
         if entries.count > capacity {
             entries.removeFirst(entries.count - capacity)
         }

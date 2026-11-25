@@ -75,6 +75,23 @@ struct RootSystemRouteTests {
         #expect(window.windowTarget.conversationID == nil)
     }
 
+    @Test("Nouvelle question sur un fil vide : le fichier déjà joint reste joint, le clavier est demandé")
+    func newQuestionOnEmptyThreadKeepsAttachedFile() async throws {
+        let window = try readyWindow()
+        window.session.ensureChatViewModel()
+        let chat = try #require(window.session.chatViewModel)
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("route-\(UUID().uuidString).txt")
+        try "Contenu du fichier joint.".write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try await chat.attachmentController.store.attach(fileAt: file)
+        #expect(chat.attachmentController.attachments.count == 1)
+
+        window.apply(.newQuestion(.keyboard))
+
+        #expect(chat.attachmentController.attachments.count == 1)
+        #expect(chat.consumePendingFocusRequest() == true)
+    }
+
     @Test("Saisie vocale : ouvre le clavier tant que le drapeau est éteint")
     func voiceOpensKeyboardWhileFlagOff() throws {
         #expect(TrivaFeatureFlags.voiceInput == false)

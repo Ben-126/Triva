@@ -23,4 +23,6 @@ nonisolated enum ExternalQueryOrigin: Equatable, Sendable {
 nonisolated struct ExternalQuery: Equatable, Sendable {
     let text: String
     let origin: ExternalQueryOrigin
+    /// La fin du texte d'origine a été coupée à `ExternalQuerySanitizer.maxLength` : la fenêtre le dit (K2).
+    var wasTruncated = false
 }

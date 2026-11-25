@@ -25,12 +25,9 @@ extension TrivaRootCoordinator {
         selection = .search
 
         // Fichiers ET images : le texte d'une image est lu en local (Vision) par la file de lecture.
-        controller.enqueue(plan.attachableURLs, areDeposits: true)
+        controller.receive(plan)
         if !plan.draftTexts.isEmpty {
             session.draft.text = DropPlan.appending(plan.draftTexts, to: session.draft.text)
-        }
-        if let message = plan.refusalMessage {
-            controller.reportRefusal(message)
         }
         return plan
     }

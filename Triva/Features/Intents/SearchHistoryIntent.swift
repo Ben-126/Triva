@@ -39,7 +39,23 @@ struct SearchHistoryIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<[ConversationEntity]> {
-        .result(value: try Self.search(query, in: services.stores.chatHistory))
+    func perform() async throws -> some IntentResult & ReturnsValue<[ConversationEntity]> & ProvidesDialog {
+        let found = try Self.search(query, in: services.stores.chatHistory)
+        let dialog = SearchHistoryDialog.text(count: found.count, limit: ConversationQuery.searchLimit)
+        return .result(value: found, dialog: IntentDialog(LocalizedStringResource(stringLiteral: dialog)))
     }
 }
+
+/// Phrase lue par Siri après une recherche dans l'historique (textes « à valider par Ben »). Logique pure.
+nonisolated enum SearchHistoryDialog {
+    static func text(count: Int, limit: Int) -> String {
+        switch count {
+        case ..<1: "Aucune conversation trouvée."
+        case 1: "Une conversation trouvée."
+        // Limite atteinte : il y en a peut-être d'autres, le nombre n'est pas un total.
+        case limit...: "Voici les \(limit) conversations les plus récentes qui correspondent."
+        default: "\(count) conversations trouvées."
+        }
+    }
+}
+

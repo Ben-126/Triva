@@ -266,8 +266,13 @@ struct SystemIntegrationsWidgetTests {
             history = ChatHistoryStore(container: try TrivaModelContainer.makeInMemory(), locale: Locale(identifier: "fr_FR"))
             let counter = Counter()
             reloads = counter
+            // Tout est faux sauf ce que le test regarde : jamais le vrai App Group, le vrai index, les vraies activités.
+            let localStore = store
             integrations = SystemIntegrations(
-                widgetPublisher: WidgetSnapshotPublisher(store: store, preferences: preferences, reload: { counter.value += 1 }),
+                makeWidgetPublisher: { WidgetSnapshotPublisher(store: localStore, preferences: preferences, reload: { counter.value += 1 }) },
+                makeSharedInbox: { SharedInboxConsumer(inbox: nil) },
+                spotlightClient: FakeSpotlightClient(),
+                endLiveActivities: {},
                 defaults: defaults
             )
             integrations.bind(chatHistory: history)
@@ -410,7 +415,11 @@ struct SystemIntegrationsWidgetTests {
         preferences.showsLastQuestionInWidget = true
         let store = WidgetSnapshotStore(files: AppGroupFileStore(directory: root))
         let integrations = SystemIntegrations(
-            widgetPublisher: WidgetSnapshotPublisher(store: store, preferences: preferences, reload: {})
+            makeWidgetPublisher: { WidgetSnapshotPublisher(store: store, preferences: preferences, reload: {}) },
+            makeSharedInbox: { SharedInboxConsumer(inbox: nil) },
+            spotlightClient: FakeSpotlightClient(),
+            endLiveActivities: {},
+            defaults: defaults
         )
 
         integrations.start()

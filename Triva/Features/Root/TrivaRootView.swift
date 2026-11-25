@@ -5,6 +5,7 @@
 //  Created by ben podrojsky on 16/09/2026.
 //
 
+import CoreSpotlight
 import OSLog
 import SwiftUI
 
@@ -155,6 +156,16 @@ struct TrivaRootView: View {
             // états de la racine : une URL reçue pendant l'onboarding entre dans la file et attend la coquille.
             // Seules `triva://new` et `triva://conversation/<UUID>` sont acceptées ; rien n'est jamais envoyé.
             .onOpenURL { SystemRouteCenter.shared.open(url: $0) }
+            // Toucher un résultat Spotlight (chantier 2.1) : le système lance d'ordinaire `OpenConversationIntent` ;
+            // cette activité est le chemin de secours. Entrée externe : seul un identifiant de conversation est
+            // accepté, la route ne fait que naviguer.
+            .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                guard let route = SpotlightActivityRoute.route(
+                    forUserInfo: activity.userInfo,
+                    identifierKey: CSSearchableItemActivityIdentifier
+                ) else { return }
+                SystemRouteCenter.shared.submit(route)
+            }
     }
 
     @ViewBuilder
@@ -647,7 +658,8 @@ private struct TrivaRootShell: View {
                     beforeErase: { [coordinator] in
                         await coordinator.session.chatViewModel?.stopAndWait()
                     },
-                    attachmentVaultRoot: AttachmentFileVault.defaultRootDirectory
+                    attachmentVaultRoot: AttachmentFileVault.defaultRootDirectory,
+                    systemIntegrations: SystemIntegrations.shared
                 ),
                 navigationPath: $coordinator.settingsPath,
                 presentedSheet: $coordinator.settingsSheet,

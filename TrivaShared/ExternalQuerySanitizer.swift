@@ -8,6 +8,13 @@
 
 import Foundation
 
+/// Texte assaini, et si sa fin a été coupée (K2 : la troncature à `ExternalQuerySanitizer.maxLength` est annoncée à
+/// l'utilisateur, plus silencieuse).
+nonisolated struct SanitizedExternalText: Sendable, Equatable {
+    let text: String
+    let wasTruncated: Bool
+}
+
 nonisolated enum ExternalQuerySanitizer {
     /// Longueur maximale (en caractères visibles) d'une question venue de l'extérieur.
     static let maxLength = 2_000
@@ -25,10 +32,17 @@ nonisolated enum ExternalQuerySanitizer {
     ///   une page web peut cacher des instructions au modèle). Seuls le joint et le non-joint de largeur nulle
     ///   (U+200D, U+200C) sont gardés : sans eux, les emoji composés et certaines écritures se cassent ;
     /// - espaces et retours rognés aux deux bouts ;
-    /// - tronqué à `maxLength` caractères, sans couper un emoji ni laisser d'espace final (la troncature est
-    ///   silencieuse : la fin d'un texte plus long est ignorée, voir les questions pour Ben du rapport W2-F2).
+    /// - tronqué à `maxLength` caractères, sans couper un emoji ni laisser d'espace final (la fin d'un texte
+    ///   plus long est ignorée ; `sanitizeReportingTruncation` le dit, pour que l'appelant en avertisse l'utilisateur).
     static func sanitize(_ text: String?) -> String? {
+        sanitizeReportingTruncation(text)?.text
+    }
+
+    /// Comme `sanitize(_:)`, et dit si du texte a été COUPÉ : au-delà de `maxLength` caractères visibles, ou au-delà
+    /// de la borne de travail (une sélection gigantesque). Des espaces de fin retirés ne sont pas une troncature.
+    static func sanitizeReportingTruncation(_ text: String?) -> SanitizedExternalText? {
         guard let text else { return nil }
+        let exceedsInputLimit = text.unicodeScalars.dropFirst(inputScalarLimit).first != nil
         var cleaned = String.UnicodeScalarView()
         var previousWasCarriageReturn = false
         for scalar in text.unicodeScalars.prefix(inputScalarLimit) {
@@ -42,9 +56,11 @@ nonisolated enum ExternalQuerySanitizer {
         }
         let trimmed = String(cleaned).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard trimmed.count > maxLength else { return trimmed }
+        guard trimmed.count > maxLength else {
+            return SanitizedExternalText(text: trimmed, wasTruncated: exceedsInputLimit)
+        }
         let truncated = String(trimmed.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines)
-        return truncated.isEmpty ? nil : truncated
+        return truncated.isEmpty ? nil : SanitizedExternalText(text: truncated, wasTruncated: true)
     }
 
     private static func replacement(for scalar: Unicode.Scalar) -> String? {

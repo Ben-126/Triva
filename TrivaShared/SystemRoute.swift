@@ -24,4 +24,8 @@ nonisolated enum SystemRoute: Sendable, Equatable {
     case draft(String)
     /// Une conversation de l'historique.
     case conversation(UUID)
+    /// Fichier reçu par l'extension de partage (PDF ou image), DÉJÀ copié dans les dépôts de l'app (`_deposits`) :
+    /// il est joint à la conversation de la fenêtre, JAMAIS envoyé. Une route qui pointe ailleurs que dans les dépôts
+    /// est jetée par `SystemRouteCenter`. Elle ne s'exprime pas en URL `triva://`.
+    case attachment(URL)
 }

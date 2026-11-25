@@ -144,7 +144,10 @@ struct ChatView: View {
                 onCancel: { viewModel.declinePendingConsent() }
             )
         }
-        .onChange(of: viewModel.userNewConversationCount) { userStartedNewConversation() }
+        .onChange(of: viewModel.userNewConversationCount) { honorPendingFocusRequest() }
+        // Demande de clavier faite AVANT que la vue existe (lancement à froid depuis un widget, arrivée d'une autre
+        // destination, iPad, Mac, iPhone Duo) : personne n'observait le compteur, elle attend ici.
+        .task { await honorFocusRequestPendingAtAppearance() }
         .toolbar {
             // Décision 1 de Ben : les questions s'enchaînent dans la même
             // conversation jusqu'à ce bouton ; l'ancienne reste dans la
@@ -528,8 +531,25 @@ struct ChatView: View {
         request(.retryAfterOffline(quickMode: quickMode))
     }
 
-    /// L'utilisateur vient de demander une nouvelle conversation (bouton ou menu ⇧⌘O). Le brouillon en cours
-    /// est gardé : il servira de première question.
+    /// Délai laissé à la vue pour être en place avant de lui donner le focus : un focus posé dans la foulée de
+    /// l'apparition est ignoré par SwiftUI (iOS surtout). NON VÉRIFIÉ sur appareil.
+    private static let focusAfterAppearanceDelay: Duration = .milliseconds(300)
+
+    /// Ouvre le clavier si une demande attend, UNE seule fois par demande (`consumePendingFocusRequest`).
+    private func honorPendingFocusRequest() {
+        guard viewModel.consumePendingFocusRequest() else { return }
+        userStartedNewConversation()
+    }
+
+    private func honorFocusRequestPendingAtAppearance() async {
+        guard viewModel.hasPendingFocusRequest else { return }
+        try? await Task.sleep(for: Self.focusAfterAppearanceDelay)
+        guard !Task.isCancelled else { return }
+        honorPendingFocusRequest()
+    }
+
+    /// L'utilisateur (ou le système) vient de demander une nouvelle conversation (bouton, menu ⇧⌘O, widget, Siri).
+    /// Le brouillon en cours est gardé : il servira de première question.
     private func userStartedNewConversation() {
         // Le volet de sources (Duo déplié) repart sur la dernière réponse de la conversation qui commence.
         scroll.focusedAnswerID = nil

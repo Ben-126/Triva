@@ -99,6 +99,7 @@ nonisolated struct AttachmentFileVault: Sendable {
             removeEntry(at: destination)
             throw AttachmentFileVaultError.unreadable
         }
+        AttachmentFileProtection.apply(to: destination)
         return destination
     }
 
@@ -110,11 +111,16 @@ nonisolated struct AttachmentFileVault: Sendable {
         let entry = sessionDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: sessionDirectory, withIntermediateDirectories: true)
+            AttachmentFileProtection.apply(to: sessionDirectory)
             try FileManager.default.moveItem(at: deposit.deletingLastPathComponent(), to: entry)
         } catch {
             throw AttachmentFileVaultError.unreadable
         }
-        return entry.appendingPathComponent(deposit.lastPathComponent, isDirectory: false)
+        // Un déplacement garde la classe du dépôt : on la ré-applique au dossier et au fichier adoptés.
+        let adopted = entry.appendingPathComponent(deposit.lastPathComponent, isDirectory: false)
+        AttachmentFileProtection.apply(to: entry)
+        AttachmentFileProtection.apply(to: adopted)
+        return adopted
     }
 
     /// Dossier d'entrée vide `<session>/<id>/` et URL du fichier à y écrire.
@@ -122,6 +128,8 @@ nonisolated struct AttachmentFileVault: Sendable {
         let entry = sessionDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: entry, withIntermediateDirectories: true)
+            AttachmentFileProtection.apply(to: sessionDirectory)
+            AttachmentFileProtection.apply(to: entry)
         } catch {
             throw AttachmentFileVaultError.unreadable
         }
@@ -167,18 +175,71 @@ nonisolated struct AttachmentFileVault: Sendable {
         let source = received.resolvingSymlinksInPath()
         let size = try fileSize(of: source)
         guard size <= maxFileByteCount else { throw AttachmentFileVaultError.tooLarge }
-        let folder = rootDirectory
-            .appendingPathComponent(depositsFolderName, isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let destination = folder.appendingPathComponent(safeName(fileName ?? received.lastPathComponent), isDirectory: false)
+        let (folder, destination) = newDepositLocation(named: fileName ?? received.lastPathComponent, rootDirectory: rootDirectory)
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try createDepositFolder(folder, rootDirectory: rootDirectory)
             try FileManager.default.copyItem(at: source, to: destination)
+            AttachmentFileProtection.apply(to: destination)
         } catch {
             try? FileManager.default.removeItem(at: folder)
             throw AttachmentFileVaultError.unreadable
         }
         return destination
+    }
+
+    /// Dépôt d'octets sans fichier d'origine (image collée, K2) : même dossier, même plafond, même protection que
+    /// `stageDeposit(of:)`, pour que le reste du chemin (adoption, lecture, refus) soit identique.
+    /// - Parameter maxByteCount: plafond, `maxFileByteCount` (200 Mo) sauf test.
+    static func stageDeposit(
+        data: Data,
+        named fileName: String,
+        rootDirectory: URL = AttachmentFileVault.defaultRootDirectory,
+        maxByteCount: Int = AttachmentFileVault.maxFileByteCount
+    ) throws -> URL {
+        guard data.count <= maxByteCount else { throw AttachmentFileVaultError.tooLarge }
+        let (folder, destination) = newDepositLocation(named: fileName, rootDirectory: rootDirectory)
+        do {
+            try createDepositFolder(folder, rootDirectory: rootDirectory)
+            try data.write(to: destination, options: .atomic)
+            AttachmentFileProtection.apply(to: destination)
+        } catch {
+            try? FileManager.default.removeItem(at: folder)
+            throw AttachmentFileVaultError.unreadable
+        }
+        return destination
+    }
+
+    /// Renomme un dépôt EN PLACE (même dossier d'identifiant) : une image reçue du système porte souvent un nom
+    /// générique, identique d'un collage à l'autre, que le dédoublonnage par nom refuserait.
+    /// Sans effet (rend l'URL d'origine) hors du dossier des dépôts ou si le renommage échoue.
+    static func renameDeposit(
+        _ url: URL,
+        to fileName: String,
+        rootDirectory: URL = AttachmentFileVault.defaultRootDirectory
+    ) -> URL {
+        guard isInsideDeposits(url, rootDirectory: rootDirectory) else { return url }
+        let destination = url.deletingLastPathComponent().appendingPathComponent(safeName(fileName), isDirectory: false)
+        guard destination != url, !FileManager.default.fileExists(atPath: destination.path) else { return url }
+        do {
+            try FileManager.default.moveItem(at: url, to: destination)
+            return destination
+        } catch {
+            return url
+        }
+    }
+
+    /// `<racine>/_deposits/<id>/` et le fichier à y écrire.
+    private static func newDepositLocation(named fileName: String, rootDirectory: URL) -> (folder: URL, file: URL) {
+        let folder = rootDirectory
+            .appendingPathComponent(depositsFolderName, isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        return (folder, folder.appendingPathComponent(safeName(fileName), isDirectory: false))
+    }
+
+    private static func createDepositFolder(_ folder: URL, rootDirectory: URL) throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        AttachmentFileProtection.apply(to: rootDirectory.appendingPathComponent(depositsFolderName, isDirectory: true))
+        AttachmentFileProtection.apply(to: folder)
     }
 
     /// Efface un dépôt jamais adopté (refusé, doublon, excédent). Sans effet hors du dossier des dépôts.

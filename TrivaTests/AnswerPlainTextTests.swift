@@ -92,9 +92,23 @@ struct AnswerPlainTextTests {
         #expect(AnswerPlainText.excerpt(of: text) == text)
     }
 
-    @Test("Lecture complète : extrait puis la phrase fixe")
-    func spokenAddsSuffix() {
-        #expect(AnswerPlainText.spoken(from: "Paris[1].") == "Paris. La réponse complète est dans Triva.")
+    @Test("Réponse qui tient en entier dans l'extrait : lue telle quelle, sans « la réponse complète est dans Triva »")
+    func spokenWithoutSuffixWhenNothingIsCut() {
+        #expect(AnswerPlainText.spoken(from: "Paris[1].") == "Paris.")
+    }
+
+    @Test("Exactement 400 caractères : pas coupé, donc pas de phrase fixe")
+    func spokenAtTheLimitIsNotCut() {
+        let text = String(repeating: "a", count: AnswerPlainText.maxSpokenLength - 1) + "."
+        #expect(AnswerPlainText.spoken(from: text) == text)
+    }
+
+    @Test("401 caractères : coupé, donc la phrase fixe est ajoutée")
+    func spokenOneOverTheLimitIsCut() {
+        let text = String(repeating: "a", count: AnswerPlainText.maxSpokenLength) + "."
+        let spoken = AnswerPlainText.spoken(from: text)
+        #expect(spoken.hasSuffix(" " + AnswerPlainText.completionSuffix))
+        #expect(spoken != text)
     }
 
     @Test("Réponse très longue : l'extrait reste sous 400 caractères, la phrase fixe s'y ajoute")

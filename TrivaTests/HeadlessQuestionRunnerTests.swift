@@ -55,7 +55,8 @@ struct HeadlessQuestionRunnerTests {
         }
         #expect(answer.question == "Capitale de la France ?")
         #expect(answer.text == "Paris est la capitale. Elle est belle.")
-        #expect(answer.spoken == "Paris est la capitale. Elle est belle. La réponse complète est dans Triva.")
+        // Réponse courte, lue en entier : pas de « la réponse complète est dans Triva » (B2).
+        #expect(answer.spoken == "Paris est la capitale. Elle est belle.")
         #expect(answer.sourceTitles == ["Titre A", "Titre B"])
         #expect(answer.sourceLinks == [URL(string: "https://a.example/page")!, URL(string: "https://b.example/page")!])
         // Rangée dans l'historique : une conversation, question puis réponse.

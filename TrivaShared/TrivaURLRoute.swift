@@ -49,14 +49,14 @@ nonisolated enum TrivaURLRoute {
     }
 
     /// L'URL qui provoque cette route (widget, activité en direct), ou `nil` quand la route ne s'exprime pas en
-    /// URL : un brouillon (un texte libre ne voyage jamais dans une URL) et la saisie vocale (chantier 2.7).
+    /// URL : un brouillon (un texte libre ne voyage jamais dans une URL), un fichier partagé et la saisie vocale (chantier 2.7).
     static func url(for route: SystemRoute) -> URL? {
         switch route {
         case .newQuestion(.keyboard):
             URL(string: "\(prefix)\(newHost)")
         case .conversation(let id):
             URL(string: "\(prefix)\(conversationHost)/\(id.uuidString)")
-        case .newQuestion(.voice), .draft:
+        case .newQuestion(.voice), .draft, .attachment:
             nil
         }
     }

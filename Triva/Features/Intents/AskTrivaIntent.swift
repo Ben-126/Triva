@@ -49,34 +49,82 @@ struct AskTrivaIntent: LongRunningIntent, CancellableIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<TrivaAnswerEntity> & ProvidesDialog {
+        // `progress` n'est lisible que dans `perform()` (la doc d'Apple : « l'utiliser ailleurs plante ») : on le lit
+        // ICI, une seule fois, et c'est cet objet que la suite reçoit. Jamais relu dans une fermeture ni plus loin.
+        let progress = progress
         let setup = services.prepareHeadlessQuestion(responseMode: mode?.mode)
         guard case .run(let execution) = setup.decision, let runner = setup.runner else {
             throw try await stopBeforeSending(for: setup.decision)
         }
-        let outcome = try await runInBackground(runner, execution: execution)
+        let outcome = try await runInBackground(runner, execution: execution, progress: progress)
         return try await result(for: outcome)
     }
 
     // MARK: - Exécution
 
-    /// Temps d'exécution prolongé ; le GPU est demandé seulement pour un modèle local sur iPhone ou iPad.
+    /// Marque que le travail a commencé dans `performBackgroundTask` (isolé au main actor : partageable avec la
+    /// fermeture, qui s'exécute ailleurs).
+    @MainActor
+    private final class StartFlag {
+        var isSet = false
+    }
+
+    /// Temps d'exécution prolongé ; le GPU est demandé seulement pour un modèle local sur iPhone ou iPad. Si le
+    /// système refuse de lancer le travail en arrière-plan (GPU non accordé), on continue au premier plan quand il
+    /// l'autorise (`HeadlessForegroundFallback`).
     @MainActor
     private func runInBackground(
         _ runner: HeadlessQuestionRunner,
-        execution: HeadlessExecution
+        execution: HeadlessExecution,
+        progress: Progress
     ) async throws -> HeadlessQuestionOutcome {
         let options: LongRunningTaskOptions = execution == .backgroundWithGPU ? [.requiresGPU] : []
         let question = question
-        let progress = progress
-        return try await performBackgroundTask(options: options) { @Sendable in
-            progress.totalUnitCount = HeadlessProgressMeter.totalUnits
-            return await runner.run(question: question) { update in
-                progress.completedUnitCount = update.completedUnits
-                progress.localizedDescription = update.stage.description
+        let started = StartFlag()
+        do {
+            return try await performBackgroundTask(options: options) { @Sendable in
+                await MainActor.run { started.isSet = true }
+                progress.totalUnitCount = HeadlessProgressMeter.totalUnits
+                return await runner.run(question: question) { Self.report($0, to: progress) }
+            } onCancel: { _ in
+                Task { @MainActor in runner.cancel() }
             }
-        } onCancel: { _ in
-            Task { @MainActor in runner.cancel() }
+        } catch {
+            let wasCancelled = Task.isCancelled || error is CancellationError
+            let canContinue = systemContext.currentMode.canContinueInForeground
+            guard HeadlessForegroundFallback.shouldContinueInForeground(
+                execution: execution, operationStarted: started.isSet,
+                wasCancelled: wasCancelled, canContinueInForeground: canContinue
+            ) else {
+                // Le GPU était demandé et le travail n'a jamais commencé : le système a refusé, on le dit clairement.
+                if execution == .backgroundWithGPU, !started.isSet, !wasCancelled {
+                    throw AskTrivaError.message(HeadlessForegroundFallback.refusedMessage)
+                }
+                throw error
+            }
+            return try await runInForeground(runner, progress: progress)
         }
+    }
+
+    /// Triva passe au premier plan (le GPU y est accordé) et pose la question sans `performBackgroundTask`.
+    @MainActor
+    private func runInForeground(_ runner: HeadlessQuestionRunner, progress: Progress) async throws -> HeadlessQuestionOutcome {
+        do {
+            try await continueInForeground(
+                IntentDialog(LocalizedStringResource(stringLiteral: HeadlessForegroundFallback.dialog)),
+                alwaysConfirm: false
+            )
+        } catch {
+            throw AskTrivaError.message(HeadlessForegroundFallback.refusedMessage)
+        }
+        progress.totalUnitCount = HeadlessProgressMeter.totalUnits
+        let question = question
+        return await runner.run(question: question) { Self.report($0, to: progress) }
+    }
+
+    private static func report(_ update: HeadlessProgressUpdate, to progress: Progress) {
+        progress.completedUnitCount = update.completedUnits
+        progress.localizedDescription = update.stage.description
     }
 
     @MainActor

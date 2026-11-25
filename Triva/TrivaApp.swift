@@ -172,10 +172,15 @@ struct TrivaSharedStores {
     ///
     /// `attachmentVaultRoot` : dossier des copies temporaires de pièces jointes à vider
     /// aussi (l'app passe `AttachmentFileVault.defaultRootDirectory` ; les tests, rien).
+    ///
+    /// `systemIntegrations` : ce que l'app a publié hors d'elle (widget, boîte de partage, Spotlight, activités en
+    /// direct), vidé en dernier. L'app passe `SystemIntegrations.shared` ; les tests, rien ou un faux (jamais le vrai
+    /// App Group du Mac).
     func makeLocalDataEraser(
         urlCache: URLCache = .shared,
         beforeErase: (@MainActor () async -> Void)? = nil,
-        attachmentVaultRoot: URL? = nil
+        attachmentVaultRoot: URL? = nil,
+        systemIntegrations: (any SystemIntegrationsErasing)? = nil
     ) -> LocalDataEraser {
         LocalDataEraser(
             chatHistory: chatHistory,
@@ -184,7 +189,8 @@ struct TrivaSharedStores {
             urlCache: urlCache,
             storage: storage,
             beforeErase: beforeErase,
-            attachmentVaultRoot: attachmentVaultRoot
+            attachmentVaultRoot: attachmentVaultRoot,
+            systemIntegrations: systemIntegrations
         )
     }
 
@@ -534,7 +540,10 @@ private struct TrivaSettingsWindow: View {
             customProviderStore: stores.customProviders,
             cloudConsentStore: stores.cloudConsent,
             instanceStore: stores.searchInstances,
-            localDataEraser: stores.makeLocalDataEraser(attachmentVaultRoot: AttachmentFileVault.defaultRootDirectory)
+            localDataEraser: stores.makeLocalDataEraser(
+                attachmentVaultRoot: AttachmentFileVault.defaultRootDirectory,
+                systemIntegrations: SystemIntegrations.shared
+            )
         )
         // Taille minimale : en dessous, les écrans poussés depuis les Réglages
         // (liste d'instances SearXNG, modèles MLX) deviennent illisibles.

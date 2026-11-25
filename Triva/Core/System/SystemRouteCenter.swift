@@ -31,9 +31,12 @@ final class SystemRouteCenter {
 
     @ObservationIgnored private var pending: [SystemRoute] = []
     @ObservationIgnored private let windowLauncher: ExternalSearchLauncher?
+    /// Racine du coffre de pièces jointes : un fichier partagé n'est accepté que dans `<racine>/_deposits/`.
+    @ObservationIgnored private let depositRoot: URL
 
-    init(windowLauncher: ExternalSearchLauncher?) {
+    init(windowLauncher: ExternalSearchLauncher?, depositRoot: URL = AttachmentFileVault.defaultRootDirectory) {
         self.windowLauncher = windowLauncher
+        self.depositRoot = depositRoot
     }
 
     /// Le Mac ouvre des fenêtres par `ExternalSearchLauncher` ; l'iPhone et l'iPad par la file.
@@ -49,14 +52,17 @@ final class SystemRouteCenter {
 
     /// Une route du système. Un brouillon est assaini ici (`ExternalQuerySanitizer`) ; vide ou illisible, il est jeté.
     func submit(_ route: SystemRoute) {
-        guard let route = Self.sanitized(route) else { return }
+        guard let route = sanitized(route) else { return }
         if let windowLauncher {
             forward(route, to: windowLauncher)
             return
         }
         pending.append(route)
         if pending.count > Self.maxPending {
-            pending.removeFirst(pending.count - Self.maxPending)
+            // Une route fichier évincée emporte son dépôt : rien ne doit traîner.
+            let evicted = pending.prefix(pending.count - Self.maxPending)
+            evicted.forEach(discardDeposit(of:))
+            pending.removeFirst(evicted.count)
         }
         revision += 1
     }
@@ -78,9 +84,31 @@ final class SystemRouteCenter {
 
     // MARK: Privé
 
-    private static func sanitized(_ route: SystemRoute) -> SystemRoute? {
-        guard case .draft(let text) = route else { return route }
-        return ExternalQuerySanitizer.sanitize(text).map(SystemRoute.draft)
+    /// Un brouillon est assaini ; un fichier n'est accepté que dans les dépôts de l'app (jamais un fichier de
+    /// l'utilisateur, jamais une adresse web : la route peut être jetée, jamais détournée).
+    private func sanitized(_ route: SystemRoute) -> SystemRoute? {
+        switch route {
+        case .draft(let text):
+            return ExternalQuerySanitizer.sanitize(text).map(SystemRoute.draft)
+        case .attachment(let url):
+            return Self.isDeposit(url, root: depositRoot) ? route : nil
+        case .newQuestion, .conversation:
+            return route
+        }
+    }
+
+    /// Vrai pour un fichier SOUS `<racine>/_deposits/<id>/` (chemin normalisé : `..` n'y échappe pas).
+    static func isDeposit(_ url: URL, root: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        let deposits = root.appendingPathComponent(AttachmentFileVault.depositsFolderName, isDirectory: true).standardizedFileURL.path + "/"
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(deposits) else { return false }
+        return path.dropFirst(deposits.count).contains("/")
+    }
+
+    private func discardDeposit(of route: SystemRoute) {
+        guard case .attachment(let url) = route else { return }
+        AttachmentFileVault.discardDeposit(url, rootDirectory: depositRoot)
     }
 
     private func forward(_ route: SystemRoute, to launcher: ExternalSearchLauncher) {
@@ -92,6 +120,10 @@ final class SystemRouteCenter {
             launcher.requestSearch(question: text, origin: .draft)
         case .conversation(let id):
             launcher.requestConversation(id)
+        case .attachment:
+            // L'extension de partage n'existe pas sur Mac (les Services couvrent ce besoin) : un fichier qui
+            // arriverait quand même est effacé, jamais ouvert.
+            discardDeposit(of: route)
         }
     }
 }

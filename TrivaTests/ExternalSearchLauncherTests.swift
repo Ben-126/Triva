@@ -180,6 +180,40 @@ struct ExternalQueryReceptionTests {
         #expect(coordinator.session.draft.text.isEmpty)
     }
 
+    @Test("K2 : une question coupée à 2000 caractères le dit à l'utilisateur, sous la barre de saisie")
+    func truncatedQuestionIsAnnounced() throws {
+        let inbox = ExternalQueryInbox()
+        let id = inbox.deposit("Question coupée", wasTruncated: true)
+        let coordinator = try makeExternalCoordinator()
+        coordinator.restoreWindowTarget(.newSearch(id))
+
+        #expect(coordinator.receiveExternalQuery(from: inbox))
+        let controller = try #require(coordinator.session.chatViewModel?.attachmentController)
+        #expect(controller.notices.last?.message == FileAttachmentPresentation.truncatedTextMessage(limit: ExternalQuerySanitizer.maxLength))
+        #expect(controller.notices.last?.style == .information)
+    }
+
+    @Test("K2 : une question qui n'est pas coupée ne laisse aucune note")
+    func untruncatedQuestionLeavesNoNotice() throws {
+        let inbox = ExternalQueryInbox()
+        let id = inbox.deposit("Question entière")
+        let coordinator = try makeExternalCoordinator()
+        coordinator.restoreWindowTarget(.newSearch(id))
+        #expect(coordinator.receiveExternalQuery(from: inbox))
+        #expect(coordinator.session.chatViewModel?.attachmentController.notices.isEmpty ?? true)
+    }
+
+    @Test("K2 : le lanceur marque le dépôt comme coupé quand la question dépasse 2000 caractères")
+    func launcherMarksTruncation() {
+        let launcher = ExternalSearchLauncher()
+        #expect(launcher.requestSearch(question: String(repeating: "q", count: ExternalQuerySanitizer.maxLength + 10)))
+        let id = launcher.inbox.lastDepositID
+        #expect(id != nil)
+        let query = id.flatMap { launcher.inbox.takeQuery(for: $0) }
+        #expect(query?.wasTruncated == true)
+        #expect(query?.text.count == ExternalQuerySanitizer.maxLength)
+    }
+
     @Test("Fenêtre restaurée (identifiant sans dépôt), conversation ou boîte absente : brouillon intact")
     func nothingToReceive() throws {
         let inbox = ExternalQueryInbox()

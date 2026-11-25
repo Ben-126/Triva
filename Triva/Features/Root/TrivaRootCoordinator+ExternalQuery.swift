@@ -43,10 +43,17 @@ extension TrivaRootCoordinator {
               let query = inbox.takeQuery(for: id) else { return .none }
         session.draft.text = query.text
         selection = .search
+        if query.wasTruncated { announceTruncatedQuery() }
         switch query.origin {
         case .draft: return .draftPlaced
         case .typedInMenuBar: return sendTypedQuery(query.text)
         }
+    }
+
+    /// Texte coupé à 2000 caractères : une note discrète sous la barre de saisie (K2), jamais un blocage.
+    private func announceTruncatedQuery() {
+        session.ensureChatViewModel()
+        session.chatViewModel?.attachmentController.reportTruncatedText()
     }
 
     /// Même enchaînement que `ChatView.request` : accord cloud d'abord (la question reste alors dans la barre de

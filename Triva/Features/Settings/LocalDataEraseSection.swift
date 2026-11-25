@@ -61,12 +61,12 @@ struct LocalDataEraseSection: View {
     /// Exposé pour les tests : la promesse faite avant l'effacement.
     static let confirmationMessage =
         "Tes conversations, tes favoris et les caches de recherche seront supprimés de cet appareil, "
-        + "sans retour possible. Tes clés API, tes modèles locaux téléchargés et le choix de ton moteur IA ne changent pas."
+        + "sans retour possible. Le widget et la recherche de l'appareil sont vidés aussi. Tes clés API, tes modèles locaux téléchargés et le choix de ton moteur IA ne changent pas."
 
     private var footerText: String {
         switch phase {
         case .idle:
-            "Supprime les conversations, les favoris et les caches. Les clés API, les modèles locaux téléchargés et le moteur choisi sont conservés."
+            "Supprime les conversations, les favoris et les caches, ainsi que ce que Triva montre dans le widget et dans la recherche de l'appareil. Les clés API, les modèles locaux téléchargés et le moteur choisi sont conservés."
         case .erasing:
             "Effacement en cours…"
         case .done:
@@ -83,21 +83,25 @@ struct LocalDataEraseSection: View {
         let retry = " Réessaie ; si cela se reproduit, redémarre l'app."
         let failedFavorites = failedSteps.contains(.favorites)
         let failedHistory = failedSteps.contains(.history)
-        // Texte à valider par Ben (2026-11-24) : Safari n'a pas répondu en 10 secondes.
-        let browser = failedSteps.contains(.browser)
-            ? " Les données du navigateur intégré n'ont pas pu être effacées : Safari n'a pas répondu."
-            : ""
+        // Textes à valider par Ben (2026-11-24 et 2026-11-25) : ce qui n'a pas pu être effacé HORS de la base.
+        var outside: [String] = []
+        if failedSteps.contains(.browser) {
+            outside.append("Les données du navigateur intégré n'ont pas pu être effacées : Safari n'a pas répondu.")
+        }
+        if failedSteps.contains(.systemIntegrations) {
+            outside.append("Ce que Triva avait partagé avec le widget ou la recherche de l'appareil n'a pas pu être entièrement retiré.")
+        }
+        let extra = outside.map { " " + $0 }.joined()
         switch (failedHistory, failedFavorites) {
         case (true, true):
-            return "Tes conversations et tes favoris n'ont pas pu être effacés. Seuls les caches de recherche l'ont été." + browser + retry
+            return "Tes conversations et tes favoris n'ont pas pu être effacés. Seuls les caches de recherche l'ont été." + extra + retry
         case (true, false):
-            return "Tes conversations n'ont pas pu être effacées ; tes favoris et les caches de recherche l'ont été." + browser + retry
+            return "Tes conversations n'ont pas pu être effacées ; tes favoris et les caches de recherche l'ont été." + extra + retry
         case (false, true):
-            return "Tes favoris n'ont pas pu être effacés ; tes conversations et les caches de recherche l'ont été." + browser + retry
+            return "Tes favoris n'ont pas pu être effacés ; tes conversations et les caches de recherche l'ont été." + extra + retry
         case (false, false):
-            if failedSteps.contains(.browser) {
-                return "Les données du navigateur intégré n'ont pas pu être effacées : Safari n'a pas répondu. "
-                    + "Le reste a été effacé." + retry
+            if !outside.isEmpty {
+                return outside.joined(separator: " ") + " Le reste a été effacé." + retry
             }
             return "Triva n'a pas pu tout effacer." + retry
         }

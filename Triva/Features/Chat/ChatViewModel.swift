@@ -157,6 +157,8 @@ final class ChatViewModel {
     @ObservationIgnored var suggestionsTask: Task<Void, Never>?
     @ObservationIgnored var mediaTasks: [MediaRequest: Task<Void, Never>] = [:]
     @ObservationIgnored var favoritesCache: (revision: Int, ids: Set<UUID>)?
+    /// Avancement de l'échange, raconté à l'activité en direct (mission D, `ChatViewModel+Progress`).
+    @ObservationIgnored var progressEmitter = SearchProgressEmitter()
 
     static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Triva", category: "ChatViewModel")
 
@@ -359,6 +361,7 @@ final class ChatViewModel {
         let exchangeID = UUID()
         activeExchangeID = exchangeID
         isGenerating = true
+        emitProgress(.started(question: exchange.question, conversationID: exchange.conversationID), answerID: exchange.answerID)
         errorDescription = nil
         searchKeyInvitation = nil
         offlineNotice = nil
@@ -374,6 +377,8 @@ final class ChatViewModel {
         } onCancel: {
             task.cancel()
         }
+        // Filet de sécurité : un échange que rien n'a terminé finit « interrompu » (sans effet s'il est déjà fini).
+        progressEmitter.closeIfOpen(answerID: exchange.answerID)
         guard activeExchangeID == exchangeID else {
             backgroundExchangeDidEnd(exchangeID: exchangeID)
             return
@@ -445,6 +450,7 @@ final class ChatViewModel {
                 return
             }
             answer.sources = Self.displayedSources(of: artifacts)
+            emitProgress(.sources(count: answer.sources.count), answerID: exchange.answerID)
             answer.notes = Message.storedNotes(of: artifacts)
             updateMessage(id: exchange.answerID) { $0.generationStage = .writing }
             // Mission A1 : en Fiable sans widget, artefacts et texte attendent la
@@ -489,9 +495,16 @@ final class ChatViewModel {
     ) async -> AnswerDraft {
         var answer = draft
         var gate = CitedAnswerGate(artifacts: artifacts)
+        var announcedWriting = false
         do {
             for try await snapshot in textStream {
                 answer.text = snapshot
+                // « Rédaction » à partir du premier instantané non vide du FLUX, même si la porte du mode Fiable
+                // retient encore le texte : le modèle écrit, l'affichage attend seulement une citation.
+                if !announcedWriting, !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    announcedWriting = true
+                    emitProgress(.writing, answerID: exchange.answerID)
+                }
                 let wasOpen = gate.isOpen
                 guard gate.admits(snapshot) else { continue }
                 reveal(snapshot, attaching: wasOpen ? nil : artifacts, answerID: exchange.answerID)
@@ -541,6 +554,7 @@ final class ChatViewModel {
     private func concludeWithoutReliableSources(_ exchange: Exchange, searchQuery: String) {
         let date = now()
         updateMessage(id: exchange.answerID) { $0.markNoReliableSources(searchQuery: searchQuery, at: date) }
+        emitProgress(.failed, answerID: exchange.answerID)
         persistNoReliableSources(exchange: exchange)
     }
 
@@ -592,6 +606,7 @@ final class ChatViewModel {
     func finishAnswer(_ answerID: UUID, as status: Message.Status) {
         let date = now()
         updateMessage(id: answerID) { $0.finish(status, at: date) }
+        emitProgress(for: status, answerID: answerID)
     }
 
     // MARK: - Conversation
@@ -600,7 +615,7 @@ final class ChatViewModel {
     /// cours (la réponse partielle est persistée dans l'ANCIENNE conversation,
     /// qui reste dans la Bibliothèque), vide le fil et les fichiers joints.
     /// `isGenerating` repasse à `false` sans attendre la fin de l'échange annulé.
-    func startNewConversation() {
+    func startNewConversation(keepingAttachedFiles: Bool = false) {
         sendTask?.cancel()
         generationTask?.cancel()
         suggestionsTask?.cancel()
@@ -622,7 +637,8 @@ final class ChatViewModel {
         currentConversationID = nil
         // Par le contrôleur, jamais `store.removeAll()` seul : un fichier en
         // cours de lecture s'attacherait sinon à la nouvelle conversation.
-        attachmentController.removeAll()
+        // `keepingAttachedFiles` : l'appelant trie lui-même les fichiers (`startNewConversationFromSystem`).
+        if !keepingAttachedFiles { attachmentController.removeAll() }
     }
 
     /// Nombre de fois où l'utilisateur a demandé une nouvelle conversation (bouton de la barre d'outils ou
@@ -634,6 +650,40 @@ final class ChatViewModel {
     /// « Nouvelle conversation » demandée par l'utilisateur : comme `startNewConversation()`, puis avertit la vue.
     func startNewConversationFromUser() {
         startNewConversation()
+        userNewConversationCount += 1
+    }
+
+    /// Dernière valeur de `userNewConversationCount` dont la vue a déjà tenu compte (clavier ouvert). Ici et non
+    /// dans la vue : `ChatView` est recréée quand on change de destination, la demande doit survivre à ce rechargement
+    /// et n'être servie qu'une fois.
+    @ObservationIgnored private var servedFocusRequestCount = 0
+
+    /// Une demande de clavier attend la vue (faite quand `ChatView` n'était pas montée : lancement à froid depuis un
+    /// widget, arrivée d'une autre destination).
+    var hasPendingFocusRequest: Bool { userNewConversationCount > servedFocusRequestCount }
+
+    /// La vue ouvre le clavier : `true` UNE seule fois par demande (plusieurs demandes faites avant son apparition
+    /// n'ouvrent le clavier qu'une fois).
+    func consumePendingFocusRequest() -> Bool {
+        guard hasPendingFocusRequest else { return false }
+        servedFocusRequestCount = userNewConversationCount
+        return true
+    }
+
+    /// « Nouvelle question » demandée par le système (widget, Siri, bouton Action, `triva://new`). Contrairement au
+    /// bouton et au menu (décision 1 de Ben : ils arrêtent la réponse), une réponse en cours n'est PAS arrêtée : elle
+    /// finit en arrière-plan et reste dans l'historique, comme quand on ouvre une autre conversation
+    /// (`moveGenerationToBackground`). Sans conversation d'historique pour la recevoir, elle est arrêtée (réponse
+    /// partielle gardée), comme avant.
+    /// Fichiers joints : seuls ceux DÉJÀ ENVOYÉS avec une question de l'ancienne conversation en sont retirés (ils lui
+    /// appartiennent, comme quand on ouvre une autre conversation). Ceux joints mais pas encore envoyés (ou encore en
+    /// lecture) attendent la première question de la nouvelle ; un fil vide garde donc tout.
+    func startNewConversationFromSystem() {
+        let sentFileIDs = Set(messages.flatMap(\.attachedFiles).map(\.id))
+        moveGenerationToBackground()
+        startNewConversation(keepingAttachedFiles: true)
+        for id in sentFileIDs { attachmentController.removeAttachment(id: id) }
+        attachmentController.dismissAllNotices()
         userNewConversationCount += 1
     }
 

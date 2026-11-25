@@ -111,6 +111,8 @@ nonisolated struct DropPlan: Sendable, Equatable {
     /// Texte à ajouter au brouillon, déjà assaini, dans l'ordre du dépôt.
     private(set) var draftTexts: [String] = []
     private(set) var refusals: [DropRefusal] = []
+    /// Au moins un texte déposé a été coupé à `ExternalQuerySanitizer.maxLength` (K2) : l'utilisateur en est averti.
+    private(set) var hasTruncatedText = false
 
     init(items: [DroppedItem]) {
         for item in items {
@@ -125,8 +127,9 @@ nonisolated struct DropPlan: Sendable, Equatable {
     }
 
     private mutating func add(text: String) {
-        if let clean = ExternalQuerySanitizer.sanitize(text) {
-            draftTexts.append(clean)
+        if let clean = ExternalQuerySanitizer.sanitizeReportingTruncation(text) {
+            draftTexts.append(clean.text)
+            if clean.wasTruncated { hasTruncatedText = true }
         } else {
             refusals.append(.unsupportedType)
         }
@@ -139,6 +142,17 @@ nonisolated struct DropPlan: Sendable, Equatable {
 
     /// Un seul message, le premier refus (les autres sont du même ordre) : rien n'est abandonné en silence.
     var refusalMessage: String? { refusals.first?.message }
+
+    /// Ce qu'un COLLAGE garde (K2) : fichiers, images et refus. Le texte et les adresses web appartiennent au champ de
+    /// saisie, qui les colle lui-même : « un presse-papiers texte colle toujours du texte ».
+    static func attachableOnly(_ items: [DroppedItem]) -> [DroppedItem] {
+        items.filter {
+            switch $0 {
+            case .attachment, .image, .refused: true
+            case .text, .webURL: false
+            }
+        }
+    }
 
     /// Ajoute le texte déposé au brouillon : à la suite, séparé par une espace, jamais collé au mot précédent.
     static func appending(_ texts: [String], to draft: String) -> String {

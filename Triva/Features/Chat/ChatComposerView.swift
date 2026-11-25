@@ -191,7 +191,7 @@ struct ChatComposerView: View {
     /// le pipeline.
     @ViewBuilder
     private var secondaryActions: some View {
-        FileAttachmentPicker(controller: attachmentController)
+        FileAttachmentPicker(controller: attachmentController, draft: $draft)
         ResponseModeSelector(store: responseModeStore)
     }
 
@@ -220,6 +220,7 @@ struct ChatComposerView: View {
         }
         .textFieldStyle(.plain)
         .focused(isDraftFocused)
+        .acceptsComposerPaste(controller: attachmentController, isFieldFocused: { isDraftFocused.wrappedValue })
         .onSubmit(onSend)
         .accessibilityIdentifier("chat.input")
         .padding(.horizontal, 16)

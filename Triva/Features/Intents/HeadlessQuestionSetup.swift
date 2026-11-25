@@ -35,6 +35,8 @@ struct HeadlessQuestionSetup {
             // Rien ne part : la session (et son enregistrement auprès du pool MLX) est relâchée tout de suite.
             return HeadlessQuestionSetup(decision: decision, session: nil, runner: nil)
         }
+        // Le système affiche déjà la progression de l'action : jamais d'activité en direct en doublon.
+        session.progressObserver = nil
         session.ensureChatViewModel()
         guard let chatViewModel = session.chatViewModel else {
             return HeadlessQuestionSetup(decision: .needsEngineChoice, session: nil, runner: nil)

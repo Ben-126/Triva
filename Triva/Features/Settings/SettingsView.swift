@@ -126,6 +126,8 @@ struct SettingsView: View {
                 apiKeySection
                 searchSection
                 storageSection
+                // Recherche de l'appareil, widget, activité en direct, Raccourcis (chantier 2.1).
+                SystemIntegrationsSection()
                 #if os(macOS)
                 MacSettingsSection()
                 #endif
