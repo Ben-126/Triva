@@ -14,7 +14,8 @@ import Foundation
 ///
 /// La copie se fait hors du fil principal (`@concurrent`) : sur Mac, lire une entrée d'un ancien
 /// trousseau peut afficher une invite d'autorisation, qui gèlerait l'écran si elle bloquait le fil
-/// principal. Elle ne supprime jamais l'ancienne entrée.
+/// principal. La suppression de l'ancienne entrée, une fois la copie relue à l'identique, est décrite
+/// dans `KeychainAPIKeyStore` (décision de Ben du 2026-11-14).
 @MainActor
 enum KeychainMigration {
     private static var hasRun = false
