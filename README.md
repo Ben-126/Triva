@@ -72,6 +72,7 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
   - le **partage** vers Triva depuis la feuille de partage (iPhone et iPad) : un texte, une page web, un PDF, un document Word (.docx) ou une image arrivent dans la barre de saisie ou en pièce jointe, jamais envoyés sans toi ;
   - **Siri et Raccourcis** : poser une question, ouvrir une nouvelle recherche, chercher dans l'historique, ouvrir une conversation, choisir le mode de réponse ; une question ne part jamais vers une IA en ligne sans ton accord pour ce fournisseur ;
   - **coller** une image ou un fichier, et joindre des photos choisies dans la **photothèque** (le sélecteur du système : Triva ne voit que les photos choisies).
+  - **Handoff** : reprendre une conversation (questions, réponses et sources) et le texte en cours sur ton autre iPhone, iPad ou Mac connecté au même compte iCloud ; elle passe directement d'un appareil à l'autre, réglable et allumé par défaut.
 - À venir : la voix, la synchronisation iCloud et la traduction en anglais et en espagnol
 
 **Plus tard**
@@ -90,7 +91,7 @@ Triva se construit par versions. La **V0**, la fondation, est terminée. La **V1
 - Aucune donnée envoyée à un serveur intermédiaire
 - Les clés API et les clés de recherche restent en local, dans le Trousseau de ton appareil
 - Uniquement des widgets de réponse (météo, calculatrice) qui ne demandent ni clé API ni compte — pas de service tiers caché derrière une fonctionnalité en apparence gratuite
-- Le widget, Spotlight, l'activité en direct et le partage restent sur ton appareil : ils n'envoient rien sur Internet et rien à l'éditeur
+- Le widget, Spotlight, l'activité en direct et le partage restent sur ton appareil, et Handoff ne va que vers tes propres appareils : ils n'envoient rien à l'éditeur
 - Pour l'aperçu et le glisser-déposer, Triva garde une copie temporaire du fichier joint, uniquement sur ton appareil, effacée quand tu retires le fichier, commences une nouvelle conversation, fermes la fenêtre ou utilises « Tout effacer », et au plus tard au prochain lancement de Triva
 - « Tout effacer » (Réglages > Données) supprime d'un coup l'historique, les favoris, les caches, les copies temporaires de fichiers, ce que Triva avait publié dans le widget et Spotlight, et les données du navigateur intégré
 

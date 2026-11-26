@@ -188,7 +188,8 @@ final class ChatHistoryStore {
     /// Contexte unique de l'app, ou `storageUnavailable` : toute lecture et
     /// toute écriture passent par ici, aucune ne peut donc viser le conteneur
     /// de réserve.
-    private func readyContext() throws -> ModelContext {
+    /// Interne (et non `private`) pour `ChatHistoryStore+HandoffImport.swift`, qui écrit lui aussi par ce contexte unique.
+    func readyContext() throws -> ModelContext {
         guard let context = storage.context else { throw ChatHistoryStoreError.storageUnavailable }
         return context
     }
@@ -327,7 +328,7 @@ final class ChatHistoryStore {
     /// est fiable : l'inverse de la relation est peuplé immédiatement, sans
     /// attendre le `save()` (vérifié à l'exécution).
     private func nextOrder(in conversation: StoredConversation) -> Int {
-        (conversation.messages.map(\.order).max() ?? -1) + 1
+        (conversation.messageList.map(\.order).max() ?? -1) + 1
     }
 
     /// Remplace le texte d'un message déjà persisté (régénération, correction).
@@ -425,7 +426,7 @@ final class ChatHistoryStore {
 
         let matches = all.filter { conversation in
             if normalized(conversation.title).contains(needle) { return true }
-            return conversation.messages.contains { normalized($0.text).contains(needle) }
+            return conversation.messageList.contains { normalized($0.text).contains(needle) }
         }
         return limited(matches, to: limit)
     }
@@ -483,7 +484,8 @@ final class ChatHistoryStore {
 
     // MARK: - Sauvegarde
 
-    private func save(operation: String) throws {
+    /// Interne (et non `private`) pour `ChatHistoryStore+HandoffImport.swift` : même sauvegarde, même retour arrière en cas d'échec.
+    func save(operation: String) throws {
         let context = try readyContext()
         do {
             try context.save()

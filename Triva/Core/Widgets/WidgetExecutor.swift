@@ -113,6 +113,12 @@ nonisolated struct WidgetExecutor: Sendable {
         self.totalTimeout = totalTimeout
     }
 
+    /// Au moins un widget serait lancé par `execute` pour cette classification : MÊME filtre (`shouldExecute`). Sert à
+    /// `SearchOrchestrator.runResearch` (F3) pour n'attendre les widgets avant l'enquêteur que s'il y en a un.
+    func hasEligibleWidget(for classification: QueryClassification) -> Bool {
+        widgets.contains { $0.shouldExecute(for: classification) }
+    }
+
     /// N'échoue JAMAIS et ne `throw` jamais : un widget est un bonus
     /// d'affichage, son échec ne doit en aucun cas faire tomber la réponse
     /// principale (même principe que `ScrapeService.scrape(url:)`).

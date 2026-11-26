@@ -28,6 +28,18 @@ final class WindowFocusHandle {
     fileprivate weak var sceneSession: UISceneSession?
     #endif
 
+    /// La fenêtre (ou la scène) est-elle devant, celle que l'utilisateur utilise ? Mac : fenêtre clé ; iPhone et iPad : scène active
+    /// au premier plan. `false` si elle n'est pas connue. Sert à Handoff (chantier 2.3) : où poser la discussion reçue.
+    var isForeground: Bool {
+        #if os(macOS)
+        return window?.isKeyWindow ?? false
+        #elseif os(iOS)
+        return sceneSession?.scene?.activationState == .foregroundActive
+        #else
+        return false
+        #endif
+    }
+
     /// - Returns: `false` si la fenêtre système n'est pas (ou plus) connue : rien n'a été ramené.
     @discardableResult
     func bringToFront() -> Bool {

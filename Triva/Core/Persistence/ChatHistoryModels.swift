@@ -58,6 +58,28 @@ import SwiftData
 // ont de toute façon besoin d'instances liées au `mainContext`. À rouvrir si un
 // import massif apparaît (V2).
 
+// MARK: - Compatibilité CloudKit (chantier 2.3, mission K1)
+//
+// Ces modèles sont écrits pour pouvoir être synchronisés par CloudKit le jour où Ben aura un compte
+// Apple payant (la synchronisation est aujourd'hui éteinte : `cloudKitDatabase: .none`). Règles de la
+// doc SwiftData / Core Data « Creating a Core Data Model for CloudKit », vérifiées sur le modèle que
+// CoreData voit réellement par `CloudKitSchemaCompatibilityTests` :
+// - aucune contrainte d'unicité (`@Attribute(.unique)` interdit) ;
+// - toute relation est OPTIONNELLE et a un INVERSE : un tableau `[T]` non optionnel est vu comme une
+//   relation obligatoire, d'où `[T]? = []` ;
+// - aucune règle de suppression `.deny` ;
+// - par prudence (règle non trouvée dans la doc, coût nul) : tout attribut est optionnel OU a une valeur
+//   par défaut. Ces valeurs ne servent QU'AU SCHÉMA : tous les `init` écrivent des valeurs explicites, et
+//   aucune ne crée jamais un objet (`id = UUID()` est figé une fois dans le modèle).
+//
+// Les relations gardent leur NOM de stockage (`messages`, `sources`) : un renommage changerait l'entité
+// en base. Le code de l'app lit donc `messageList` / `sourceList`, des accesseurs calculés non optionnels,
+// et n'écrit jamais l'optionnel directement ; le comportement est strictement celui d'avant.
+//
+// Règle pour la suite : une fois le schéma déployé en production CloudKit, il est ADDITIF seulement
+// (ni renommage, ni suppression de champ, ni changement de type) ; un champ ajouté est optionnel ou a une
+// valeur par défaut.
+
 // MARK: - Conversation
 
 /// Une conversation sauvegardée localement (racine de l'historique, 1.9).
@@ -86,23 +108,24 @@ import SwiftData
 @Model
 nonisolated final class StoredConversation {
     /// Identifiant stable et portable de la conversation.
-    var id: UUID
+    var id: UUID = UUID()
 
     /// Titre affiché dans la Library. Dérivé de la première question par
     /// `ConversationTitleBuilder`, renommable par l'utilisateur.
-    var title: String
+    var title: String = ""
 
     /// Date du premier message. Jamais modifiée après création.
-    var createdAt: Date
+    var createdAt: Date = Date(timeIntervalSince1970: 0)
 
     /// Date de la dernière écriture (ajout ou modification d'un message,
     /// renommage). C'est le critère de tri de la Library.
-    var updatedAt: Date
+    var updatedAt: Date = Date(timeIntervalSince1970: 0)
 
     /// Messages de la conversation, **non ordonnés** : un tableau de relation
     /// SwiftData n'a pas d'ordre garanti. L'ordre d'affichage vient de
     /// `StoredMessage.order` — passer par `orderedMessages`, jamais par
-    /// `messages` directement dans l'UI.
+    /// `messages` directement dans l'UI. Optionnel pour CloudKit (voir « Compatibilité
+    /// CloudKit » plus haut) : lire `messageList`, qui rend `[]` pour `nil`.
     ///
     /// `deleteRule: .cascade` : supprimer une conversation supprime ses
     /// messages, qui suppriment à leur tour leurs sources. Cette transitivité
@@ -114,7 +137,10 @@ nonisolated final class StoredConversation {
     /// données personnelles inacceptable pour une app qui promet un stockage
     /// 100 % local et réellement effaçable.
     @Relationship(deleteRule: .cascade, inverse: \StoredMessage.conversation)
-    var messages: [StoredMessage]
+    var messages: [StoredMessage]? = []
+
+    /// Les messages, jamais `nil` (non ordonnés). Lecture seule : on écrit par `message.conversation`.
+    var messageList: [StoredMessage] { messages ?? [] }
 
     init(
         id: UUID = UUID(),
@@ -133,7 +159,7 @@ nonisolated final class StoredConversation {
     /// Propriété calculée, donc jamais persistée (la macro `@Model` ne
     /// transforme que les propriétés stockées).
     var orderedMessages: [StoredMessage] {
-        messages.sorted { $0.order < $1.order }
+        messageList.sorted { $0.order < $1.order }
     }
 }
 
@@ -175,16 +201,16 @@ nonisolated enum StoredMessageRole: String, Sendable, Codable, CaseIterable, Equ
 /// donc un message persisté est terminé par construction.
 @Model
 nonisolated final class StoredMessage {
-    var id: UUID
+    var id: UUID = UUID()
 
     /// Rôle sérialisé. Côté appelant, utiliser `role`, pas cette propriété.
-    var roleRawValue: String
+    var roleRawValue: String = StoredMessageRole.assistant.rawValue
 
     /// Contenu textuel : Markdown pour l'assistant, texte brut pour
     /// l'utilisateur.
-    var text: String
+    var text: String = ""
 
-    var createdAt: Date
+    var createdAt: Date = Date(timeIntervalSince1970: 0)
 
     /// Position dans la conversation, croissante, strictement à la charge du
     /// store (`ChatHistoryStore.nextOrder(in:)`).
@@ -193,7 +219,7 @@ nonisolated final class StoredMessage {
     /// trier par `createdAt` serait fragile — deux messages peuvent partager
     /// la même date à la milliseconde près quand un widget répond
     /// instantanément (1.5).
-    var order: Int
+    var order: Int = 0
 
     /// Conversation propriétaire, optionnelle : une relation to-one SwiftData
     /// se modélise par un optionnel, sinon il n'existe aucun état valide entre
@@ -214,7 +240,10 @@ nonisolated final class StoredMessage {
     /// `.cascade` pour la même raison que plus haut : aucune source ne doit
     /// survivre au message qu'elle documente.
     @Relationship(deleteRule: .cascade, inverse: \StoredSource.message)
-    var sources: [StoredSource]
+    var sources: [StoredSource]? = []
+
+    /// Les sources, jamais `nil` (non ordonnées). Lecture seule : on écrit par `source.message`.
+    var sourceList: [StoredSource] { sources ?? [] }
 
     /// Décision (c) de Ben : réponse du mode Fiable restée sans source fiable
     /// (rien de généré). Persistée pour qu'une conversation relue montre le
@@ -288,7 +317,7 @@ nonisolated final class StoredMessage {
     /// désordonner cette liste ferait pointer chaque citation sur la mauvaise
     /// source.
     var orderedSources: [StoredSource] {
-        sources.sorted { $0.order < $1.order }
+        sourceList.sorted { $0.order < $1.order }
     }
 }
 
@@ -301,16 +330,16 @@ nonisolated final class StoredMessage {
 /// doit rester celle qui a servi à rédiger la réponse.
 @Model
 nonisolated final class StoredSource {
-    var id: UUID
+    var id: UUID = UUID()
 
-    var title: String
+    var title: String = ""
 
     /// URL conservée en `String` et non en `URL`, pour rester exactement du
     /// même type que `SearXNGSearchResult.url` : la convertir ici créerait un
     /// point d'échec supplémentaire (une adresse qu'`URL` refuse de parser
     /// ferait perdre la source) alors que l'historique n'a besoin que de
     /// l'afficher. La conversion se fait au moment de l'ouverture du lien.
-    var url: String
+    var url: String = ""
 
     /// Extrait (`content` côté SearXNG). Optionnel : certaines sources n'en
     /// renvoient aucun.
@@ -318,7 +347,7 @@ nonisolated final class StoredSource {
 
     /// Rang de citation dans le message : `order == 0` correspond au marqueur
     /// `[1]`.
-    var order: Int
+    var order: Int = 0
 
     @Relationship(deleteRule: .nullify)
     var message: StoredMessage?

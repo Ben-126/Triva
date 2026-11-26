@@ -37,10 +37,14 @@ nonisolated enum AgenticResearchRunner {
     ///   L'annulation que CE délai provoque dans `operation` n'est pas une annulation de l'utilisateur.
     /// - Annulation de la tâche appelante (Stop) : `CancellationError`, vérifiée AVANT tout classement.
     /// - Autre erreur : classée par `ending(for:)` ; un échec lève `AgenticResearchFailure`.
+    ///
+    /// `usage` (F3) : boîte où `operation` dépose les tokens de sa session ; relue UNE fois, après la fin du groupe,
+    /// donc aussi quand l'opération a été annulée (délai) ou a levé la sentinelle de fin ou de plafond.
     static func run<C: Clock<Duration>>(
         ledger: ResearchLedger,
         timeout: Duration,
         clock: C,
+        usage: AgenticUsageRecorder? = nil,
         operation: @escaping @Sendable () async throws -> Void
     ) async throws -> AgenticResearchOutcome {
         let stop: AgenticStop
@@ -64,7 +68,7 @@ nonisolated enum AgenticResearchRunner {
             try Task.checkCancellation()
             stop = try stopOrThrow(for: error)
         }
-        return AgenticResearchOutcome(snapshot: ledger.snapshot, stop: stop)
+        return AgenticResearchOutcome(snapshot: ledger.snapshot, stop: stop, tokenUsage: usage?.value)
     }
 
     private static func stopOrThrow(for error: any Error) throws -> AgenticStop {

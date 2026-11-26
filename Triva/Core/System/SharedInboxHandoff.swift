@@ -3,7 +3,7 @@
 //  Triva
 //
 //  Chantier 2.1 (mission E) puis mission P : la reprise de la boîte de partage par l'app. TOUS les partages en
-//  attente (8 au plus : la boîte n'en garde pas davantage) sont repris, dans l'ordre d'arrivée ; ce qu'ils contiennent
+//  attente (10 au plus : la boîte n'en garde pas davantage) sont repris, dans l'ordre d'arrivée ; ce qu'ils contiennent
 //  passe dans l'app (le fichier dans les dépôts de l'app, là où le glisser-déposer met les siens). Rien n'est envoyé :
 //  ce qui sort d'ici est un texte pour la barre de saisie et un fichier à joindre, par partage.
 //
@@ -65,6 +65,13 @@ nonisolated enum SharedInboxHandoff {
             ))
         }
         return handoffs
+    }
+
+    /// Partages retirés de la boîte faute de place depuis la dernière reprise (F3), à annoncer une fois. `@concurrent` : lecture
+    /// de dossier, jamais sur le fil principal.
+    @concurrent
+    static func takeDroppedCount(from inbox: SharedInbox) async -> Int {
+        inbox.takeDroppedCount()
     }
 
     /// `name` si personne ne l'a pris (casse ignorée, comme la règle « déjà joint » de la fenêtre), sinon « base (2).ext »,

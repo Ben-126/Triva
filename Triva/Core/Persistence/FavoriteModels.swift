@@ -80,11 +80,11 @@ import SwiftData
 @Model
 nonisolated final class StoredFavorite {
     /// Identifiant propre du favori (clé des listes SwiftUI).
-    var id: UUID
+    var id: UUID = UUID()
 
     /// `id` du `StoredMessage` d'assistant marqué. Clé de dédoublonnage et de
     /// recherche rapide — voir « Identifiant de dédoublonnage ».
-    var messageID: UUID
+    var messageID: UUID = UUID()
 
     /// `id` de la conversation d'origine au moment du marquage, ou `nil` si le
     /// message n'était rattaché à aucune. Référence faible, jamais garantie
@@ -93,15 +93,15 @@ nonisolated final class StoredFavorite {
 
     /// Question de l'utilisateur à laquelle la réponse répondait (`query` dans la
     /// version web d'origine). Peut être vide si aucune question n'a été retrouvée.
-    var question: String
+    var question: String = ""
 
     /// Réponse de l'assistant, Markdown brut avec ses marqueurs `[n]` —
     /// recopiée telle quelle pour que `CitationParser` la résolve contre
     /// `orderedSources` exactement comme dans le chat.
-    var answer: String
+    var answer: String = ""
 
     /// Date du marquage (`savedAt` dans la version web d'origine). Critère de tri de la liste.
-    var savedAt: Date
+    var savedAt: Date = Date(timeIntervalSince1970: 0)
 
     /// Sources recopiées, **non ordonnées** (tableau de relation SwiftData) :
     /// toujours passer par `orderedSources`.
@@ -111,8 +111,13 @@ nonisolated final class StoredFavorite {
     /// le déclarer aussi sur `StoredFavoriteSource.favorite` provoque l'erreur de
     /// compilation « circular reference resolving attached macro
     /// 'Relationship' » documentée dans `ChatHistoryModels.swift`.
+    ///
+    /// Optionnel pour CloudKit (voir `ChatHistoryModels.swift`) : lire `sourceList`.
     @Relationship(deleteRule: .cascade, inverse: \StoredFavoriteSource.favorite)
-    var sources: [StoredFavoriteSource]
+    var sources: [StoredFavoriteSource]? = []
+
+    /// Les sources, jamais `nil` (non ordonnées). Lecture seule : on écrit par `source.favorite`.
+    var sourceList: [StoredFavoriteSource] { sources ?? [] }
 
     /// Numéros `[n]` des sources jamais lues (`StoredMessage.uncitableSourceNumbersRaw`, mission
     /// E1a), recopiés au marquage : le détail d'un favori les montre en texte simple et « non lue »,
@@ -176,7 +181,7 @@ nonisolated final class StoredFavorite {
     /// `CitationParser` résout `[n]` par `sources[n - 1]`. Désordonner cette
     /// liste ferait pointer chaque citation sur la mauvaise source.
     var orderedSources: [StoredFavoriteSource] {
-        sources.sorted { $0.order < $1.order }
+        sourceList.sorted { $0.order < $1.order }
     }
 }
 
@@ -194,19 +199,19 @@ nonisolated final class StoredFavorite {
 /// ce stade et utile à la recherche plein texte ou à un aperçu hors ligne.
 @Model
 nonisolated final class StoredFavoriteSource {
-    var id: UUID
+    var id: UUID = UUID()
 
-    var title: String
+    var title: String = ""
 
     /// `String` et non `URL`, comme `StoredSource.url` et
     /// `SearXNGSearchResult.url` : une adresse qu'`URL` refuserait ne doit pas
     /// faire perdre la source. Conversion au moment d'ouvrir le lien.
-    var url: String
+    var url: String = ""
 
     var snippet: String?
 
     /// Rang de citation : `order == 0` correspond au marqueur `[1]`.
-    var order: Int
+    var order: Int = 0
 
     @Relationship(deleteRule: .nullify)
     var favorite: StoredFavorite?

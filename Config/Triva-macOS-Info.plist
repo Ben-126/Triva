@@ -44,5 +44,11 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Handoff (chantier 2.3, H1) : un seul type d'activité, la question en cours de saisie. Aucun entitlement :
+	     il suffit de la même équipe de signature sur iPhone, iPad et Mac. Reçu, il ne fait que remplir la barre de saisie. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>com.benpodrojsky.Triva.search</string>
+	</array>
 </dict>
 </plist>

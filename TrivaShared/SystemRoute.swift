@@ -22,6 +22,8 @@ nonisolated enum SystemNotice: Sendable, Equatable {
     case truncatedText
     /// Le fichier partagé n'a pas pu être copié dans l'app (disque plein, fichier protégé).
     case fileNotCopied
+    /// Des partages plus anciens ont été retirés de la boîte faute de place (10 au plus, 400 Mo) : leur nombre (F3).
+    case sharesDropped(Int)
 }
 
 /// Une demande de navigation venue de l'extérieur de la fenêtre.

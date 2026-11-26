@@ -128,7 +128,7 @@ nonisolated enum FavoritePresentation {
             conversationID: favorite.conversationID,
             question: favorite.question,
             answer: favorite.answer,
-            sources: citationSources(from: favorite.sources),
+            sources: citationSources(from: favorite.sourceList),
             savedAt: favorite.savedAt,
             notes: favorite.answerNotes
         )

@@ -84,14 +84,15 @@ extension QueryRoutedSearXNGClient: SearXNGSearching {
 }
 
 /// Orchestrateur de test de la tâche 2.4 : init PRINCIPAL (avec `isOffline` et `agenticResearcher`),
-/// classement qui garde l'ordre du moteur, lecture factice, aucun widget.
+/// classement qui garde l'ordre du moteur, lecture factice, aucun widget par défaut (`widgets` : F3).
 @MainActor
 func makeAgenticOrchestrator(
     client: any SearXNGSearching,
     aiProvider: any AIGenerating,
     responseMode: ResponseMode = .deep,
     researcher: (any AgenticResearching)?,
-    isOffline: Bool = false
+    isOffline: Bool = false,
+    widgets: [any SearchWidget] = []
 ) -> SearchOrchestrator {
     let configuration = SearchPipelineConfiguration(
         promptComplexity: .full,
@@ -108,7 +109,7 @@ func makeAgenticOrchestrator(
         configuration: configuration,
         scrapeService: PipelineMockScrapeService(succeeded: true),
         sourceRanker: pipelineOrderPreservingRanker(),
-        widgets: [],
+        widgets: widgets,
         isOffline: isOffline,
         agenticResearcher: researcher
     )

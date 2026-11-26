@@ -46,16 +46,24 @@ extension SearchOrchestrator {
         flavor: WebSearchFlavor,
         uploads: UploadsSearchAction?,
         searchQuery: String,
-        mediaKinds: MediaSearchKinds
+        mediaKinds: MediaSearchKinds,
+        allowsAgenticResearch: Bool = true
     ) async throws -> (WebResearch, MediaSearchResults) {
         guard !mediaKinds.isEmpty else {
-            return (try await webResearch(question: question, flavor: flavor, uploads: uploads, searchQuery: searchQuery), .notRequested)
+            let research = try await webResearch(
+                question: question, flavor: flavor, uploads: uploads, searchQuery: searchQuery, allowsAgenticResearch: allowsAgenticResearch
+            )
+            return (research, .notRequested)
         }
         let searcher = mediaSearcher
         let grace = mediaGracePeriod
         let graceClock = clock
         return try await withThrowingTaskGroup(of: ParallelSearchEvent.self) { group in
-            group.addTask { .research(try await self.webResearch(question: question, flavor: flavor, uploads: uploads, searchQuery: searchQuery)) }
+            group.addTask {
+                .research(try await self.webResearch(
+                    question: question, flavor: flavor, uploads: uploads, searchQuery: searchQuery, allowsAgenticResearch: allowsAgenticResearch
+                ))
+            }
             group.addTask { .media(await MediaSearchResults.search(mediaKinds, query: searchQuery, using: searcher)) }
             var research: WebResearch?
             var media: MediaSearchResults?
@@ -107,7 +115,8 @@ extension SearchOrchestrator {
         question: String,
         flavor: WebSearchFlavor,
         uploads: UploadsSearchAction?,
-        searchQuery: String
+        searchQuery: String,
+        allowsAgenticResearch: Bool
     ) async throws -> WebResearch {
         let seeded = try await seededSearch(flavor: flavor, query: searchQuery)
         var searchResults: [SearXNGSearchResult] = []
@@ -115,9 +124,13 @@ extension SearchOrchestrator {
         Self.accumulate(seeded.output, sources: &searchResults, scrapedPages: &seededPages)
 
         let researchPath: ResearchPath
-        switch try await attemptAgenticResearch(
-            question: question, searchQuery: searchQuery, flavor: flavor, seeded: seeded, seededResults: searchResults
-        ) {
+        // F3 : un widget a répondu, l'enquêteur n'est pas appelé (chemin `.classic`, comme sans enquêteur).
+        let attempt: AgenticAttempt = allowsAgenticResearch
+            ? try await attemptAgenticResearch(
+                question: question, searchQuery: searchQuery, flavor: flavor, seeded: seeded, seededResults: searchResults
+            )
+            : .notAttempted
+        switch attempt {
         case .succeeded(let research):
             return research
         case .fellBack(let reason):

@@ -61,6 +61,14 @@ nonisolated struct SceneActivityAggregate<SceneID: Hashable> {
 protocol LocalGenerationStopping: AnyObject {
     /// Demande l'arrêt dès l'appel (avant le premier `await`), puis attend que le début de la réponse soit écrit.
     func stopLocalGenerationInBackground() async
+
+    /// Retour au premier plan après un arrêt d'arrière-plan, une fois cet arrêt fini et la barrière rouverte (F3) : la réponse
+    /// coupée peut reprendre. Par défaut, rien.
+    func resumeLocalGenerationAfterBackground()
+}
+
+extension LocalGenerationStopping {
+    func resumeLocalGenerationAfterBackground() {}
 }
 
 @MainActor
@@ -79,6 +87,10 @@ final class LocalGPUAccessMonitor {
     private let keeper: any BackgroundRunKeeping
     private var scenes = SceneActivityAggregate<ObjectIdentifier>()
     private var owners: [WeakOwner] = []
+    /// L'app a été en arrière-plan depuis la dernière reprise : une reprise sera demandée au prochain retour actif (F3).
+    private var needsResumeOnReturn = false
+    /// L'arrêt en cours : la reprise l'attend, sinon elle verrait une réponse encore en train de se terminer.
+    private var pendingStop: Task<Void, Never>?
     private var isStarted = false
     private var observers: [any NSObjectProtocol] = []
 
@@ -109,6 +121,10 @@ final class LocalGPUAccessMonitor {
         let phase = scenes.phase
         guard phase != previous else { return }
         gate.setPhase(phase)
+        if phase == .active, needsResumeOnReturn {
+            needsResumeOnReturn = false
+            resumeLocalGenerations()
+        }
         guard phase == .background else { return }
         stopLocalGenerations()
     }
@@ -119,13 +135,26 @@ final class LocalGPUAccessMonitor {
         let stopping = owners.compactMap(\.value)
         let token = stopping.isEmpty ? nil : keeper.begin(name: "Arrêt du modèle local", onExpire: {})
         gate.waitUntilQuiet(timeout: quietTimeout)
-        Task.immediate {
+        needsResumeOnReturn = !stopping.isEmpty
+        pendingStop = Task.immediate {
             await withDiscardingTaskGroup { group in
                 for owner in stopping {
                     group.addImmediateTask { @MainActor in await owner.stopLocalGenerationInBackground() }
                 }
             }
             if let token { self.keeper.end(token) }
+        }
+    }
+
+    /// Retour au premier plan : une fois l'arrêt fini, chaque propriétaire peut reprendre la réponse qu'il avait coupée (F3).
+    /// La barrière est déjà rouverte (`gate.setPhase(.active)` plus haut) : les annulations retenues de MLX sont parties.
+    private func resumeLocalGenerations() {
+        let resuming = owners.compactMap(\.value)
+        guard !resuming.isEmpty else { return }
+        let stop = pendingStop
+        Task { @MainActor in
+            await stop?.value
+            for owner in resuming { owner.resumeLocalGenerationAfterBackground() }
         }
     }
 

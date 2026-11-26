@@ -164,6 +164,13 @@ final class ChatViewModel {
     /// Générations passées en arrière-plan (« Nouvelle conversation », ouverture d'une autre conversation), par
     /// conversation : plusieurs peuvent tourner à la fois (`ChatViewModel+Background`).
     @ObservationIgnored var backgroundExchanges: [UUID: BackgroundExchange] = [:]
+    /// Réponse affichée coupée par le passage de l'app en arrière-plan (modèle local, iPhone et iPad), à reprendre au
+    /// retour (F3, `ChatViewModel+AutoResume.swift`). `nil` sinon.
+    @ObservationIgnored var backgroundInterruptedAnswerID: UUID?
+    /// Réponses déjà reprises automatiquement : une seule reprise par réponse (jamais de boucle arrière-plan, reprise, arrière-plan…).
+    @ObservationIgnored var autoResumedAnswerIDs: Set<UUID> = []
+    /// Faux pour une session sans fenêtre (Siri, Raccourcis) : une reprise y génèrerait pour personne.
+    @ObservationIgnored var resumesAfterBackgroundInterruption = true
     @ObservationIgnored var generationTask: Task<Void, Never>?
     /// `Task` de l'envoi en cours lancé par `startSend` et consorts : voir « La génération appartient
     /// au modèle ». L'annuler annule `generationTask` via `runExchange`.

@@ -42,8 +42,9 @@ nonisolated struct AppleAgenticResearcher: AgenticResearching {
             today: request.today
         )
         let (model, sampling) = (self.model, self.sampling)
+        let usage = AgenticUsageRecorder()
         do {
-            return try await AgenticResearchRunner.run(ledger: ledger, timeout: request.budget.timeout, clock: ContinuousClock()) {
+            return try await AgenticResearchRunner.run(ledger: ledger, timeout: request.budget.timeout, clock: ContinuousClock(), usage: usage) {
                 let profile = ResearchInvestigatorProfile(
                     ledger: ledger,
                     model: model,
@@ -53,6 +54,9 @@ nonisolated struct AppleAgenticResearcher: AgenticResearching {
                     focusQuery: request.searchQuery
                 )
                 let session = LanguageModelSession(profile: profile)
+                // Aussi quand `respond` lève (sentinelle de fin, plafond) ou est annulé (délai) : l'usage de la session
+                // est cumulatif, on garde ce qui a été consommé jusque-là (F3).
+                defer { usage.record(Self.tokenUsage(of: session.usage)) }
                 _ = try await session.respond(to: prompt)
             }
         } catch let failure as AgenticResearchFailure {
@@ -61,6 +65,17 @@ nonisolated struct AppleAgenticResearcher: AgenticResearching {
             }
             throw failure
         }
+    }
+
+    /// Les quatre compteurs de `LanguageModelSession.Usage` (doc Apple : `input.totalTokenCount`, `input.cachedTokenCount`,
+    /// `output.totalTokenCount`, `output.reasoningTokenCount`).
+    static func tokenUsage(of usage: LanguageModelSession.Usage) -> AgenticTokenUsage {
+        AgenticTokenUsage(
+            inputTokens: usage.input.totalTokenCount,
+            cachedInputTokens: usage.input.cachedTokenCount,
+            outputTokens: usage.output.totalTokenCount,
+            reasoningTokens: usage.output.reasoningTokenCount
+        )
     }
 
     /// Échec à signaler au coordinateur quand le modèle est le cloud privé. `rateLimited` : le cloud le lève

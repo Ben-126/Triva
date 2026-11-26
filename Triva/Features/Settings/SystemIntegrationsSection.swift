@@ -3,7 +3,7 @@
 //  Triva
 //
 //  Chantier 2.1 (mission F) : section « Intégrations » des Réglages : ce que Triva montre en dehors de l'app
-//  (Spotlight, widget, activité en direct) et le lien vers Raccourcis.
+//  (Spotlight, widget, activité en direct, Handoff) et le lien vers Raccourcis.
 //
 //  Composants système (`Form`, `Toggle`) comme le reste de l'écran (DESIGN.md : pas de verre dans un `Form`).
 //  Les trois réglages sont des `UserDefaults` de l'app ; `SystemIntegrations` les observe et agit tout de suite
@@ -35,6 +35,11 @@ nonisolated enum SystemIntegrationsText {
     static let questionDetail =
         "Allumé, ta question se lit dans l'activité sans déverrouiller l'appareil. Éteint, seule l'étape de la recherche s'affiche : aucune trace de ta question."
 
+    // Chantier 2.3 (H1) : textes de la spec §4, « à valider par Ben ».
+    static let handoffTitle = "Continuer sur mes autres appareils"
+    static let handoffDetail =
+        "Ta conversation en cours (questions, réponses et sources) peut être reprise sur ton Mac, ton iPhone ou ton iPad connectés au même compte iCloud (Handoff), ainsi que le texte que tu tapes. Rien n'est envoyé à Triva."
+
     static let footer =
         "Éteindre Spotlight ou la dernière question du widget retire tout de suite ce que Triva avait publié. « Tout effacer » vide aussi le widget et Spotlight."
 }
@@ -44,6 +49,7 @@ struct SystemIntegrationsSection: View {
     @AppStorage private var widgetLastQuestion: Bool
     @AppStorage private var liveActivity: Bool
     @AppStorage private var liveActivityQuestion: Bool
+    @AppStorage private var handoff: Bool
 
     /// - Parameter defaults: les réglages de l'app (`.standard`) ; une suite jetable dans les aperçus.
     init(defaults: UserDefaults = .standard) {
@@ -67,6 +73,11 @@ struct SystemIntegrationsSection: View {
             SystemIntegrationPreferences.liveActivityQuestionKey,
             store: defaults
         )
+        _handoff = AppStorage(
+            wrappedValue: SystemIntegrationPreferences.handoffDefault,
+            SystemIntegrationPreferences.handoffKey,
+            store: defaults
+        )
     }
 
     var body: some View {
@@ -82,6 +93,12 @@ struct SystemIntegrationsSection: View {
                 detail: SystemIntegrationsText.widgetDetail,
                 isOn: $widgetLastQuestion,
                 id: "settings.integrations.widget"
+            )
+            toggleRow(
+                SystemIntegrationsText.handoffTitle,
+                detail: SystemIntegrationsText.handoffDetail,
+                isOn: $handoff,
+                id: "settings.integrations.handoff"
             )
             #if os(iOS)
             // L'activité en direct n'existe pas sur Mac (ActivityKit).

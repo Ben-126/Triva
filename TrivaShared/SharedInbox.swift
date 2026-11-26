@@ -7,7 +7,8 @@
 //  efface. Une entrée = un manifeste `<id>.json` (écrit EN DERNIER, donc un manifeste lisible annonce un fichier
 //  complet) et, pour un fichier, `<id>.payload`. Le nom d'origine du fichier ne figure jamais sur le disque.
 //
-//  Règles : 8 entrées au plus, gardées 24 h, 400 Mo de fichiers au plus (les plus anciennes partent d'abord) ;
+//  Règles : 10 entrées au plus (les plus anciennes partent, et un marqueur vide `<id>.dropped` permet à l'app de le dire, voir
+//  `takeDroppedCount`), gardées 24 h, 400 Mo de fichiers au plus (les plus anciennes partent d'abord) ;
 //  PDF 200 Mo, image 50 Mo ; protection de fichiers iOS « jusqu'à la première ouverture » (une lecture en cours
 //  survit au verrouillage) ; fichier vérifié sur la COPIE (type par octets d'en-tête, taille exacte) ;
 //  entrée illisible, tronquée ou expirée effacée sans plantage. Le contenu d'un fichier n'est jamais chargé en
@@ -20,7 +21,7 @@ import Foundation
 
 nonisolated struct SharedInbox: Sendable {
     static let folderName = "share-inbox"
-    static let maxEntries = 8
+    static let maxEntries = 10
     /// Durée de garde d'une entrée.
     static let maxAge: TimeInterval = 24 * 60 * 60
     /// Un fichier sans manifeste est peut-être en cours d'écriture par l'extension : on lui laisse 10 minutes.
@@ -34,6 +35,9 @@ nonisolated struct SharedInbox: Sendable {
     private static let manifestExtension = "json"
     private static let payloadExtension = "payload"
     private static let partialExtension = "part"
+    /// Marqueur vide laissé pour un partage retiré faute de place (F3) : le nom porte l'identifiant du partage retiré
+    /// (écrire deux fois le même marqueur ne compte qu'un partage), jamais son texte ni le nom de son fichier.
+    private static let droppedExtension = "dropped"
 
     /// Pourquoi une écriture est refusée. Motifs fermés, sans nom ni contenu de fichier.
     enum Failure: Error, Equatable, Sendable {
@@ -95,7 +99,7 @@ nonisolated struct SharedInbox: Sendable {
             removeFiles(of: id)
             throw Failure.writeFailed
         }
-        // Ménage après écriture : `validEntries()` ne garde que les 8 plus récentes (celle-ci est la plus récente).
+        // Ménage après écriture : `validEntries()` ne garde que les 10 plus récentes (celle-ci est la plus récente).
         _ = validEntries()
         return entry
     }
@@ -124,8 +128,22 @@ nonisolated struct SharedInbox: Sendable {
         }
         if sweepingOrphans { removeOrphans(in: names, knownIDs: knownIDs) }
         let sorted = valid.sorted { ($0.createdAt, $0.id.uuidString) > ($1.createdAt, $1.id.uuidString) }
-        sorted.dropFirst(Self.maxEntries).forEach(remove)
+        sorted.dropFirst(Self.maxEntries).forEach(removeForLackOfRoom)
         return Array(sorted.prefix(Self.maxEntries))
+    }
+
+    /// Nombre de partages retirés faute de place depuis le dernier appel (plus de `maxEntries`, ou 400 Mo dépassés), puis
+    /// efface les marqueurs : l'app l'annonce UNE fois (F3). Un marqueur de plus de 24 h n'est pas compté (le partage
+    /// aurait expiré de toute façon) mais est effacé. Une entrée expirée ou abîmée n'a jamais de marqueur.
+    func takeDroppedCount() -> Int {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        var count = 0
+        for name in names where (name as NSString).pathExtension == Self.droppedExtension {
+            let url = directory.appending(path: name, directoryHint: .notDirectory)
+            if !isStaleMarker(at: url) { count += 1 }
+            try? FileManager.default.removeItem(at: url)
+        }
+        return count
     }
 
     /// Où lire le fichier d'une entrée.
@@ -264,10 +282,31 @@ nonisolated struct SharedInbox: Sendable {
         )
     }
 
+    /// Retire un partage valide faute de place (nombre ou taille) et laisse un marqueur : l'extension qui écrit ne peut rien
+    /// dire à l'utilisateur, c'est l'app qui l'annoncera (`takeDroppedCount`). Marqueur raté : le partage est retiré quand même.
+    private func removeForLackOfRoom(_ entry: SharedInboxEntry) {
+        remove(entry)
+        let marker = directory.appending(path: "\(entry.id.uuidString).\(Self.droppedExtension)", directoryHint: .notDirectory)
+        guard (try? Data().write(to: marker, options: Self.writeOptions)) != nil else { return }
+        // Date posée avec l'horloge de la boîte (et non celle du système de fichiers) : péremption cohérente et testable.
+        try? FileManager.default.setAttributes([.modificationDate: now()], ofItemAtPath: marker.path)
+    }
+
+    /// Un marqueur de plus de 24 h (date illisible : on le compte, mieux vaut une information de trop).
+    private func isStaleMarker(at url: URL) -> Bool {
+        guard let modified = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date else { return false }
+        return now().timeIntervalSince(modified) > Self.maxAge
+    }
+
     private func removeOrphans(in names: [String], knownIDs: Set<String>) {
         for name in names where (name as NSString).pathExtension != Self.manifestExtension {
-            guard !knownIDs.contains((name as NSString).deletingPathExtension) else { continue }
             let url = directory.appending(path: name, directoryHint: .notDirectory)
+            // Un marqueur n'est pas un orphelin : il attend l'app (24 h au plus).
+            if (name as NSString).pathExtension == Self.droppedExtension {
+                if isStaleMarker(at: url) { try? FileManager.default.removeItem(at: url) }
+                continue
+            }
+            guard !knownIDs.contains((name as NSString).deletingPathExtension) else { continue }
             let modified = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
             // Date illisible : on garde (mieux vaut une copie de trop qu'une écriture coupée), le délai ne court pas.
             guard let modified, now().timeIntervalSince(modified) > Self.orphanGrace else { continue }
@@ -283,7 +322,7 @@ nonisolated struct SharedInbox: Sendable {
         while total + size > Self.maxTotalFileByteCount, let oldest = entries.last {
             entries.removeLast()
             total -= oldest.file?.byteCount ?? 0
-            remove(oldest)
+            removeForLackOfRoom(oldest)
         }
         // Une entrée sans fichier ne libère rien : si rien d'autre ne peut partir, le fichier entre quand même
         // (il est plafonné à 200 Mo, donc le total reste sous 600 Mo au pire, jusqu'au prochain ménage).

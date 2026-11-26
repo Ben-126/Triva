@@ -3,7 +3,7 @@
 //  Triva
 //
 //  Chantier 2.1 (mission E) puis mission P : à chaque passage de l'app au premier plan, reprend TOUS les partages que
-//  l'extension a déposés dans l'App Group (8 au plus, dans l'ordre d'arrivée). Une extension de partage ne peut pas ouvrir l'app (limite Apple) : c'est l'app qui vient
+//  l'extension a déposés dans l'App Group (10 au plus, dans l'ordre d'arrivée). Une extension de partage ne peut pas ouvrir l'app (limite Apple) : c'est l'app qui vient
 //  chercher. Le texte devient un BROUILLON (`SystemRoute.draft`), le fichier une pièce jointe (`SystemRoute.attachment`) :
 //  JAMAIS envoyés, l'utilisateur relit puis valide lui-même.
 //
@@ -48,7 +48,9 @@ final class SharedInboxConsumer {
         defer { isTakingOver = false }
         let generation = eraseGeneration
         let handoffs = await SharedInboxHandoff.takeAll(from: inbox, depositRoot: depositRoot, skipping: skippedEntryIDs)
-        guard !handoffs.isEmpty else { return }
+        // F3 : les partages retirés faute de place (plus de 10) sont annoncés, même s'il ne reste aucun partage à reprendre.
+        let droppedCount = await SharedInboxHandoff.takeDroppedCount(from: inbox)
+        guard !handoffs.isEmpty || droppedCount > 0 else { return }
         // « Tout effacer » est passé pendant la reprise : ni brouillon, ni fichier ne doivent réapparaître.
         guard generation == eraseGeneration else {
             for handoff in handoffs {
@@ -58,7 +60,7 @@ final class SharedInboxConsumer {
             return
         }
         skippedEntryIDs.formUnion(handoffs.map(\.entryID))
-        let submissions = Self.submissions(for: handoffs)
+        let submissions = Self.submissions(for: handoffs, droppedCount: droppedCount)
         // Chaque entrée compte ses propres routes : elle part de l'App Group quand elles sont toutes prises.
         let remaining = Dictionary(grouping: submissions.compactMap(\.entryID), by: { $0 }).mapValues { Remaining(count: $0.count) }
         for submission in submissions {
@@ -97,7 +99,7 @@ final class SharedInboxConsumer {
     /// dépassent la limite) ; puis les textes, dans l'ordre d'arrivée, ajoutés à la suite du brouillon ; les informations
     /// en dernier, une fois chacune (texte coupé, fichier non copié), après le brouillon : un dépôt de fichier efface
     /// les informations déjà affichées.
-    private static func submissions(for handoffs: [SharedHandoff]) -> [Submission] {
+    private static func submissions(for handoffs: [SharedHandoff], droppedCount: Int) -> [Submission] {
         var submissions: [Submission] = []
         for handoff in handoffs {
             if let deposit = handoff.depositURL { submissions.append(Submission(route: .attachment(deposit), entryID: handoff.entryID)) }
@@ -107,6 +109,7 @@ final class SharedInboxConsumer {
         }
         if handoffs.contains(where: \.textWasTruncated) { submissions.append(Submission(route: .notice(.truncatedText), entryID: nil)) }
         if handoffs.contains(where: \.fileCopyFailed) { submissions.append(Submission(route: .notice(.fileNotCopied), entryID: nil)) }
+        if droppedCount > 0 { submissions.append(Submission(route: .notice(.sharesDropped(droppedCount)), entryID: nil)) }
         return submissions
     }
 

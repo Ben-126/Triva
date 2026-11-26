@@ -59,7 +59,7 @@ extension ChatViewModel {
         guard let historyStore, let storedID, let conversationID else { return }
         do {
             guard let conversation = try historyStore.conversation(with: conversationID),
-                  let stored = conversation.messages.first(where: { $0.id == storedID }) else { return }
+                  let stored = conversation.messageList.first(where: { $0.id == storedID }) else { return }
             try historyStore.delete(stored)
         } catch {
             reportPersistenceFailure(error)

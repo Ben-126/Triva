@@ -298,7 +298,7 @@ struct LibraryView: View {
     /// `orderedMessages.last` : inutile de trier toute la conversation pour un
     /// seul message.
     private static func latestAnswerText(in conversation: StoredConversation) -> String? {
-        conversation.messages
+        conversation.messageList
             .filter { $0.role == .assistant }
             .max { $0.order < $1.order }?
             .text

@@ -68,7 +68,8 @@ final class ImageRecognitionReadiness {
     // MARK: Points d'entrée
 
     /// Au lancement et à chaque retour au premier plan : prépare en fond si ce n'est pas déjà fait pour cette version,
-    /// sans ralentir le lancement (délai, priorité basse) et seulement si l'appareil est calme.
+    /// sans ralentir le lancement (délai de 10 s, priorité moyenne `.utility`) et seulement si l'appareil est calme.
+    /// Priorité moyenne depuis F3 (26/11) : mesurée à ~45 s sur un Mac chargé, contre ~237 s en `.background` (W4-V).
     func startIfNeeded() {
         switch state {
         case .preparing, .scheduled, .ready: return
@@ -80,7 +81,7 @@ final class ImageRecognitionReadiness {
             state = .deferred(reason)
             return
         }
-        launch(delay: startDelay, priority: .background)
+        launch(delay: startDelay, priority: .utility)
     }
 
     /// Une image vient d'être jointe : l'utilisateur passe avant tout (délai, économie d'énergie, chaleur ignorés),

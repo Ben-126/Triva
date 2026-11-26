@@ -2,7 +2,7 @@
 //  SharedInboxHandoffTests.swift
 //  TrivaTests
 //
-//  Chantier 2.1 (mission E) puis mission P : la reprise par l'app. TOUS les partages en attente (8 au plus) passent
+//  Chantier 2.1 (mission E) puis mission P : la reprise par l'app. TOUS les partages en attente (10 au plus) passent
 //  dans les dépôts de l'app, dans l'ordre d'arrivée ; la copie de l'App Group de chacun est effacée une fois sa route
 //  prise. Rien n'est envoyé : la reprise ne rend que du texte pour la barre de saisie et des fichiers à joindre.
 //
@@ -103,15 +103,15 @@ struct SharedInboxHandoffTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: deposits.path).count == 2)
     }
 
-    @Test("Huit partages au plus : au-delà, la boîte ne garde que les plus récents, tous repris dans l'ordre")
-    func atMostEightShares() async throws {
+    @Test("Dix partages au plus : au-delà, la boîte ne garde que les plus récents, tous repris dans l'ordre")
+    func atMostTenShares() async throws {
         let fixture = try HandoffFixture(); defer { fixture.cleanUp() }
-        for index in 1...10 {
+        for index in 1...12 {
             try fixture.inbox.add(text: "partage \(index)", fileAt: nil, displayName: nil)
             fixture.clock.advance(1)
         }
         let handoffs = await SharedInboxHandoff.takeAll(from: fixture.inbox, depositRoot: fixture.depositRoot)
-        #expect(handoffs.map(\.text) == (3...10).map { "partage \($0)" })
+        #expect(handoffs.map(\.text) == (3...12).map { "partage \($0)" })
     }
 
     @Test("Deux fichiers de même nom dans deux partages : ni l'un ni l'autre n'est perdu, les noms diffèrent")

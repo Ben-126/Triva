@@ -166,6 +166,10 @@ struct TrivaRootView: View {
                 ) else { return }
                 SystemRouteCenter.shared.submit(route)
             }
+            // Handoff (chantier 2.3) : la question en cours d'un autre appareil du même compte iCloud arrive dans la barre
+            // de saisie, avec sa discussion entière (enregistrée comme conversation locale, puis ouverte) quand les flux
+            // de continuation la livrent. Entrée externe, jamais envoyée.
+            .continuesHandoff(store: stores.chatHistory)
             .acceptsExternalEventsInOpenWindows()
     }
 
@@ -418,7 +422,10 @@ private struct TrivaRootShell: View {
         }
         // « Une recherche = une fenêtre » (chantier 2.2) : la valeur de la fenêtre suit le fil affiché.
         .onAppear { adoptWindowTarget() }
-        .onDisappear { coordinator.windowRegistry.remove(window: coordinator.windowID) }
+        .onDisappear {
+            coordinator.windowRegistry.remove(window: coordinator.windowID)
+            HandoffWindowPlacement.shared.unregister(window: coordinator.windowID)
+        }
         .onChange(of: coordinator.session.chatViewModel?.currentConversationID) {
             coordinator.syncWindowTarget()
         }
@@ -442,6 +449,8 @@ private struct TrivaRootShell: View {
         .environment(\.openConversationInNewWindow, newWindowAction)
         // La barre de menus (`TrivaCommands`) agit sur la fenêtre au premier plan : elle lit ce coordinateur.
         .focusedSceneValue(coordinator)
+        // Handoff (chantier 2.3) : la question en cours de cette fenêtre, proposée aux autres appareils si le réglage est allumé.
+        .background { HandoffAdvertiser(session: coordinator.session, isForeground: { [focusHandle] in focusHandle.isForeground }) }
         // Glisser-déposer sur toute la fenêtre : fichiers, texte, adresses (chantier 2.2, M5).
         .acceptsSearchDrops(on: coordinator)
         #if DEBUG
@@ -469,6 +478,7 @@ private struct TrivaRootShell: View {
     /// la conversation de la scène l'emporte (`WindowRestoration.take(sceneValue:)`, constat du 25/11).
     private func adoptWindowTarget() {
         coordinator.windowRegistry.setFocusAction({ [focusHandle] in focusHandle.bringToFront() }, in: coordinator.windowID)
+        registerHandoffPlacement()
         coordinator.dismissShellPresentations = onCloseEngineChange
         let initial = restoration.take(sceneValue: windowTarget.wrappedValue)
         if let initial {
@@ -487,6 +497,27 @@ private struct TrivaRootShell: View {
         }
         if initial != nil, case .newSearch = coordinator.windowTarget, case .newSearch = windowTarget.wrappedValue { return }
         publish(coordinator.windowTarget)
+    }
+
+    /// Mac, Handoff (chantier 2.3) : dit au registre si cette fenêtre est devant et vide, et comment lui faire appliquer les
+    /// routes d'une discussion reçue. Sur iPhone et iPad, la file des routes du système suffit : rien à enregistrer.
+    private func registerHandoffPlacement() {
+        #if os(macOS)
+        let coordinator = coordinator
+        let focusHandle = focusHandle
+        HandoffWindowPlacement.shared.register(
+            window: coordinator.windowID,
+            isForeground: { focusHandle.isForeground },
+            isEmpty: { coordinator.isEmptyForHandoff },
+            apply: { routes in
+                for route in routes {
+                    coordinator.apply(route, canUseOtherWindows: true) { id in
+                        coordinator.windowRegistry.focusHolder(of: id, excluding: nil)
+                    }
+                }
+            }
+        )
+        #endif
     }
 
     /// Prend les routes du système en attente (chantier 2.1) : seulement quand cette fenêtre est active et sa cible

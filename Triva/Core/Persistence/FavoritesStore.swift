@@ -411,7 +411,7 @@ final class FavoritesStore {
     private func contains(_ needle: String, in favorite: StoredFavorite) -> Bool {
         if normalized(favorite.question).contains(needle) { return true }
         if normalized(favorite.answer).contains(needle) { return true }
-        return favorite.sources.contains { normalized($0.title).contains(needle) }
+        return favorite.sourceList.contains { normalized($0.title).contains(needle) }
     }
 
     /// Normalisation identique à celle de `ChatHistoryStore` (qui la garde

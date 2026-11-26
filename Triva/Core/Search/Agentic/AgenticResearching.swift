@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Synchronization
 
 /// Enquêteur de la recherche web (tâche 2.4, spec §2.5) : à partir des résultats de départ, l'IA cherche et
 /// lit elle-même avec des outils, puis rend son registre. Il ne rédige JAMAIS la réponse : le rédacteur actuel
@@ -53,6 +54,43 @@ nonisolated enum AgenticStop: Sendable, Equatable {
 nonisolated struct AgenticResearchOutcome: Sendable, Equatable {
     let snapshot: ResearchLedger.Snapshot
     let stop: AgenticStop
+    /// Tokens consommés par la session de l'enquêteur (F3), pour le banc de comparaison. `nil` : pas mesuré
+    /// (enquêteur factice, ou session qui n'a rien rapporté). Jamais affiché, jamais persisté. `var` avec défaut :
+    /// les appels existants (dont le banc) compilent inchangés.
+    var tokenUsage: AgenticTokenUsage? = nil
+}
+
+/// Tokens d'une enquête, d'après `LanguageModelSession.Usage` (cumulé sur toute la session : chaque tour de
+/// modèle, donc chaque appel d'outil, y compte). Entiers seulement : `Usage` n'est pas `Equatable`.
+nonisolated struct AgenticTokenUsage: Sendable, Equatable {
+    /// `usage.input.totalTokenCount` : tout ce qui a été envoyé au modèle, tours répétés compris.
+    let inputTokens: Int
+    /// `usage.input.cachedTokenCount` : la part de l'entrée servie par le cache du préfixe.
+    let cachedInputTokens: Int
+    /// `usage.output.totalTokenCount` : tout ce que le modèle a produit (raisonnement compris).
+    let outputTokens: Int
+    /// `usage.output.reasoningTokenCount` : la part du raisonnement (nulle hors cloud privé).
+    let reasoningTokens: Int
+
+    static let zero = AgenticTokenUsage(inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0)
+
+    /// Comme `Usage.totalTokenCount` : entrée + sortie (le cache et le raisonnement sont déjà compris dedans).
+    var totalTokens: Int { inputTokens + outputTokens }
+}
+
+/// Boîte où l'opération de l'enquêteur dépose l'usage de sa session : la session naît DANS la fermeture que le
+/// lanceur exécute (qui ne rend rien) et peut être annulée (délai, plafond) : le lanceur relit la boîte après coup.
+nonisolated final class AgenticUsageRecorder: Sendable {
+    private let latest = Mutex<AgenticTokenUsage?>(nil)
+
+    init() {}
+
+    /// L'usage d'une session est CUMULATIF : la dernière valeur remplace la précédente.
+    func record(_ usage: AgenticTokenUsage) {
+        latest.withLock { $0 = usage }
+    }
+
+    var value: AgenticTokenUsage? { latest.withLock { $0 } }
 }
 
 /// Raison d'un repli sur la boucle actuelle. Diagnostic seulement : jamais affiché, jamais persisté.

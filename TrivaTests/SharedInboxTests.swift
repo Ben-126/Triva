@@ -2,7 +2,7 @@
 //  SharedInboxTests.swift
 //  TrivaTests
 //
-//  Chantier 2.1 (mission E) : la boîte de partage dans l'App Group. Expiration, capacité, fichier malveillant, nom
+//  Chantier 2.1 (mission E) : la boîte de partage dans l'App Group. Expiration, capacité (10 entrées depuis F3), fichier malveillant, nom
 //  piégé, entrée tronquée, deux partages de suite. Tout se passe dans un dossier temporaire et avec une horloge de test.
 //
 
@@ -78,19 +78,21 @@ struct SharedInboxTextTests {
         #expect(fixture.leftovers().isEmpty, "le manifeste expiré est effacé du disque")
     }
 
-    @Test("Capacité : 8 entrées au plus, les plus anciennes partent avec leur fichier")
+    @Test("Capacité : 10 entrées au plus (F3), les plus anciennes partent avec leur fichier")
     func capacity() throws {
         let fixture = try Fixture(); defer { fixture.cleanUp() }
         let pdf = try fixture.source(SampleBytes.pdf(), named: "a.pdf")
         var added: [SharedInboxEntry] = []
-        for index in 0..<10 {
+        for index in 0..<12 {
             fixture.clock.advance(1)
             added.append(try fixture.inbox.add(text: "q\(index)", fileAt: index < 2 ? pdf : nil, displayName: "a.pdf"))
         }
         let kept = fixture.inbox.validEntries()
+        #expect(SharedInbox.maxEntries == 10)
         #expect(kept.count == SharedInbox.maxEntries)
-        #expect(kept.map(\.id) == added.suffix(8).reversed().map(\.id), "les 8 plus récentes, la plus récente d'abord")
-        #expect(fixture.leftovers().count == 8, "aucun fichier orphelin des deux entrées évincées")
+        #expect(kept.map(\.id) == added.suffix(10).reversed().map(\.id), "les 10 plus récentes, la plus récente d'abord")
+        let kept10 = fixture.leftovers().filter { !$0.hasSuffix(".dropped") }
+        #expect(kept10.count == 10, "aucun fichier orphelin des deux entrées évincées")
     }
 
     @Test("Deux partages de suite : le plus récent d'abord, chacun avec son identifiant")
@@ -216,7 +218,9 @@ struct SharedInboxFileTests {
             entries.append(try fixture.inbox.add(text: nil, fileAt: source, displayName: "p\(index).pdf"))
         }
         #expect(fixture.inbox.validEntries().map(\.id) == [entries[2].id, entries[1].id])
-        #expect(fixture.leftovers().count == 4)
+        #expect(fixture.leftovers().filter { !$0.hasSuffix(".dropped") }.count == 4)
+        #expect(fixture.inbox.takeDroppedCount() == 1, "l'entrée évincée pour la taille est annoncée comme les autres (F3)")
+        #expect(fixture.leftovers().allSatisfy { !$0.hasSuffix(".dropped") })
     }
 
     // MARK: Nom piégé

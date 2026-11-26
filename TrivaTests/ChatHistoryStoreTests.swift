@@ -69,7 +69,7 @@ struct ChatHistoryCreationTests {
         #expect(conversation.title == "Photosynthèse")
         #expect(conversation.createdAt == historyDate(0))
         #expect(conversation.updatedAt == historyDate(0))
-        #expect(conversation.messages.isEmpty)
+        #expect(conversation.messageList.isEmpty)
 
         let listées = try store.conversations()
         #expect(listées.count == 1)
@@ -102,7 +102,7 @@ struct ChatHistoryCreationTests {
         // la Library en rouvrant une conversation.
         let relue = try #require(try store.conversations().first)
 
-        #expect(relue.messages.count == 4)
+        #expect(relue.messageList.count == 4)
         #expect(relue.orderedMessages.map(\.order) == [0, 1, 2, 3])
         #expect(relue.orderedMessages.map(\.text) == [
             "Première question",
@@ -136,7 +136,7 @@ struct ChatHistoryCreationTests {
             now: historyDate(1)
         )
 
-        #expect(réponse.sources.count == 3)
+        #expect(réponse.sourceList.count == 3)
         #expect(réponse.orderedSources.map(\.order) == [0, 1, 2])
         #expect(réponse.orderedSources.map(\.title) == ["Source 1", "Source 2", "Source 3"])
         #expect(réponse.orderedSources.first?.url == "https://exemple1.fr/article")
@@ -166,7 +166,7 @@ struct ChatHistoryCreationTests {
 
         let question = try store.appendUserMessage(to: conversation, text: "Pourquoi ?", now: historyDate(1))
 
-        #expect(question.sources.isEmpty)
+        #expect(question.sourceList.isEmpty)
         #expect(question.role == .user)
     }
 
@@ -194,8 +194,8 @@ struct ChatHistoryCreationTests {
         try store.appendUserMessage(to: première, text: "Chez la première", now: historyDate(2))
         try store.appendUserMessage(to: seconde, text: "Chez la seconde", now: historyDate(3))
 
-        #expect(première.messages.map(\.text) == ["Chez la première"])
-        #expect(seconde.messages.map(\.text) == ["Chez la seconde"])
+        #expect(première.messageList.map(\.text) == ["Chez la première"])
+        #expect(seconde.messageList.map(\.text) == ["Chez la seconde"])
         // Chaque conversation repart de 0 : `order` est local à la conversation.
         #expect(première.orderedMessages.first?.order == 0)
         #expect(seconde.orderedMessages.first?.order == 0)

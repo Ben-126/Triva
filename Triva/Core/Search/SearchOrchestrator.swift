@@ -508,8 +508,21 @@ nonisolated struct SearchOrchestrator: Sendable {
             gathered = try await gather(route: fallbackRoute, request: request, searchQuery: searchQuery)
         } else {
             await Self.announceSearch(of: route, for: request)
-            gathered = try await gather(route: route, request: request, searchQuery: searchQuery)
-            widgets = await pendingWidgets
+            if Self.shouldAwaitWidgetsBeforeInvestigating(
+                route: route, hasInvestigator: agenticResearcher != nil && agenticBudget.isEnabled,
+                hasEligibleWidget: executor.hasEligibleWidget(for: classification)
+            ) {
+                // F3 : l'enquêteur ne tourne jamais quand un widget a répondu. Le classifieur demande souvent une recherche
+                // web EN PLUS du widget : on attend donc le widget (court, 12 s au plus) avant de chercher, seulement dans ce
+                // cas (enquêteur branché ET widget éligible). Sinon recherche et widgets restent en parallèle.
+                widgets = await pendingWidgets
+                gathered = try await gather(
+                    route: route, request: request, searchQuery: searchQuery, allowsAgenticResearch: widgets.outputs.isEmpty
+                )
+            } else {
+                gathered = try await gather(route: route, request: request, searchQuery: searchQuery)
+                widgets = await pendingWidgets
+            }
         }
 
         return ResearchOutcome(
@@ -561,7 +574,12 @@ nonisolated struct SearchOrchestrator: Sendable {
     /// Mène la recherche d'une route. Aucune ne fait d'appel réseau hors
     /// `.web` : le calcul pur et la salutation répondent hors ligne (bug 15),
     /// les fichiers joints restent sur l'appareil.
-    private func gather(route: SearchRoute, request: SearchRequest, searchQuery: String) async throws -> GatheredSearch {
+    private func gather(
+        route: SearchRoute,
+        request: SearchRequest,
+        searchQuery: String,
+        allowsAgenticResearch: Bool = true
+    ) async throws -> GatheredSearch {
         switch route {
         case .none, .webUnlessWeatherAnswered, .webUnlessCalculationAnswered:
             // Les routes « web sauf widget abouti » sont résolues par `runResearch` avant
@@ -588,7 +606,8 @@ nonisolated struct SearchOrchestrator: Sendable {
                 flavor: flavor,
                 uploads: nil,
                 searchQuery: searchQuery,
-                mediaKinds: request.media
+                mediaKinds: request.media,
+                allowsAgenticResearch: allowsAgenticResearch
             )
             return GatheredSearch(
                 documents: await Self.documentsCountingAsSources(try await pendingDocuments, query: searchQuery, mode: responseMode),

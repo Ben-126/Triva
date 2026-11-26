@@ -15,11 +15,15 @@ nonisolated struct SystemIntegrationPreferences {
     static let widgetLastQuestionKey = "system.widget.showsLastQuestion"
     static let liveActivityKey = "system.liveActivity.enabled"
     static let liveActivityQuestionKey = "system.liveActivity.showsQuestion"
+    static let handoffKey = "system.handoff.enabled"
 
     static let spotlightDefault = true
     static let widgetLastQuestionDefault = false
     static let liveActivityDefault = true
     static let liveActivityQuestionDefault = true
+    /// Chantier 2.3 (H1) : allumé par défaut, recommandation de la spec (question Q4, à valider par Ben). Ça ne va
+    /// qu'aux appareils du même compte iCloud, et le système a son propre interrupteur.
+    static let handoffDefault = true
 
     private let defaults: UserDefaults
 
@@ -51,6 +55,12 @@ nonisolated struct SystemIntegrationPreferences {
     var showsQuestionInLiveActivity: Bool {
         get { value(for: Self.liveActivityQuestionKey, default: Self.liveActivityQuestionDefault) }
         nonmutating set { defaults.set(newValue, forKey: Self.liveActivityQuestionKey) }
+    }
+
+    /// Handoff (chantier 2.3) : la question en cours peut être reprise sur un autre appareil du même compte iCloud.
+    var isHandoffEnabled: Bool {
+        get { value(for: Self.handoffKey, default: Self.handoffDefault) }
+        nonmutating set { defaults.set(newValue, forKey: Self.handoffKey) }
     }
 
     /// Une clé absente (ou d'un autre type) donne la valeur par défaut : jamais un « faux » par accident.

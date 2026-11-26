@@ -40,6 +40,18 @@ extension SearchOrchestrator {
         )
     }
 
+    /// Faut-il attendre les widgets avant de lancer l'enquêteur (F3, spec 2.4 §7.2 témoins 19-20) ? Seulement pour une route
+    /// `.web` (les routes « web sauf widget abouti » attendent déjà le widget d'abord), avec un enquêteur branché et un widget
+    /// que la classification déclenche : dans tout autre cas, recherche et widgets restent en parallèle comme avant.
+    nonisolated static func shouldAwaitWidgetsBeforeInvestigating(
+        route: SearchRoute,
+        hasInvestigator: Bool,
+        hasEligibleWidget: Bool
+    ) -> Bool {
+        guard hasInvestigator, hasEligibleWidget, case .web = route else { return false }
+        return true
+    }
+
     nonisolated func attemptAgenticResearch(
         question: String,
         searchQuery: String,

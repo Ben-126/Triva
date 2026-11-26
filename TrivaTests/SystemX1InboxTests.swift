@@ -250,10 +250,10 @@ struct SystemX1ConsumerTests {
         #expect(rig.leftovers().isEmpty, "les copies de l'App Group sont effacées dès que les routes sont prises")
     }
 
-    @Test("Huit partages avec fichier, texte et un texte coupé : aucune route n'est évincée de la file")
-    func eightSharesFitTheQueue() async throws {
+    @Test("Dix partages avec fichier, texte et un texte coupé : aucune route n'est évincée de la file")
+    func tenSharesFitTheQueue() async throws {
         let rig = try InboxRig(); defer { rig.cleanUp() }
-        for index in 1...8 {
+        for index in 1...10 {
             let text = index == 3 ? String(repeating: "x", count: 2_600) : "texte \(index)"
             try rig.addPDF(text: text, name: "f\(index).pdf")
             rig.clock.advance(1)
@@ -261,13 +261,13 @@ struct SystemX1ConsumerTests {
         let (consumer, center) = makeConsumer(rig)
         await consumer.takeOver()
         let routes = center.drain()
-        #expect(attachmentNames(routes) == (1...8).map { "f\($0).pdf" })
-        #expect(routes.filter { if case .draft = $0 { true } else { false } }.count == 8)
+        #expect(attachmentNames(routes) == (1...10).map { "f\($0).pdf" })
+        #expect(routes.filter { if case .draft = $0 { true } else { false } }.count == 10)
         #expect(routes.last == .notice(.truncatedText))
-        #expect(routes.count == 17)
+        #expect(routes.count == 21)
         #expect(rig.leftovers().isEmpty)
         let deposits = rig.depositRoot.appendingPathComponent("_deposits")
-        #expect(try FileManager.default.contentsOfDirectory(atPath: deposits.path).count == 8, "aucun fichier évincé n'a été effacé")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: deposits.path).count == 10, "aucun fichier évincé n'a été effacé")
     }
 
     @Test("Plusieurs textes coupés ou fichiers non copiés : chaque information n'est donnée qu'une fois")

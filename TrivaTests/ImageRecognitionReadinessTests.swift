@@ -138,7 +138,7 @@ struct ImageRecognitionPreparationRulesTests {
 @MainActor
 @Suite("Préparation de la lecture d'image — cycle de vie")
 struct ImageRecognitionReadinessTests {
-    @Test("Au lancement : une préparation en priorité basse, puis « prête » et clé enregistrée")
+    @Test("Au lancement : une préparation en priorité moyenne (utility, F3), puis « prête » et clé enregistrée")
     func startsOnceThenReady() async {
         let preparer = GatedPreparer()
         let ledger = MemoryLedger()
@@ -150,7 +150,7 @@ struct ImageRecognitionReadinessTests {
         #expect(readiness.state == .preparing)
         #expect(readiness.isPreparing)
         let priority = preparer.priorities[0]
-        #expect(priority.rawValue <= TaskPriority.utility.rawValue, "priorité : \(priority)")
+        #expect(priority == .utility, "priorité : \(priority)")
 
         readiness.startIfNeeded()  // deuxième passage au premier plan pendant la préparation
         preparer.release()

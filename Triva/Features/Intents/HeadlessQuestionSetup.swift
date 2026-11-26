@@ -51,6 +51,8 @@ struct HeadlessQuestionSetup {
         guard let chatViewModel = session.chatViewModel else {
             return HeadlessQuestionSetup(decision: .needsEngineChoice, session: nil, runner: nil)
         }
+        // Aucune fenêtre : une réponse coupée par l'arrière-plan ne doit pas reprendre au retour (F3).
+        chatViewModel.resumesAfterBackgroundInterruption = false
         let runner = HeadlessQuestionRunner(chatViewModel: chatViewModel, retaining: session)
         return HeadlessQuestionSetup(decision: decision, session: session, runner: runner)
     }
