@@ -13,7 +13,7 @@ import Observation
 ///
 /// Le trousseau est lu UNE fois, à la première demande, puis la valeur est gardée. Elle est
 /// invalidée quand `SearchKeyStore` poste `didChangeNotification` (clé ajoutée ou retirée, dans
-/// cette fenêtre ou une autre) : la lecture suivante relit le trousseau. L'init ne lit rien :
+/// cette fenêtre ou une autre) : la lecture suivante relit le trousseau. Une lecture EN ÉCHEC (trousseau fermé) n'est pas gardée. L'init ne lit rien :
 /// SwiftUI recrée la valeur par défaut à chaque rendu du parent, seule la première est gardée.
 @Observable
 final class SearchKeyAvailability {
@@ -29,9 +29,15 @@ final class SearchKeyAvailability {
     var hasKey: Bool {
         _ = revision
         if let cached { return cached }
-        let value = store.hasConfiguredKey
-        cached = value
-        return value
+        do {
+            let value = try !store.configuredSources().isEmpty
+            cached = value
+            return value
+        } catch {
+            // Trousseau illisible (appareil verrouillé…) : « pas de clé » pour cet affichage, mais SANS le garder, sinon
+            // les exemples « sans clé » resteraient après le déverrouillage (mission F2). Prudent, comme `hasConfiguredKey`.
+            return false
+        }
     }
 
     func invalidate() {

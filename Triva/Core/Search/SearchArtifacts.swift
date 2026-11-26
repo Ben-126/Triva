@@ -81,6 +81,10 @@ nonisolated struct SearchArtifacts: Sendable {
     /// Hors connexion, la météo était demandée : son widget n'a PAS été lancé (aucune tentative dans le
     /// vide). `ChatViewModel` répond par un message fixe, le modèle n'invente pas de météo.
     var offlineWeatherSkipped = false
+    /// Chemin suivi par la recherche web (tâche 2.4) : boucle actuelle, enquêteur Apple Intelligence, ou
+    /// enquêteur abandonné (et pourquoi). Diagnostic pour le journal et le banc de comparaison : JAMAIS
+    /// affiché, JAMAIS persisté. `.classic` hors recherche web.
+    var researchPath: ResearchPath = .classic
 }
 
 /// Résultat du pipeline (0.7) : le texte généré et ses `artifacts`.

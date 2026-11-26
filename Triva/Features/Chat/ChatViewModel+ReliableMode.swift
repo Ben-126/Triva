@@ -8,8 +8,7 @@
 import Foundation
 
 // Mode Fiable côté fil de discussion (mission A1). Sorti de `ChatViewModel.swift`,
-// qui frôlait 800 lignes ; le câblage (`perform`, `consume`) y reste, parce qu'il
-// touche des membres privés.
+// qui frôlait 800 lignes ; le câblage (`perform`, `consume`) est dans `ChatViewModel+Exchange.swift`.
 extension ChatViewModel {
     /// Décision (c) : mode Fiable, recherche faite, rien de CITABLE (le filtre
     /// « domaines fiables » a tout retiré, rien trouvé, ou — depuis A1 — aucune

@@ -15,7 +15,7 @@ import SwiftUI
 /// sources de recherche ont échoué : `SearchKeyInvitationView`.
 ///
 /// Ne crée jamais son `ChatViewModel` lui-même : reçu en paramètre, pour que
-/// l'appelant (`ContentView.swift`) reste seul responsable de résoudre le
+/// l'appelant (`SearchSession.swift`) reste seul responsable de résoudre le
 /// provider IA et le `FailoverManager` actifs et de mettre ce ViewModel en
 /// cache — un par écran, jamais recréé à chaque re-render.
 ///
@@ -43,7 +43,7 @@ struct ChatView: View {
         self.engineAccessory = engineAccessory
     }
 
-    /// Brouillon de la session (`SearchDraft`, `ContentView.swift`) : il
+    /// Brouillon de la session (`SearchDraft`, `SearchDraft.swift`) : il
     /// survit au démontage de cette vue (changement de destination en
     /// sidebar, bascule de classe de taille) et reçoit le texte de Découvrir >
     /// « Chercher dans Triva ». Lecture OPTIONNELLE, contrat d'I4b : les

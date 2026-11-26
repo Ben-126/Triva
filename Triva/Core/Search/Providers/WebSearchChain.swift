@@ -505,6 +505,14 @@ nonisolated enum WebSearchChainError: Error, Sendable, Equatable, CustomStringCo
     }
 
     var description: String { userFacingMessage }
+
+    /// Une clé de recherche (ou celle du fournisseur IA) n'a pas pu être lue dans le trousseau : source jamais interrogée.
+    /// Appareil verrouillé, c'est la cause à dire (« Déverrouille… »), pas « ajoute une clé » ni « ta clé ne marche pas »
+    /// (mission F2, `SearchKeyInvitation`, `ChatViewModel.userFacingMessage(for:)`).
+    var hasUnreadableKey: Bool {
+        guard case .allSourcesFailed(let failures) = self else { return false }
+        return failures.contains { $0.reason == .keychainUnreadable }
+    }
 }
 
 // MARK: - Étape SearXNG

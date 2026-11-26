@@ -211,7 +211,9 @@ struct AttachmentControllerPurgeTests {
             store: AttachmentStore(), vault: AttachmentFileVault(rootDirectory: box.vaultRoot), purgeSignalCenter: center
         )
         controller.enqueue([source])
-        #expect(await waitUntil { controller.attachments.count == 1 })
+        // La pièce jointe apparaît dans le magasin AVANT que sa copie soit enregistrée (retour de la lecture) :
+        // attendre aussi la copie, sinon le test lit l'entre-deux sous charge (échec intermittent du 26/11).
+        #expect(await waitUntil { controller.attachments.first.map { controller.previewURL(for: $0.id) != nil } ?? false })
         let attachment = try #require(controller.attachments.first)
         #expect(controller.previewURL(for: attachment.id) != nil)
 
@@ -233,7 +235,9 @@ struct AttachmentControllerPurgeTests {
             store: AttachmentStore(), vault: AttachmentFileVault(rootDirectory: box.vaultRoot), purgeSignalCenter: center
         )
         controller.enqueue([source])
-        #expect(await waitUntil { controller.attachments.count == 1 })
+        // La pièce jointe apparaît dans le magasin AVANT que sa copie soit enregistrée (retour de la lecture) :
+        // attendre aussi la copie, sinon le test lit l'entre-deux sous charge (échec intermittent du 26/11).
+        #expect(await waitUntil { controller.attachments.first.map { controller.previewURL(for: $0.id) != nil } ?? false })
         let attachment = try #require(controller.attachments.first)
 
         AttachmentVaultPurgeSignal.post(root: box.origin, on: center)

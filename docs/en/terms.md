@@ -49,7 +49,7 @@ By default, Triva asks search engines to **filter adult content** (moderate leve
 
 ## 7. Files you attach
 
-You can attach a file to a question (PDF, text…). You are **responsible** for what you attach: only use files you have the right to use, and be careful with the personal information they contain (yours or other people's).
+You can attach a file to a question (PDF, Word .docx document, text…). You are **responsible** for what you attach: only use files you have the right to use, and be careful with the personal information they contain (yours or other people's).
 
 - The text of an attached file may be sent to the cloud AI you chose (see the privacy policy).
 - **PDFs copy-protected** by their author are only read if they allow text extraction for accessibility. Otherwise, Triva doesn't read them at all, whatever the AI engine, and tells you that the file can't be read.

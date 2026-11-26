@@ -62,7 +62,7 @@ enum AppleIntelligenceError: Error, Sendable, Equatable {
 /// l'utilisateur lisait « generationFailed(description: …) ».
 ///
 /// Type SÉPARÉ d'`AppleIntelligenceError`, à dessein : ce dernier décrit la
-/// DISPONIBILITÉ du modèle, que `SearchSetupRequirement` (ContentView) traite
+/// DISPONIBILITÉ du modèle, que `SearchSetupRequirement` (`Core/Search/Session/`) traite
 /// par un `switch` exhaustif. Y ajouter ces cas forcerait l'écran de
 /// configuration à gérer des échecs qu'il ne reçoit jamais (la disponibilité
 /// est vérifiée avant toute session).

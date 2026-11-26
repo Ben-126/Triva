@@ -44,10 +44,16 @@ nonisolated struct SearchKeyInvitation: Sendable, Equatable {
     let actionTitle: String
 
     /// `nil` si `error` n'est pas un échec de toutes les sources, ou si l'appareil est hors ligne :
-    /// pas d'invitation.
-    init?(for error: any Error) {
+    /// pas d'invitation. Pas d'invitation non plus quand l'appareil est VERROUILLÉ et qu'une clé était illisible
+    /// (mission F2) : la clé existe et marche, le trousseau est seulement fermé ; « ajouter » ou « vérifier » serait
+    /// faux, et le bandeau dit déjà de déverrouiller (`ChatViewModel.userFacingMessage(for:)`).
+    ///
+    /// `isDeviceLocked` : `DeviceLock.isLocked`, passé par l'appelant (état de l'appareil, que cette donnée pure ne lit pas) ;
+    /// `false` par défaut pour les aperçus et les tests.
+    init?(for error: any Error, isDeviceLocked: Bool = false) {
         guard let chainError = error as? WebSearchChainError,
               !chainError.isDeviceOffline,
+              !(isDeviceLocked && chainError.hasUnreadableKey),
               case .allSourcesFailed(let failures) = chainError else { return nil }
         let failedKinds = failures.map(\.source)
         // Ordre de préférence, le même que l'écran des clés, quel que soit celui des échecs.
@@ -75,10 +81,18 @@ nonisolated struct SearchKeyInvitation: Sendable, Equatable {
     /// - si la réponse retenue vient d'une clé personnelle (meilleure réponse écartée, retenue faute
     ///   de mieux) : en ajouter une n'y changerait rien ;
     /// - si une clé a répondu sans rien de retenu : elle marche, en ajouter une autre n'est pas la
-    ///   réponse. Une clé en ÉCHEC (refusée, quota, illisible) donne la forme « Vérifier ».
-    init?(afterFallback report: WebSearchChainReport, retainedSource: WebSearchSourceKind?, webSourceCount: Int) {
+    ///   réponse. Une clé en ÉCHEC (refusée, quota, illisible) donne la forme « Vérifier » ;
+    /// - si l'appareil est verrouillé (`isDeviceLocked`) et qu'une clé était illisible : le trousseau est fermé, pas la
+    ///   clé en cause (mission F2).
+    init?(
+        afterFallback report: WebSearchChainReport,
+        retainedSource: WebSearchSourceKind?,
+        webSourceCount: Int,
+        isDeviceLocked: Bool = false
+    ) {
         let keySources = BYOKSearchSource.preferenceOrder
         guard webSourceCount > 0,
+              !(isDeviceLocked && report.passedOver.contains { $0.reason == .keychainUnreadable }),
               let retainedSource,
               !keySources.contains(where: { $0.kind == retainedSource }),
               report.passedOver.contains(where: { $0.source == .searxng }) else { return nil }

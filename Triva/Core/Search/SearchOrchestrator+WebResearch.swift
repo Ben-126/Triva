@@ -22,6 +22,8 @@ extension SearchOrchestrator {
         let webSourceKind: WebSearchSourceKind
         /// Constat de la chaîne sur ce tour (mission A2).
         let webSearchReport: WebSearchChainReport
+        /// Chemin suivi (tâche 2.4) : boucle actuelle, enquêteur, ou enquêteur abandonné. Diagnostic seulement.
+        var researchPath: ResearchPath = .classic
     }
 
     /// Événement de la recherche web menée en parallèle des médias.
@@ -40,19 +42,20 @@ extension SearchOrchestrator {
     /// Le délai de grâce se mesure sur `clock`, l'horloge injectée (comme les
     /// tours de scrape) : un test le pilote sans durée réelle.
     nonisolated func webResearchAlongsideMedia(
+        question: String,
         flavor: WebSearchFlavor,
         uploads: UploadsSearchAction?,
         searchQuery: String,
         mediaKinds: MediaSearchKinds
     ) async throws -> (WebResearch, MediaSearchResults) {
         guard !mediaKinds.isEmpty else {
-            return (try await webResearch(flavor: flavor, uploads: uploads, searchQuery: searchQuery), .notRequested)
+            return (try await webResearch(question: question, flavor: flavor, uploads: uploads, searchQuery: searchQuery), .notRequested)
         }
         let searcher = mediaSearcher
         let grace = mediaGracePeriod
         let graceClock = clock
         return try await withThrowingTaskGroup(of: ParallelSearchEvent.self) { group in
-            group.addTask { .research(try await self.webResearch(flavor: flavor, uploads: uploads, searchQuery: searchQuery)) }
+            group.addTask { .research(try await self.webResearch(question: question, flavor: flavor, uploads: uploads, searchQuery: searchQuery)) }
             group.addTask { .media(await MediaSearchResults.search(mediaKinds, query: searchQuery, using: searcher)) }
             var research: WebResearch?
             var media: MediaSearchResults?
@@ -96,11 +99,32 @@ extension SearchOrchestrator {
     /// 4. boucle planner sur les seules sources classées, qui sait ces pages
     ///    déjà tentées, puis `pagesBackedBySources` : invariant des citations
     ///    garanti en un seul point, quelle que soit l'origine d'une page.
-    private nonisolated func webResearch(flavor: WebSearchFlavor, uploads: UploadsSearchAction?, searchQuery: String) async throws -> WebResearch {
+    ///
+    /// Tâche 2.4 : avec un enquêteur (Apple Intelligence, drapeau allumé, hors mode Rapide), il prend la
+    /// main juste après le tour seedé (`attemptAgenticResearch`, `SearchOrchestrator+Agentic.swift`) ; s'il
+    /// échoue ou ne trouve rien, les étapes 2 à 4 reprennent sur ce MÊME tour seedé.
+    private nonisolated func webResearch(
+        question: String,
+        flavor: WebSearchFlavor,
+        uploads: UploadsSearchAction?,
+        searchQuery: String
+    ) async throws -> WebResearch {
         let seeded = try await seededSearch(flavor: flavor, query: searchQuery)
         var searchResults: [SearXNGSearchResult] = []
         var seededPages: [ScrapedPage] = []
         Self.accumulate(seeded.output, sources: &searchResults, scrapedPages: &seededPages)
+
+        let researchPath: ResearchPath
+        switch try await attemptAgenticResearch(
+            question: question, searchQuery: searchQuery, flavor: flavor, seeded: seeded, seededResults: searchResults
+        ) {
+        case .succeeded(let research):
+            return research
+        case .fellBack(let reason):
+            researchPath = .agenticFellBack(reason)
+        case .notAttempted:
+            researchPath = .classic
+        }
 
         // `searchResults` est encore dans l'ordre rendu par le moteur
         // (`accumulate` conserve l'ordre d'arrivée) : c'est le contrat
@@ -131,7 +155,8 @@ extension SearchOrchestrator {
             sources: sources,
             scrapedPages: pages,
             webSourceKind: seeded.sourceKind,
-            webSearchReport: Self.report(seeded.report, rejudgedOn: sources, query: searchQuery, hasChain: webSearchChain != nil)
+            webSearchReport: Self.report(seeded.report, rejudgedOn: sources, query: searchQuery, hasChain: webSearchChain != nil),
+            researchPath: researchPath
         )
     }
 

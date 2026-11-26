@@ -13,7 +13,7 @@ import Foundation
 /// ## Pourquoi un objet détenu AU-DESSUS de la vue
 /// En `@State` dans la vue, tout serait relancé à chaque retour sur l'onglet : en
 /// présentation `NavigationSplitView` (iPad, Mac), changer de destination démonte
-/// la vue (même constat que `SearchSession`, voir `ContentView.swift`). D'où :
+/// la vue (même constat que `SearchSession`, voir `SearchSession.swift`). D'où :
 /// - `TrivaRootCoordinator` crée CE modèle une seule fois par fenêtre ;
 /// - `loadIfNeeded()` ne charge qu'au premier affichage (ou après un échec) ;
 /// - rien ne se recharge tout seul ensuite : seul l'utilisateur rafraîchit

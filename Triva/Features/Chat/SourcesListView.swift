@@ -111,7 +111,7 @@ nonisolated enum SourcesListPresentation {
 /// Liste simple des sources d'un message assistant : titre + lien
 /// uniquement, aucun scoring visuel, aucune favicon ni image — même esprit
 /// que la boucle `ForEach(result.sources)` qui existait dans `resultSection`
-/// de `SearchTestSection` (`ContentView.swift`, test 0.7) avant d'être
+/// de `SearchTestSection` (ancien `ContentView.swift`, test 0.7) avant d'être
 /// remplacée par le vrai chat (0.8).
 ///
 /// Chaque source web est un vrai `Link` tapable (ouvre l'URL dans le

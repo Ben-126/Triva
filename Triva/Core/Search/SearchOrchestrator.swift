@@ -102,6 +102,10 @@ nonisolated struct SearchOrchestrator: Sendable {
     /// Appareil hors connexion (tâche 1.16, `ConnectivityMonitor`) : aucune recherche web, aucun
     /// widget météo ; fichiers joints et calcul restent disponibles. Voir `SearchOrchestrator+Offline.swift`.
     private let isOffline: Bool
+    /// Enquêteur de la recherche web (tâche 2.4, `SearchOrchestrator+Agentic.swift`), `nil` = boucle actuelle.
+    let agenticResearcher: (any AgenticResearching)?
+    /// Budget de l'enquêteur pour `responseMode` (nul en mode Rapide : jamais d'enquêteur).
+    let agenticBudget: ResearchBudget
 
     /// Attente maximale des médias (1.6) une fois la recherche texte finie :
     /// au-delà, ils valent `.failed` et la réponse part sans eux. Les médias
@@ -172,6 +176,8 @@ nonisolated struct SearchOrchestrator: Sendable {
     ///     (défaut) : SearXNG seul, comportement d'avant la chaîne.
     ///   - isOffline: `false` (défaut) = comportement d'avant la tâche 1.16. `true` : l'appareil est hors
     ///     connexion, le pipeline répond sans recherche web ni météo (voir `SearchOrchestrator+Offline.swift`).
+    ///   - agenticResearcher: enquêteur de la tâche 2.4 (Apple Intelligence, drapeau `AgenticResearchSetting`),
+    ///     consulté après le tour seedé hors mode Rapide. `nil` (défaut) : comportement d'avant la tâche 2.4.
     ///
     /// Budget des fichiers joints : `min(UploadsSearchResultBuilder.defaultMaxTotalCharacters,
     /// configuration.maxScrapedContextCharacters)` — 3 000 caractères sous
@@ -197,6 +203,7 @@ nonisolated struct SearchOrchestrator: Sendable {
         mediaGracePeriod: Duration = SearchOrchestrator.defaultMediaGracePeriod,
         webSearchChain: WebSearchChain? = nil,
         isOffline: Bool = false,
+        agenticResearcher: (any AgenticResearching)? = nil,
         onScrapedPageCollected: (@Sendable (ScrapedPage) -> Void)? = nil
     ) {
         self.onScrapedPageCollected = onScrapedPageCollected
@@ -216,6 +223,10 @@ nonisolated struct SearchOrchestrator: Sendable {
         self.maxResultsUsedForContext = Self.effectiveLimit(cap: configuration.maxResultsUsedForContext, modeValue: responseMode.targetSourceCount)
         self.maxIterations = Self.effectiveLimit(cap: maxIterations, modeValue: responseMode.maxSearchIterations)
         self.restrictsToTrustedDomains = responseMode.restrictsToTrustedDomains
+        self.agenticResearcher = agenticResearcher
+        self.agenticBudget = Self.agenticBudget(
+            mode: responseMode, configuration: configuration, effectiveSourceLimit: self.maxResultsUsedForContext
+        )
         self.maxScrapedURLsPerIteration = configuration.maxScrapedURLsPerIteration
         self.maxScrapedContextCharacters = configuration.maxScrapedContextCharacters
         self.maxHistoryMessages = configuration.maxHistoryMessages
@@ -378,6 +389,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         var webSearchReport = WebSearchChainReport()
         /// `SearchArtifacts.offlineWeatherSkipped` (tâche 1.16).
         var offlineWeatherSkipped = false
+        /// `SearchArtifacts.researchPath` (tâche 2.4).
+        var researchPath: ResearchPath = .classic
     }
 
     /// Recherche complète puis prompt final, partagés par `answer` et
@@ -440,7 +453,8 @@ nonisolated struct SearchOrchestrator: Sendable {
                 question: request.query,
                 searchPerformed: research.searchPerformed,
                 widgetCount: research.widgets.outputs.count
-            )
+            ),
+            researchPath: research.researchPath
         )
         return PreparedAnswer(
             prompt: prompt,
@@ -508,7 +522,8 @@ nonisolated struct SearchOrchestrator: Sendable {
             media: gathered.media,
             webSourceKind: gathered.webSourceKind,
             webSearchReport: gathered.webSearchReport,
-            offlineWeatherSkipped: isOffline && classification.showWeatherWidget
+            offlineWeatherSkipped: isOffline && classification.showWeatherWidget,
+            researchPath: gathered.researchPath
         )
     }
 
@@ -535,6 +550,8 @@ nonisolated struct SearchOrchestrator: Sendable {
         let webSourceKind: WebSearchSourceKind?
         /// Constat de la chaîne (mission A2), vide hors recherche web.
         var webSearchReport = WebSearchChainReport()
+        /// Chemin de la recherche web (tâche 2.4), `.classic` hors recherche web.
+        var researchPath: ResearchPath = .classic
 
         static let noSearch = GatheredSearch(
             documents: [], webSources: [], scrapedPages: [], media: .notRequested, searchPerformed: false, webSourceKind: nil
@@ -567,6 +584,7 @@ nonisolated struct SearchOrchestrator: Sendable {
             let uploads = await Self.uploadsAction(for: request.attachments, maxTotalCharacters: maxAttachmentContextCharacters / 2)
             async let pendingDocuments = Self.consultedDocuments(uploads, query: searchQuery)
             let (research, media) = try await webResearchAlongsideMedia(
+                question: request.query,
                 flavor: flavor,
                 uploads: nil,
                 searchQuery: searchQuery,
@@ -579,7 +597,8 @@ nonisolated struct SearchOrchestrator: Sendable {
                 media: media,
                 searchPerformed: true,
                 webSourceKind: research.webSourceKind,
-                webSearchReport: research.webSearchReport
+                webSearchReport: research.webSearchReport,
+                researchPath: research.researchPath
             )
         }
     }

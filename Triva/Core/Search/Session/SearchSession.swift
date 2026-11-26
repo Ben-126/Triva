@@ -1,111 +1,11 @@
 //
-//  ContentView.swift
+//  SearchSession.swift
 //  Triva
 //
 //  Created by ben podrojsky on 27/08/2026.
 //
 
 import SwiftUI
-
-/// Ce fichier n'est plus la racine de l'app : depuis la coquille de navigation
-/// V1, c'est `TrivaRootView` (`Features/Root/TrivaRootView.swift`) qui décide
-/// de ce qu'une fenêtre affiche — l'écran de choix du moteur IA tant qu'aucun
-/// n'est choisi, puis les 5 destinations (Recherche, Découvrir, Bibliothèque,
-/// Favoris, Réglages).
-///
-/// Il garde son nom parce qu'il garde son rôle réel, celui que `ChatView`,
-/// `ChatViewModel`, `MessageBubbleView` et `SourcesListView` citent déjà dans
-/// leur documentation : c'est ici que vit la destination "Recherche" (badge
-/// moteur IA + `ChatView`) et la résolution du provider IA et du
-/// `FailoverManager` actifs — désormais portée par `SearchSession` plutôt que
-/// par la vue elle-même (voir le commentaire de tête de `SearchSession` pour
-/// le pourquoi).
-
-/// Erreurs propres à `SearchSession`.
-enum SearchSessionError: Error, Sendable, Equatable {
-    /// La session de recherche a été libérée (fenêtre fermée, ou changement de
-    /// moteur IA qui reconstruit toute la session) alors qu'une génération
-    /// était encore en vol.
-    ///
-    /// Le cas courant est déjà couvert sans passer par ici : `SearchSession.deinit`
-    /// arrête la génération (`ChatViewModel.stopEverything()`), que `ChatViewModel` traite
-    /// comme un arrêt volontaire. Reste la course de la fermeture de fenêtre
-    /// pendant une génération, où la session peut être libérée avant que
-    /// l'annulation ne soit constatée :
-    /// `ChatViewModel.userFacingMessage(for:)` lui donne un message français
-    /// (I2). Levée aussi par le chargement de Découvrir si la session a
-    /// disparu (`TrivaRootCoordinator`), qui s'affiche alors comme un échec
-    /// de chargement ordinaire. On préfère une erreur explicite à un
-    /// `unowned self`, qui ferait planter l'app au lieu de le signaler.
-    case sessionEnded
-}
-
-/// Texte de la barre de saisie de la Recherche, détenu par la `SearchSession`
-/// plutôt que par `ChatView` (mission I4b). Deux raisons :
-/// 1. Découvrir > « Chercher dans Triva » doit pouvoir REMPLIR la barre depuis
-///    un autre espace (`TrivaRootCoordinator.search(_:)`) ;
-/// 2. `ChatView` est démontée à chaque changement de destination en
-///    présentation sidebar (iPad, Mac), et à chaque bascule de classe de
-///    taille (Split View, Stage Manager, iPhone Duo déplié) : un texte en
-///    `@State` dans la vue serait perdu à chaque fois.
-///
-/// Transmis à `ChatView` par l'environnement (`EngineStatusView`). Contrat
-/// côté `ChatView` : lecture OPTIONNELLE,
-/// `@Environment(SearchDraft.self) private var draft: SearchDraft?` — ses
-/// aperçus n'en injectent pas, une lecture non optionnelle les ferait planter —,
-/// barre liée à `draft.text` quand il est présent, vidée après l'envoi.
-@Observable
-@MainActor
-final class SearchDraft {
-    var text = ""
-}
-
-/// Ce qui manque au moteur de la session pour répondre — au premier lancement
-/// comme après un réglage effacé ailleurs. Sert à ne jamais montrer un écran
-/// vide ou un chat qui échouera à coup sûr sans dire pourquoi ni quoi faire.
-enum SearchSetupRequirement: Equatable {
-    /// Apple Intelligence choisi mais indisponible, pour la raison portée.
-    case appleIntelligenceUnavailable(AppleIntelligenceError)
-    /// MLX local choisi, aucun modèle validé.
-    case mlxModel
-    /// Clé API personnelle choisie, aucun fournisseur ni modèle sélectionné.
-    case cloudProvider
-
-    /// Explication affichée sous l'en-tête, ou `nil` quand le bouton d'action
-    /// de l'en-tête (« Choisir un modèle MLX ») se suffit à lui-même.
-    ///
-    /// Jamais `String(describing:)` d'une erreur : l'écran affichait avant
-    /// « Indisponible : deviceNotEligible », un identifiant anglais qui ne dit
-    /// ni ce qui se passe ni quoi faire. Chaque message nomme l'issue — le
-    /// bouton « Changer de moteur » est toujours juste au-dessus.
-    var message: String? {
-        switch self {
-        case .appleIntelligenceUnavailable(let error):
-            return Self.message(for: error)
-        case .mlxModel:
-            return nil
-        case .cloudProvider:
-            return "Ajoute ta clé API, puis choisis un fournisseur et un modèle dans les Réglages."
-        }
-    }
-
-    private static func message(for error: AppleIntelligenceError) -> String {
-        switch error {
-        case .deviceNotEligible:
-            "Cet appareil ne prend pas en charge Apple Intelligence. Choisis un autre moteur."
-        case .appleIntelligenceNotEnabled:
-            "Apple Intelligence est désactivé. Active-le dans les réglages de l'appareil, ou choisis un autre moteur."
-        case .modelNotReady:
-            "Le modèle Apple Intelligence est en cours de téléchargement. Réessaie dans quelques minutes."
-        case .unavailableForOtherReason:
-            "Apple Intelligence n'est pas disponible pour le moment. Réessaie plus tard, ou choisis un autre moteur."
-        case .generationFailed:
-            // Jamais produit par la vérification de disponibilité ; le texte
-            // porté vient du framework, il n'est pas repris.
-            "Apple Intelligence n'a pas pu répondre. Réessaie."
-        }
-    }
-}
 
 /// État lourd de la destination "Recherche", volontairement sorti de la vue.
 ///
@@ -270,29 +170,6 @@ final class SearchSession {
         stores.mlxProviderPool.unregister(mlxRequesterID)
     }
 
-    /// Cette fenêtre attend qu'une autre ait fini avec le modèle local (mission M3).
-    var isWaitingForLocalModel: Bool {
-        guard engine == .mlxLocal else { return false }
-        if stores.mlxProviderPool.isWaitingForAnotherWindow(mlxRequesterID) { return true }
-        // Une réponse laissée en arrière-plan (« Nouvelle conversation ») écrit encore : le modèle ne sert qu'une
-        // réponse à la fois, la question suivante attend la fin de la précédente (même ligne d'attente).
-        let hasBackgroundAnswer = chatViewModel?.backgroundExchanges.isEmpty == false
-        return hasBackgroundAnswer && stores.mlxProviderPool.isWaitingBehindOwnWork(mlxRequesterID)
-    }
-
-    /// Modèle MLX validé (0.5) pour la sélection courante, `nil` tant qu'aucun
-    /// n'a été choisi — le chat MLX est inutilisable dans ce cas.
-    ///
-    /// DÉRIVÉ du store partagé à chaque lecture, et non plus copié dans la
-    /// session : un modèle choisi dans une autre fenêtre (ou effacé par les
-    /// Réglages, voir `MLXStorageView`) s'affiche donc ici aussitôt — la carte
-    /// « Modèle actif » montre toujours le modèle que le prochain envoi
-    /// utilisera, même logique que le badge.
-    var validatedMLXModel: MLXModelCatalogEntry? {
-        guard let id = stores.mlxSelection.selectedModelID else { return nil }
-        return mlxCatalog?.first { $0.id == id }
-    }
-
     /// Lit la disponibilité d'Apple Intelligence au premier affichage de la
     /// destination "Recherche" ; ensuite, seulement tant qu'elle est en échec.
     /// Sans objet pour un autre moteur : rien ne l'afficherait.
@@ -311,27 +188,6 @@ final class SearchSession {
         appleIntelligenceError = AppleIntelligenceProvider().availabilityError
     }
 
-    /// Ce qui manque encore au moteur de la session pour répondre, `nil` si
-    /// la Recherche est prête. Dérivé à chaque lecture des stores partagés :
-    /// une clé configurée dans les Réglages (de cette fenêtre ou d'une autre)
-    /// fait apparaître le chat dès le retour sur la Recherche.
-    ///
-    /// Cloud : seule la SÉLECTION est vérifiée, jamais la clé — la lire
-    /// demanderait un accès au trousseau à chaque rendu. Une sélection sans
-    /// clé reste possible (clé supprimée hors de l'app) ; l'envoi le dit
-    /// alors avec un message actionnable.
-    var setupRequirement: SearchSetupRequirement? {
-        switch engine {
-        case .appleIntelligence:
-            guard let appleIntelligenceError else { return nil }
-            return .appleIntelligenceUnavailable(appleIntelligenceError)
-        case .mlxLocal:
-            return validatedMLXModel == nil ? .mlxModel : nil
-        case .cloudBYOK:
-            return stores.cloudSelection.selection == nil ? .cloudProvider : nil
-        }
-    }
-
     /// Charge le catalogue MLX pour l'affichage du modèle actif (moteur MLX
     /// seulement). Un échec laisse `validatedMLXModel` à `nil`, donc le bouton
     /// « Choisir un modèle MLX » : l'écran de choix lit le même fichier et
@@ -340,16 +196,6 @@ final class SearchSession {
     func loadMLXCatalogIfNeeded() {
         guard engine == .mlxLocal else { return }
         _ = try? loadedMLXCatalog()
-    }
-
-    /// Enregistre le modèle MLX que l'utilisateur vient de valider, dans le
-    /// store PARTAGÉ (toutes les fenêtres le voient). Le pool MLX suit ce store
-    /// et décharge l'ancien modèle aussitôt (à son tour dans la file) : c'est
-    /// de la mémoire (plusieurs Go) rendue sans attendre le prochain envoi.
-    func selectMLXModel(_ chosen: MLXModelCatalogEntry) {
-        stores.mlxSelection.selectedModelID = chosen.id
-        preparedMLXProvider = nil
-        loadMLXCatalogIfNeeded()
     }
 
     /// Crée le `ChatViewModel` de la session au besoin. Appelée depuis
@@ -387,6 +233,8 @@ final class SearchSession {
                 return self.resolveWebSearchChain(failoverManager: failoverManager)
             },
             resolveOfflinePlan: { [weak self] in self?.resolveOfflinePlan() },
+            // Tâche 2.4 : `nil` sauf Apple Intelligence avec le drapeau `AgenticResearchSetting` allumé.
+            resolveAgenticResearcher: { [weak self] in self?.agenticResearcherForSending() },
             // Session disparue : l'envoi a déjà échoué sur `resolveProvider`,
             // ce repli (le budget le plus serré) n'est jamais utilisé.
             resolvePipelineConfiguration: { [weak self] in
@@ -407,41 +255,6 @@ final class SearchSession {
         chatViewModel?.progressObserver = progressObserver
     }
 
-    /// Budget de recherche et de contexte du moteur qui a produit le provider
-    /// de l'envoi en cours (bug 6). `ChatViewModel` l'appelle juste après
-    /// `resolveProvider`, sans suspension entre les deux. Interne pour les
-    /// tests.
-    ///
-    /// Apple Intelligence et cloud : `engine` est figé, le budget aussi. MLX :
-    /// le budget dépend du MODÈLE (compact ou non), donc il est rangé avec le
-    /// provider préparé, calculé sur le même `modelID` que lui. Relire
-    /// `stores.mlxSelection` ici serait faux : une autre fenêtre peut changer
-    /// de modèle pendant le `prepare()` de cet envoi, qui garde pourtant le
-    /// modèle qu'il a chargé. Sans provider préparé (jamais en pratique : la
-    /// résolution a échoué avant), le budget compact, le plus prudent.
-    func pipelineConfigurationForSending() -> SearchPipelineConfiguration {
-        switch engine {
-        case .appleIntelligence:
-            // Cloud privé ou appareil : le modèle retenu par CE même envoi (mission A4).
-            return appleModel.pipelineConfigurationForSending()
-        case .cloudBYOK:
-            return SearchPipelineConfiguration.preset(for: engine)
-        case .mlxLocal:
-            return preparedMLXProvider?.configuration ?? SearchPipelineConfiguration.preset(for: .mlxLocal)
-        }
-    }
-
-    /// Demande de consentement à montrer AVANT un envoi : `nil` pour Apple Intelligence et MLX (sur
-    /// l'appareil), sans fournisseur choisi (l'envoi échouera de lui-même), ou accord déjà donné.
-    /// Interne pour les tests. La porte qui bloque réellement est `CloudAIConsentGate`.
-    func cloudConsentRequestForSending() -> CloudAIConsentRequest? {
-        guard engine == .cloudBYOK, let selection = stores.cloudSelection.selection else { return nil }
-        guard !stores.cloudConsent.isGranted(providerID: selection.providerID) else { return nil }
-        return CloudAIConsentCatalog.request(
-            providerID: selection.providerID,
-            customPresets: stores.customProviders.customPresets
-        )
-    }
 
     /// Provider IA à utiliser pour un envoi : TOUJOURS celui de `engine`, le
     /// moteur affiché par le badge de cette fenêtre (bug 10), jamais celui
@@ -499,38 +312,6 @@ final class SearchSession {
         return manager
     }
 
-    /// Chaîne de repli de la recherche web pour un envoi (RI1b) : clés de
-    /// recherche personnelles, SearXNG sur `failoverManager` (celui que
-    /// `ChatViewModel` vient de résoudre), recherche du fournisseur cloud,
-    /// sources ouvertes (`WebSearchChain.assemble`). Interne pour les tests.
-    ///
-    /// Reconstruite à chaque envoi, jamais mise en cache, comme les providers
-    /// Apple Intelligence et cloud (voir « Des caches qui se revalident
-    /// seuls ») : une clé ajoutée ou retirée, une sélection cloud changée
-    /// ailleurs, vaut dès la question suivante. La recherche cloud dépend de
-    /// `engine`, le moteur FIGÉ de cette session (bug 10), jamais d'un store
-    /// relu : une session Apple Intelligence ne l'utilise jamais, même si une
-    /// autre fenêtre a enregistré une sélection cloud avec sa clé.
-    func resolveWebSearchChain(failoverManager: FailoverManager) -> WebSearchChain {
-        WebSearchChain.assemble(
-            engine: engine,
-            cloudSelection: stores.cloudSelection.selection,
-            cloudKeyStore: stores.keyStore,
-            searchKeys: searchKeyStore,
-            failoverManager: failoverManager,
-            fallbackLanguage: Self.fallbackSearchLanguage(),
-            cloudConsent: stores.cloudConsent.storage
-        )
-    }
-
-    /// Langue de la recherche quand celle de la question n'est pas reconnue (noms propres, mots
-    /// isolés, voir « LANGUE » de `WebSearchChain`) : la langue de l'appareil, avec la règle FR/EN de
-    /// Découvrir (`DiscoverLanguage.preferred`). `Locale.preferredLanguages`, jamais
-    /// `Locale.current` : sans localisation française dans le projet, cette dernière peut valoir
-    /// l'anglais sur un appareil réglé en français (voir `AnswerExcerpt.swift`).
-    static func fallbackSearchLanguage(preferredLanguages: [String] = Locale.preferredLanguages) -> String {
-        DiscoverLanguage.preferred(for: Locale(identifier: preferredLanguages.first ?? "en")).rawValue
-    }
 
     /// Générateur MLX pour le modèle ACTUELLEMENT sélectionné, tiré du pool PARTAGÉ de l'app
     /// (mission M3) : un seul modèle en mémoire pour toutes les fenêtres, chargé une seule fois,

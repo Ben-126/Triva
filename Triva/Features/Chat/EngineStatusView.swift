@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-// Sorti de `ContentView.swift` (mission C1) : ce fichier dépassait la limite de 800 lignes, et
+// Sorti de l'ancien `ContentView.swift` (mission C1, fichier disparu depuis : `SearchSession` vit dans `Core/Search/Session/`) : ce fichier dépassait la limite de 800 lignes, et
 // l'en-tête moteur devait grandir (repli quand la hauteur manque, badge unique).
 
 /// Destination "Recherche" de la coquille de navigation : affiche le moteur IA

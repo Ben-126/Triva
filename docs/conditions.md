@@ -47,7 +47,7 @@ Par défaut, Triva demande aux moteurs de recherche de **filtrer les contenus po
 
 ## 7. Les fichiers que tu joins
 
-Tu peux joindre un fichier à une question (PDF, texte…). Tu es **responsable** de ce que tu joins : n'utilise que des fichiers que tu as le droit d'utiliser, et fais attention aux informations personnelles qu'ils contiennent (les tiennes ou celles d'autres personnes).
+Tu peux joindre un fichier à une question (PDF, document Word .docx, texte…). Tu es **responsable** de ce que tu joins : n'utilise que des fichiers que tu as le droit d'utiliser, et fais attention aux informations personnelles qu'ils contiennent (les tiennes ou celles d'autres personnes).
 
 - Le texte d'un fichier joint peut être envoyé à l'IA cloud que tu as choisie (voir la politique de confidentialité).
 - Les **PDF protégés contre la copie** par leur auteur ne sont lus que s'ils autorisent l'extraction de leur texte pour l'accessibilité. Sinon, Triva ne les lit pas du tout, quel que soit le moteur d'IA, et te prévient que ce fichier ne peut pas être lu.

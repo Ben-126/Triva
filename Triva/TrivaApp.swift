@@ -430,8 +430,8 @@ struct TrivaApp: App {
     var body: some Scene {
         // `TrivaRootView` est la racine depuis la coquille de navigation V1 :
         // elle arbitre entre l'écran de choix du moteur IA et les 5
-        // destinations. Voir le commentaire de tête de `ContentView.swift`, qui
-        // garde son nom mais n'héberge plus que la destination "Recherche".
+        // destinations. Voir le commentaire de tête de `SearchSession`
+        // (`Core/Search/Session/SearchSession.swift`), qui porte l'état de la destination "Recherche".
         //
         // « Une recherche = une fenêtre » (chantier 2.2, Mac et iPad) : la valeur de la scène dit ce que la
         // fenêtre montre (`TrivaWindowTarget`, identifiants seulement), SwiftUI l'écrit sur disque et la

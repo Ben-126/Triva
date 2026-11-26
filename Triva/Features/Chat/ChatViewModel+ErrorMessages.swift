@@ -28,6 +28,10 @@ extension ChatViewModel {
     static func userFacingMessage(for error: Error, isDeviceLocked: @autoclosure () -> Bool = DeviceLock.isLocked) -> String {
         if error is LockedDeviceError { return DeviceLock.invitation }
         if isAmbiguousEngineFailure(error), isDeviceLocked() { return DeviceLock.invitation }
+        // Recherche web : une clé illisible n'est pas « aucune source n'a répondu » quand l'appareil est verrouillé (mission F2).
+        // Hors ligne, la connexion reste la première chose à dire.
+        if let chainError = error as? WebSearchChainError, !chainError.isDeviceOffline, chainError.hasUnreadableKey,
+           isDeviceLocked() { return DeviceLock.invitation }
         return pipelineMessage(for: error)
             ?? engineMessage(for: error)
             ?? cloudMessage(for: error)
