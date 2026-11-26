@@ -59,9 +59,8 @@ seul ajout thématique : mettre en avant la confidentialité ("sur l'appareil") 
 c'est vrai**, et seulement dans ce cas.
 
 C'est un mix des pistes explorées A (Apple pur) et B (sombre/confidentiel), tirant
-volontairement plus vers A. B, C et D ont été écartées — leurs maquettes restent dans
-`Triva/DesignExploration/` à titre d'archive, ce dossier n'est pas versionné (voir
-`.gitignore`) et ne doit jamais l'être : ce sont des essais, pas la DA.
+volontairement plus vers A. B, C et D ont été écartées ; leurs maquettes (`Triva/DesignExploration/`, jamais
+versionné) ont été supprimées le 2026-11-26 avec l'accord de Ben.
 
 ## Couleurs
 
